@@ -29,6 +29,12 @@ const MAX_FAMILIES = parseInt(process.env.MAX_FAMILIES || '100', 10);
 const MAX_DEVICES_PER_FAMILY = parseInt(process.env.MAX_DEVICES_PER_FAMILY || '20', 10);
 const RATE_LIMIT_MESSAGES = parseInt(process.env.RATE_LIMIT_MESSAGES || '100', 10);
 const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
+const TOKEN_TTL_MS = parseInt(process.env.TOKEN_TTL_MS || '2592000000', 10); // 30 days default
+
+// ─── TLS ─────────────────────────────────────────────────────────────────────
+
+const TLS_CERT_PATH = process.env.TLS_CERT;
+const TLS_KEY_PATH = process.env.TLS_KEY;
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
@@ -162,7 +168,30 @@ setInterval(cleanRateLimiters, 5 * 60_000);
 
 // ─── HTTP Server ─────────────────────────────────────────────────────────────
 
-const server = http.createServer((req, res) => {
+// ─── HTTP / HTTPS Server ──────────────────────────────────────────────────────
+// If TLS_CERT and TLS_KEY env vars are set, create HTTPS server.
+// Otherwise, create plain HTTP (expected to run behind reverse proxy for TLS).
+
+const fs = require('fs');
+const https = require('https');
+
+function createServer(requestListener) {
+  if (TLS_CERT_PATH && TLS_KEY_PATH) {
+    try {
+      const tlsOptions = {
+        cert: fs.readFileSync(TLS_CERT_PATH),
+        key: fs.readFileSync(TLS_KEY_PATH),
+      };
+      console.log('[tls] Using TLS certificates — server will use HTTPS/WSS');
+      return https.createServer(tlsOptions, requestListener);
+    } catch (err) {
+      console.warn(`[tls] Failed to load TLS certs: ${err.message}. Falling back to HTTP.`);
+    }
+  }
+  return http.createServer(requestListener);
+}
+
+const server = createServer((req, res) => {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -275,11 +304,13 @@ const server = http.createServer((req, res) => {
         // Generate a relay token (opaque routing token)
         const relayToken = crypto.randomBytes(32).toString('hex');
 
-        // Store enrollment
+        // Store enrollment with TTL
+        const now = Date.now();
         enrolledDevices.set(relayToken, {
           deviceId: deviceToken,
           familyId,
-          enrolledAt: Date.now(),
+          enrolledAt: now,
+          expiresAt: now + TOKEN_TTL_MS,
         });
 
         // Track family device count
@@ -331,6 +362,7 @@ const server = http.createServer((req, res) => {
         maxDevicesPerFamily: MAX_DEVICES_PER_FAMILY,
         maxClientsPerFamily: MAX_CLIENTS_PER_FAMILY,
         rateLimitMessagesPerMin: RATE_LIMIT_MESSAGES,
+        tokenTtlDays: Math.round(TOKEN_TTL_MS / 86400000),
       },
     }));
     return;
@@ -351,31 +383,8 @@ const wss = new WebSocketServer({
 wss.on('connection', (ws, req) => {
   console.log(`[connect] New WebSocket connection`);
 
-  // Parse relayToken from URL query parameter or initial message
-  // Expected: ws://host:port/?token=RELAY_TOKEN
-  const url = new URL(req.url, 'http://localhost');
-  const initialToken = url.searchParams.get('token');
-
-  let authenticated = false;
-
-  // If token provided in URL, validate immediately
-  if (initialToken) {
-    const enrollment = enrolledDevices.get(initialToken);
-    if (enrollment) {
-      authenticated = true;
-      ws._relayToken = initialToken;
-      ws._enrollment = enrollment;
-      console.log(`[auth] WebSocket authenticated via URL token`);
-    } else {
-      console.warn(`[auth] WebSocket rejected: invalid URL token`);
-      sendTo(ws, {
-        type: 'error',
-        message: 'Invalid relay token',
-      });
-      ws.close(4001, 'Invalid relay token');
-      return;
-    }
-  }
+  // Authentication is done via 'auth' message (not URL parameter).
+  // Client sends { type: 'auth', relayToken: '...' } after WebSocket connects.
 
   ws.on('message', (raw) => {
     try {
@@ -433,6 +442,20 @@ function handleMessage(sender, message) {
           type: 'error',
           message: 'Invalid relay token',
         });
+        return;
+      }
+
+      // Check token expiry
+      if (Date.now() > enrollment.expiresAt) {
+        enrolledDevices.delete(relayToken);
+        // Also clean up from family device tracking
+        const familyTokens = familyDeviceTokens.get(enrollment.familyId);
+        if (familyTokens) familyTokens.delete(relayToken);
+        sendTo(sender, {
+          type: 'error',
+          message: 'Relay token has expired. Re-enroll to continue.',
+        });
+        console.log(`[auth] Rejected expired token for device "${enrollment.deviceId.slice(0, 12)}..."`);
         return;
       }
 
@@ -629,21 +652,42 @@ function sendTo(ws, data) {
 // ─── Start ───────────────────────────────────────────────────────────────────
 
 server.listen(RELAY_PORT, () => {
-  console.log(`
-╔══════════════════════════════════════════════════════════════╗
-║      GroceryApp Relay Server v2                             ║
-║      Listening on port ${String(RELAY_PORT).padEnd(5)}                               ║
-║      Identity-aware WebSocket relay for Yjs sync            ║
-╚══════════════════════════════════════════════════════════════╝
+  const protocol = TLS_CERT_PATH && TLS_KEY_PATH ? 'wss' : 'ws';
+  const httpProtocol = TLS_CERT_PATH && TLS_KEY_PATH ? 'https' : 'http';
+  console.log(`\n╔══════════════════════════════════════════════════════════════╗
+  ║      GroceryApp Relay Server v2                             ║
+  ║      Listening on port ${String(RELAY_PORT).padEnd(5)}                               ║
+  ║      Identity-aware WebSocket relay for Yjs sync            ║
+  ╚══════════════════════════════════════════════════════════════╝
 
-WebSocket:   ws://localhost:${RELAY_PORT}?token=RELAY_TOKEN
-Health:      http://localhost:${RELAY_PORT}/health
-Stats:       http://localhost:${RELAY_PORT}/stats
-Enroll:      POST http://localhost:${RELAY_PORT}/enroll  { deviceToken, familyInviteToken }
+  WebSocket: ${protocol}://localhost:${RELAY_PORT}
+  Health:    ${httpProtocol}://localhost:${RELAY_PORT}/health
+  Stats:     ${httpProtocol}://localhost:${RELAY_PORT}/stats
+  Enroll:    POST ${httpProtocol}://localhost:${RELAY_PORT}/enroll  { deviceToken, familyInviteToken }
 
-Rate limit:  ${RATE_LIMIT_MESSAGES} messages/min per device
-Max families: ${MAX_FAMILIES}
-Max devices/family: ${MAX_DEVICES_PER_FAMILY}
-Max clients/family: ${MAX_CLIENTS_PER_FAMILY}
-`);
+  Rate limit:       ${RATE_LIMIT_MESSAGES} messages/min per device
+  Max families:     ${MAX_FAMILIES}
+  Max devices/family: ${MAX_DEVICES_PER_FAMILY}
+  Max clients/family: ${MAX_CLIENTS_PER_FAMILY}
+  Token TTL:        ${Math.round(TOKEN_TTL_MS / 86400000)} days
+  Auth via:         message (type: 'auth', relayToken: '...')
+  TLS:              ${TLS_CERT_PATH && TLS_KEY_PATH ? 'enabled' : 'disabled (use reverse proxy)'}
+  `);
+
+    // Periodic cleanup of expired tokens (every hour)
+    setInterval(() => {
+      const now = Date.now();
+      let cleaned = 0;
+      for (const [token, enrollment] of enrolledDevices) {
+        if (now > enrollment.expiresAt) {
+          enrolledDevices.delete(token);
+          const familyTokens = familyDeviceTokens.get(enrollment.familyId);
+          if (familyTokens) familyTokens.delete(token);
+          cleaned++;
+        }
+      }
+      if (cleaned > 0) {
+        console.log(`[cleanup] Removed ${cleaned} expired relay token(s)`);
+      }
+    }, 60 * 60 * 1000);
 });

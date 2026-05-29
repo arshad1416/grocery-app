@@ -26,6 +26,8 @@ export interface WebSocketConfig {
   deviceId: string;
   /** Encryption key for Yjs updates (shared family key) */
   encryptionKey: Uint8Array;
+  /** Relay token obtained from POST /enroll (used for auth, never in URL) */
+  relayToken?: string;
   /** Maximum reconnect delay in ms (default: 30s) */
   maxReconnectDelay?: number;
   /** Initial reconnect delay in ms (default: 1s) */
@@ -56,6 +58,7 @@ export class YjsWebSocketClient {
   private encryptKey: Uint8Array;
   private ready = false;
   private disposed = false;
+  private authPending = true; // true until auth_ack received
 
   // Callbacks
   onStateChange?: (state: ConnectionState) => void;
@@ -103,17 +106,28 @@ export class YjsWebSocketClient {
 
     this.ws.onopen = () => {
       this.reconnectAttempt = 0;
-      this.setState('connected');
+      this.authPending = true;
+      // State stays 'connecting' until auth_ack received
+      // (prevents sending updates before authentication)
 
-      // Send identity message
-      this.sendMessage({
-        type: 'identity',
-        familyId: this.config.familyId,
-        deviceId: this.config.deviceId,
-      });
-
-      // Flush offline queue
-      this.flushOfflineQueue();
+      // Send auth message with relay token (if available)
+      // If no relayToken (e.g. tests), fall through to identity directly
+      if (this.config.relayToken) {
+        this.sendMessage({
+          type: 'auth',
+          relayToken: this.config.relayToken,
+        });
+      } else {
+        // No relay token — go straight to identity (test mode)
+        this.authPending = false;
+        this.setState('connected');
+        this.sendMessage({
+          type: 'identity',
+          familyId: this.config.familyId,
+          deviceId: this.config.deviceId,
+        });
+        this.flushOfflineQueue();
+      }
     };
 
     this.ws.onmessage = async (event) => {
@@ -246,6 +260,18 @@ export class YjsWebSocketClient {
 
   private async handleMessage(data: RelayMessage): Promise<void> {
     switch (data.type) {
+      case 'auth_ack': {
+        // Authentication successful — now connected, send identity, flush queue
+        this.authPending = false;
+        this.setState('connected');
+        this.sendMessage({
+          type: 'identity',
+          familyId: this.config.familyId,
+          deviceId: this.config.deviceId,
+        });
+        this.flushOfflineQueue();
+        break;
+      }
       case 'update': {
         if (data.listId && data.payload) {
           const decrypted = this.decryptUpdate(data.payload, data.listId);
@@ -368,10 +394,11 @@ export class YjsWebSocketClient {
 // ─── Relay Message Types ─────────────────────────────────────────────────────
 
 interface RelayMessage {
-  type: 'identity' | 'update' | 'ack' | 'error';
+  type: 'auth' | 'auth_ack' | 'identity' | 'update' | 'ack' | 'error';
   familyId?: string;
   deviceId?: string;
   listId?: string;
   payload?: EncryptedData;
   message?: string;
+  relayToken?: string;
 }
