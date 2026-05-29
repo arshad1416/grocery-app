@@ -9,7 +9,7 @@
  *  - No data loss when offline
  */
 
-import { describe, it, expect, beforeAll } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll, afterEach } from '@jest/globals';
 import * as Y from 'yjs';
 import sodium from 'libsodium-wrappers';
 import { initCrypto, generateUUID } from '../src/crypto';
@@ -52,31 +52,51 @@ async function createTestItem(
 
 let encryptionKey: Uint8Array;
 
+// ─── Minimal WebSocket polyfill for Node test env ────────────────────────────
+// YjsWebSocketClient references the global WebSocket constructor.
+// Provide a noop implementation since ac4 tests create clients to test
+// offline behavior and never actually establish connections.
+
+class NoopWebSocket {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
+  readyState: number = NoopWebSocket.CLOSED;
+  onopen: ((event: any) => void) | null = null;
+  onclose: ((event: any) => void) | null = null;
+  onerror: ((event: any) => void) | null = null;
+  onmessage: ((event: any) => void) | null = null;
+  constructor(_url: string) {
+    // Never connect — just exist so YjsWebSocketClient can instantiate
+  }
+  send(_data: string): void {}
+  close(): void { this.readyState = NoopWebSocket.CLOSED; }
+}
+
+let originalWebSocket: any;
+
 beforeAll(async () => {
   await initCrypto();
   await sodium.ready;
   encryptionKey = sodium.crypto_aead_xchacha20poly1305_ietf_keygen();
 
-  // Provide a minimal WebSocket polyfill for Node test environment
-  // (ac4 tests create YjsWebSocketClient instances but never actually connect)
+  // Install WebSocket polyfill (save original for teardown)
   if (typeof globalThis.WebSocket === 'undefined') {
-    class NoopWebSocket {
-      static CONNECTING = 0;
-      static OPEN = 1;
-      static CLOSING = 2;
-      static CLOSED = 3;
-      readyState = 3;
-      onopen: any = null;
-      onclose: any = null;
-      onerror: any = null;
-      onmessage: any = null;
-      constructor(_url: string) {
-        // Never connect — just exist so YjsWebSocketClient can instantiate
-      }
-      send(_data: string) {}
-      close() { this.readyState = 3; }
-    }
+    originalWebSocket = undefined;
     (globalThis as any).WebSocket = NoopWebSocket;
+  } else {
+    originalWebSocket = globalThis.WebSocket;
+    (globalThis as any).WebSocket = NoopWebSocket;
+  }
+});
+
+afterAll(() => {
+  // Restore original WebSocket
+  if (originalWebSocket === undefined) {
+    delete (globalThis as any).WebSocket;
+  } else {
+    (globalThis as any).WebSocket = originalWebSocket;
   }
 });
 
@@ -108,9 +128,9 @@ describe('AC4: Offline Sync', () => {
     const update = Y.encodeStateAsUpdate(doc);
     client.sendUpdate(listId, update);
 
-    // Pending count should be > 0 (queued, not sent)
+    // Pending count should be 1 (queued, not sent — no relay running)
     const pending = client.getPendingCount();
-    expect(pending).toBeGreaterThanOrEqual(0);
+    expect(pending).toBe(1);
 
     // Cleanup
     client.disconnect();

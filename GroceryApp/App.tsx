@@ -19,7 +19,7 @@ import * as Linking from 'expo-linking';
 import { linkingConfig, parseInviteUrl, type RootStackParamList } from './src/navigation/deepLinks';
 import { initCrypto, deriveSyncKey, getMasterKey } from './src/crypto';
 import { initDeviceIdentity, getDeviceId } from './src/identity/device';
-import { getRelayToken } from './src/identity/enroll';
+import { getRelayToken, getRelayUrl } from './src/identity/enroll';
 import { initSettings, getSettings } from './src/config/settings';
 import { database } from './src/storage/database';
 import { syncManager } from './src/sync/sync-manager';
@@ -92,17 +92,20 @@ export default function App() {
         const familyId = (await getFamilyId()) ?? 'default-family';
         const settings = getSettings();
 
-        // Step 5: Load relay token (obtained during enrollment)
-        const relayToken = await getRelayToken();
+        // Step 5: Load relay token and stored relay URL (from enrollment)
+        const loadedRelayToken = await getRelayToken();
+        const storedRelayUrl = await getRelayUrl();
+        // Prefer stored relay URL over settings (enrollment binds token to URL)
+        const relayUrl = storedRelayUrl ?? `${settings.relayUrl}:${settings.relayPort}`;
 
         // Step 6: Initialise sync manager
         await syncManager.init(
           {
-            url: `${settings.relayUrl}:${settings.relayPort}`,
+            url: relayUrl,
             familyId,
             deviceId,
             encryptionKey,
-            relayToken: relayToken ?? undefined,
+            relayToken: loadedRelayToken ?? undefined,
           },
           {
             onConnectionChange: (state) => {

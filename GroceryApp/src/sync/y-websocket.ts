@@ -65,6 +65,7 @@ export class YjsWebSocketClient {
   private ready = false;
   private disposed = false;
   private authPending = true; // true until auth_ack received
+  private _ackTimeout: ReturnType<typeof setTimeout> | null = null;
 
   // Callbacks
   onStateChange?: (state: ConnectionState) => void;
@@ -113,13 +114,20 @@ export class YjsWebSocketClient {
 
     this.ws.onopen = () => {
       this.reconnectAttempt = 0;
-      this.authPending = this.config.relayToken ? true : false;
       // State stays 'connecting' until auth_ack received
       // (prevents sending updates before authentication)
 
       if (this.config.relayToken) {
         // Normal flow: authenticate via relay token
         this.authPending = true;
+        // Client-side timeout: if no auth_ack within 10s, disconnect
+        const ackTimeout = setTimeout(() => {
+          if (this.authPending) {
+            this.onError?.(new Error('Authentication timeout: server did not respond within 10s'));
+            this.disconnect();
+          }
+        }, 10_000);
+        this._ackTimeout = ackTimeout;
         this.sendMessage({
           type: 'auth',
           relayToken: this.config.relayToken,
@@ -172,6 +180,10 @@ export class YjsWebSocketClient {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
+    }
+    if (this._ackTimeout) {
+      clearTimeout(this._ackTimeout);
+      this._ackTimeout = null;
     }
     this.reconnectAttempt = 0;
     if (this.ws) {
@@ -274,8 +286,12 @@ export class YjsWebSocketClient {
   private async handleMessage(data: RelayMessage): Promise<void> {
     switch (data.type) {
       case 'auth_ack': {
-        // Authentication successful — now connected, send identity, flush queue
+        // Authentication successful — clear timeout, send identity, flush queue
         this.authPending = false;
+        if (this._ackTimeout) {
+          clearTimeout(this._ackTimeout);
+          this._ackTimeout = null;
+        }
         this.setState('connected');
         this.sendMessage({
           type: 'identity',

@@ -33,7 +33,9 @@ export async function enrollWithRelay(
   deviceToken: string,
   familyInviteToken: string,
 ): Promise<string> {
-  const url = `${relayBaseUrl.replace(/\/$/, '')}/enroll`;
+  // Strip trailing slashes
+  const baseUrl = relayBaseUrl.replace(/\/+$/, '');
+  const url = `${baseUrl}/enroll`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -53,9 +55,18 @@ export async function enrollWithRelay(
     throw new Error('Enrollment response missing relayToken');
   }
 
-  // Persist for future app starts
-  await SecureStore.setItemAsync(RELAY_TOKEN_ALIAS, relayToken);
-  await SecureStore.setItemAsync(RELAY_URL_ALIAS, relayBaseUrl);
+  // Persist atomically — write both, or clean up if either fails
+  try {
+    await SecureStore.setItemAsync(RELAY_TOKEN_ALIAS, relayToken);
+    await SecureStore.setItemAsync(RELAY_URL_ALIAS, baseUrl);
+  } catch (err) {
+    // Partial write: clean up anything that was saved
+    await SecureStore.deleteItemAsync(RELAY_TOKEN_ALIAS).catch(() => {});
+    await SecureStore.deleteItemAsync(RELAY_URL_ALIAS).catch(() => {});
+    throw new Error(
+      `Failed to persist enrollment credentials: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 
   return relayToken;
 }
