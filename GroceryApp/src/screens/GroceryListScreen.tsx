@@ -20,12 +20,15 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { GroceryItem, SyncState, GroceryCategory } from '../types';
+import type { PriceResult } from '../pricing/types';
 import { BUILT_IN_CATEGORIES } from '../types';
 import { useGroceryStore } from '../state/useGroceryStore';
 import { useSyncStore } from '../state/useSyncStore';
 import { getListMeta } from '../sync/yjs-adapter';
 import type { RootStackParamList } from '../navigation/deepLinks';
 import AddItemSheet from './AddItemSheet';
+import PriceBadge from '../components/PriceBadge';
+import { usePriceStore } from '../pricing/price-store';
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -98,9 +101,11 @@ interface ItemRowProps {
   onMoveDown?: (id: string) => void;
   isFirst: boolean;
   isLast: boolean;
+  price?: PriceResult | null;
+  priceLoading?: boolean;
 }
 
-function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFirst, isLast }: ItemRowProps) {
+function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFirst, isLast, price, priceLoading }: ItemRowProps) {
   return (
     <View style={styles.itemRowContainer}>
       {/* Reorder buttons */}
@@ -156,6 +161,9 @@ function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFi
           ) : null}
         </View>
 
+        {/* Price badge */}
+        <PriceBadge price={price ?? null} isLoading={priceLoading} />
+
         {/* Quantity + Unit */}
         <View style={styles.quantityBadge}>
           <Text style={styles.quantityText}>
@@ -201,6 +209,12 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   const deleteItem = useGroceryStore((s) => s.deleteItem);
   const reorderItem = useGroceryStore((s) => s.reorderItem);
 
+  // Price store
+  const prices = usePriceStore((s) => s.prices);
+  const priceLoading = usePriceStore((s) => s.isLoading);
+  const itemLoading = usePriceStore((s) => s.itemLoading);
+  const loadPrices = usePriceStore((s) => s.loadPrices);
+
   // Local state
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddSheet, setShowAddSheet] = useState(false);
@@ -223,6 +237,19 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       // Yjs doc not yet hydrated — use default
     }
   }, [listId, loadItems]);
+
+  // Load prices for visible items after items are loaded
+  useEffect(() => {
+    const visibleItems = Object.values(items).filter(
+      (item) => !item.isDeleted && item.listId === listId,
+    );
+    if (visibleItems.length > 0) {
+      loadPrices(
+        visibleItems.map((item) => ({ id: item.id, name: item.name })),
+        'default',
+      ).catch(() => {});
+    }
+  }, [items, listId, loadPrices]);
 
   // Filtered and grouped items
   const groupedSections = useMemo(() => {
@@ -426,6 +453,8 @@ export default function GroceryListScreen({ route, navigation }: Props) {
               onMoveDown={handleMoveDown}
               isFirst={index === 0}
               isLast={index === section.data.length - 1}
+              price={prices[item.id] ?? null}
+              priceLoading={itemLoading[item.id] ?? false}
             />
           )}
           renderSectionHeader={({ section }) => (

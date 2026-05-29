@@ -37,6 +37,10 @@ import type { AppSettings, HostingTier, ConnectionStatus } from '../types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/deepLinks';
 import { generatePairingCode, pairingCodeToString } from '../setup/self-host';
+import { priceRegistry } from '../pricing/registry';
+import { crowdsourcedAdapter } from '../pricing/crowdsourced';
+import { instacartAdapter } from '../pricing/instacart';
+import { scrapingAdapter } from '../pricing/scraping';
 
 // ─── Segmented Control ───────────────────────────────────────────────────────
 
@@ -151,6 +155,10 @@ export default function SettingsScreen({ navigation }: Props) {
     useState<ConnectionStatus>('disconnected');
   const [testingConnection, setTestingConnection] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  // Adapter toggle states
+  const [crowdEnabled, setCrowdEnabled] = useState(true);
+  const [instacartEnabled, setInstacartEnabled] = useState(true);
+  const [scrapingEnabled, setScrapingEnabled] = useState(false);
 
   // Load settings on mount
   useEffect(() => {
@@ -393,6 +401,101 @@ export default function SettingsScreen({ navigation }: Props) {
         />
       </View>
 
+      {/* ── Pricing Subsystem ──────────────────────────────────────────── */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Pricing</Text>
+
+        <View style={styles.toggleRow}>
+          <Text style={styles.toggleLabel}>Crowd-Sourced</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={{ fontSize: 11, color: '#4CAF50' }}>● Active</Text>
+            <Switch
+              value={crowdEnabled}
+              onValueChange={async (v) => {
+                setCrowdEnabled(v);
+                await priceRegistry.setAdapterEnabled('crowdsourced', v);
+              }}
+              trackColor={{ false: '#ddd', true: '#4CAF50' }}
+              thumbColor={crowdEnabled ? '#fff' : '#f4f3f4'}
+            />
+          </View>
+        </View>
+
+        <View style={styles.toggleRow}>
+          <Text style={styles.toggleLabel}>Instacart</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={{
+              fontSize: 11,
+              color: instacartAdapter.isAvailable() ? '#4CAF50' : '#999',
+            }}>
+              {instacartAdapter.isAvailable() ? '● Connected' : '○ Not configured'}
+            </Text>
+            <Switch
+              value={instacartEnabled}
+              onValueChange={async (v) => {
+                setInstacartEnabled(v);
+                await priceRegistry.setAdapterEnabled('instacart', v);
+              }}
+              trackColor={{ false: '#ddd', true: '#4CAF50' }}
+              thumbColor={instacartEnabled ? '#fff' : '#f4f3f4'}
+            />
+          </View>
+        </View>
+
+        <View style={styles.toggleRow}>
+          <Text style={[styles.toggleLabel, !isSelfHosted && styles.disabled]}>
+            Scraping (Self-Host Only)
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={{ fontSize: 11, color: '#999' }}>
+              {scrapingEnabled ? '● On' : '○ Off'}
+            </Text>
+            <Switch
+              value={scrapingEnabled && isSelfHosted}
+              onValueChange={async (v) => {
+                if (v && !isSelfHosted) {
+                  Alert.alert(
+                    'Restricted',
+                    'Web scraping is only available in self-hosted mode.',
+                  );
+                  return;
+                }
+                setScrapingEnabled(v);
+                await priceRegistry.setAdapterEnabled('scraping', v);
+                await handleUpdate({ scrapingEnabled: v } as any);
+              }}
+              disabled={!isSelfHosted}
+              trackColor={{ false: '#ddd', true: '#FF9800' }}
+              thumbColor={scrapingEnabled && isSelfHosted ? '#fff' : '#f4f3f4'}
+            />
+          </View>
+        </View>
+
+        {/* Clear local price database */}
+        <TouchableOpacity
+          style={styles.clearPricesBtn}
+          onPress={() => {
+            Alert.alert(
+              'Clear Price Data',
+              'Remove all locally submitted crowd-sourced prices?',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Clear',
+                  style: 'destructive',
+                  onPress: () => {
+                    crowdsourcedAdapter.clearAllPrices();
+                    Alert.alert('Done', 'Local price data cleared.');
+                  },
+                },
+              ],
+            );
+          }}
+        >
+          <Text style={styles.clearPricesText}>Clear Local Prices</Text>
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.bottomSpacer} />
     </ScrollView>
   );
@@ -604,5 +707,19 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 40,
+  },
+  clearPricesBtn: {
+    marginTop: 12,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#f44336',
+  },
+  clearPricesText: {
+    fontSize: 13,
+    color: '#f44336',
+    fontWeight: '600',
   },
 });

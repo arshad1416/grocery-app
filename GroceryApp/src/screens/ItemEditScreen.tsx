@@ -24,6 +24,8 @@ import type { GroceryItem } from '../types';
 import { useGroceryStore } from '../state/useGroceryStore';
 import { useFamilyStore } from '../state/useFamilyStore';
 import type { RootStackParamList } from '../navigation/deepLinks';
+import { usePriceStore } from '../pricing/price-store';
+import { crowdsourcedAdapter } from '../pricing/crowdsourced';
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -56,6 +58,21 @@ export default function ItemEditScreen({ route, navigation }: Props) {
   const [notes, setNotes] = useState(existingItem?.notes ?? '');
   const [saving, setSaving] = useState(false);
   const [showUnitPicker, setShowUnitPicker] = useState(false);
+  // Price submission state
+  const [showPriceForm, setShowPriceForm] = useState(false);
+  const [priceInput, setPriceInput] = useState('');
+  const [priceStoreInput, setPriceStoreInput] = useState('');
+  const submitCrowdPrice = usePriceStore((s) => s.submitCrowdPrice);
+  const loadSinglePrice = usePriceStore((s) => s.loadSinglePrice);
+  const prices = usePriceStore((s) => s.prices);
+  const itemPrice = itemId ? prices[itemId] : null;
+
+  // Load price when item becomes available
+  useEffect(() => {
+    if (existingItem && itemId) {
+      loadSinglePrice(itemId, existingItem.name, 'default');
+    }
+  }, [existingItem?.id, itemId, loadSinglePrice]);
 
   // Sync local state when item changes (e.g., from re-hydration)
   useEffect(() => {
@@ -313,6 +330,102 @@ export default function ItemEditScreen({ route, navigation }: Props) {
         />
       </View>
 
+      {/* Price History (edit mode only) */}
+      {isEditing && (
+        <>
+          {/* Price section */}
+          <View style={styles.section}>
+            <Text style={styles.label}>Price</Text>
+            {itemPrice ? (
+              <View>
+                <Text style={styles.priceValue}>
+                  ${itemPrice.price.toFixed(2)}
+                </Text>
+                <Text style={styles.priceMeta}>
+                  Source: {itemPrice.source.storeName} ·{' '}
+                  {itemPrice.confidence}
+                </Text>
+              </View>
+            ) : (
+              <Text style={styles.priceEmpty}>No price data available</Text>
+            )}
+
+            {/* Log Price button */}
+            <TouchableOpacity
+              style={styles.logPriceBtn}
+              onPress={() => setShowPriceForm(!showPriceForm)}
+            >
+              <Text style={styles.logPriceBtnText}>
+                {showPriceForm ? 'Cancel' : 'Log Price'}
+              </Text>
+            </TouchableOpacity>
+
+            {showPriceForm && (
+              <View style={styles.priceForm}>
+                <TextInput
+                  style={styles.priceInputField}
+                  value={priceInput}
+                  onChangeText={setPriceInput}
+                  placeholder="Price (e.g. 4.99)"
+                  keyboardType="decimal-pad"
+                  placeholderTextColor="#bbb"
+                />
+                <TextInput
+                  style={styles.priceInputField}
+                  value={priceStoreInput}
+                  onChangeText={setPriceStoreInput}
+                  placeholder="Store name"
+                  placeholderTextColor="#bbb"
+                />
+                <TouchableOpacity
+                  style={styles.submitPriceBtn}
+                  onPress={async () => {
+                    if (!priceInput || !priceStoreInput || !existingItem) return;
+                    const price = parseFloat(priceInput);
+                    if (isNaN(price) || price <= 0) {
+                      Alert.alert('Invalid', 'Enter a valid price');
+                      return;
+                    }
+                    try {
+                      await submitCrowdPrice({
+                        itemName: existingItem.name,
+                        storeId: priceStoreInput.toLowerCase().replace(/\s+/g, '_'),
+                        storeName: priceStoreInput,
+                        price,
+                        unit: existingItem.unit,
+                        quantity: existingItem.quantity,
+                        submittedBy: activeMemberId ?? 'unknown',
+                      }, existingItem.id, existingItem.name);
+                      Alert.alert('Submitted', 'Price logged successfully!');
+                      setShowPriceForm(false);
+                      setPriceInput('');
+                      setPriceStoreInput('');
+                    } catch (err) {
+                      Alert.alert('Error', 'Failed to submit price');
+                    }
+                  }}
+                >
+                  <Text style={styles.submitPriceBtnText}>Submit</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
+          {/* Receipt scan placeholder */}
+          <TouchableOpacity
+            style={styles.receiptScanBtn}
+            onPress={async () => {
+              Alert.alert(
+                'Receipt Scan',
+                'Receipt scanning is not yet implemented (OCR coming soon).',
+              );
+            }}
+          >
+            <Text style={styles.receiptScanText}>📷 Scan Receipt</Text>
+          </TouchableOpacity>
+        </>
+      )}
+
       {/* Delete button (edit mode only) */}
       {isEditing && (
         <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
@@ -516,6 +629,75 @@ const styles = StyleSheet.create({
   deleteText: {
     fontSize: 15,
     color: '#f44336',
+    fontWeight: '600',
+  },
+  priceValue: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 4,
+  },
+  priceMeta: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 8,
+  },
+  priceEmpty: {
+    fontSize: 13,
+    color: '#999',
+    fontStyle: 'italic',
+    marginBottom: 8,
+  },
+  logPriceBtn: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  logPriceBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  priceForm: {
+    marginTop: 12,
+    gap: 8,
+  },
+  priceInputField: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 10,
+    fontSize: 14,
+    color: '#333',
+    backgroundColor: '#fafafa',
+  },
+  submitPriceBtn: {
+    backgroundColor: '#2196F3',
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  submitPriceBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  receiptScanBtn: {
+    margin: 12,
+    marginTop: 0,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FF9800',
+  },
+  receiptScanText: {
+    fontSize: 14,
+    color: '#FF9800',
     fontWeight: '600',
   },
 });

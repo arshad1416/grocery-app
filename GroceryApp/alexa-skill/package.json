@@ -1,0 +1,16 @@
+{
+  "name": "groceryapp-alexa-skill",
+  "version": "1.0.0",
+  "description": "Alexa Skill Lambda handler for GroceryApp — AddItem, GetList, CheckOff intents",
+  "main": "index.js",
+  "dependencies": {
+    "ask-sdk": "^2.12.0",
+    "ask-sdk-model": "^1.38.0",
+    "axios": "^1.6.0"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "license": "MIT",
+  "private": true
+}

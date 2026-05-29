@@ -31,6 +31,12 @@ import ItemEditScreen from './src/screens/ItemEditScreen';
 import PairingScreen from './src/screens/PairingScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 
+// Pricing subsystem
+import { priceRegistry } from './src/pricing/registry';
+import { crowdsourcedAdapter } from './src/pricing/crowdsourced';
+import { instacartAdapter } from './src/pricing/instacart';
+import { scrapingAdapter } from './src/pricing/scraping';
+
 // ─── Stack Navigator ─────────────────────────────────────────────────────────
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -110,7 +116,15 @@ export default function App() {
         if (masterKey) {
           await syncManager.hydrateFromDB(encryptionKey);
         }
-        
+
+        // Step 7: Initialise pricing subsystem
+        priceRegistry.registerAdapter(crowdsourcedAdapter);
+        priceRegistry.registerAdapter(scrapingAdapter);
+        // Register Instacart adapter only if managed tier
+        if (settings.hostingTier === 'managed') {
+          priceRegistry.registerAdapter(instacartAdapter);
+        }
+
         setIsReady(true);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Initialization failed';

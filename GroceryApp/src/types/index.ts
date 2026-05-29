@@ -152,6 +152,12 @@ export interface AppSettings {
   priceServiceEnabled: boolean;
   voiceInputEnabled: boolean;
   barcodeScanningEnabled: boolean;
+  // Price subsystem adapter enable states
+  adapterEnabled?: Record<string, boolean>;
+  // Instacart API key (encrypted in secure store)
+  instacartApiKey?: string;
+  // Scraping tier opt-in (self-host only)
+  scrapingEnabled?: boolean;
 }
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';

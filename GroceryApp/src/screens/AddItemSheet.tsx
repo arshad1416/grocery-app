@@ -4,7 +4,8 @@
  * Provides:
  *  - Quick-add buttons for common items (categorized)
  *  - Custom item input (name + quantity + unit)
- *  - Placeholder slots for voice and barcode scanning (Phase 3)
+ *  - Voice input: on iOS uses Alert.prompt, on Android uses a text modal
+ *  - Parsed voice text pre-fills the name/quantity/unit fields
  */
 
 import React, { useState, useCallback, useMemo } from 'react';
@@ -24,6 +25,8 @@ import {
 import { BUILT_IN_CATEGORIES } from '../types';
 import { useGroceryStore } from '../state/useGroceryStore';
 import { useFamilyStore } from '../state/useFamilyStore';
+import { parseVoiceText } from '../voice/nlp';
+import type { ParsedItem } from '../voice/types';
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -128,6 +131,12 @@ export default function AddItemSheet({
   const [customUnit, setCustomUnit] = useState('pcs');
   const [adding, setAdding] = useState(false);
 
+  // Voice input state
+  const [voiceModalVisible, setVoiceModalVisible] = useState(false);
+  const [voiceText, setVoiceText] = useState('');
+  const [voiceParsed, setVoiceParsed] = useState<ParsedItem | null>(null);
+  const [voiceProcessing, setVoiceProcessing] = useState(false);
+
   // Reset form when sheet opens
   const resetForm = useCallback(() => {
     setCustomName('');
@@ -135,6 +144,10 @@ export default function AddItemSheet({
     setCustomUnit('pcs');
     setActiveTab('produce');
     setAdding(false);
+    setVoiceText('');
+    setVoiceParsed(null);
+    setVoiceModalVisible(false);
+    setVoiceProcessing(false);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -194,6 +207,90 @@ export default function AddItemSheet({
     handleAddItem(customName.trim(), activeTab, customUnit, qty);
   }, [customName, customQty, activeTab, customUnit, handleAddItem]);
 
+  // ── Voice Input Handlers ───────────────────────────────────────────────
+
+  /**
+   * Open voice input — platform-appropriate method.
+   * On iOS: uses Alert.prompt (native dictation via keyboard).
+   * On Android: shows a text input modal for pasting voice text.
+   */
+  const openVoiceInput = useCallback(() => {
+    if (Platform.OS === 'ios') {
+      // iOS: use Alert.prompt with dictation-supporting text field
+      Alert.prompt(
+        'Voice Input',
+        'Tap the microphone on your keyboard and speak, or type what you want to add.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Parse',
+            onPress: (text?: string) => {
+              if (text && text.trim()) {
+                processVoiceText(text.trim());
+              }
+            },
+          },
+        ],
+        'plain-text',
+        '',
+        'default',
+      );
+    } else {
+      // Android: show inline voice text modal
+      setVoiceText('');
+      setVoiceParsed(null);
+      setVoiceModalVisible(true);
+    }
+  }, []);
+
+  /**
+   * Process raw voice text through the NLP parser and pre-fill the form.
+   */
+  const processVoiceText = useCallback(
+    (rawText: string) => {
+      setVoiceProcessing(true);
+      try {
+        const parsed = parseVoiceText(rawText);
+        setVoiceParsed(parsed);
+
+        if (parsed.name) {
+          setCustomName(parsed.name);
+          setCustomQty(String(parsed.quantity));
+          setCustomUnit(parsed.unit);
+        }
+
+        // Auto-dismiss voice modals
+        setVoiceModalVisible(false);
+      } catch (err) {
+        Alert.alert(
+          'Could not parse',
+          'Please try typing the item name directly.',
+        );
+      } finally {
+        setVoiceProcessing(false);
+      }
+    },
+    [],
+  );
+
+  /**
+   * Confirm voice-parsed item from Android modal.
+   */
+  const handleVoiceParse = useCallback(() => {
+    if (voiceText.trim()) {
+      processVoiceText(voiceText.trim());
+    }
+  }, [voiceText, processVoiceText]);
+
+  /**
+   * Dismiss voice modal.
+   */
+  const handleVoiceDismiss = useCallback(() => {
+    setVoiceModalVisible(false);
+    setVoiceText('');
+    setVoiceParsed(null);
+  }, []);
+
   return (
     <Modal
       visible={visible}
@@ -218,7 +315,7 @@ export default function AddItemSheet({
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          {/* ── Custom Item Input ────────────────────────────────────── */}
+          {/* ── Custom Item Input ─────────────────────────────────────── */}
           <View style={styles.customSection}>
             <Text style={styles.sectionLabel}>Custom Item</Text>
             <View style={styles.customRow}>
@@ -266,7 +363,7 @@ export default function AddItemSheet({
             </View>
           </View>
 
-          {/* ── Quick-Add Section ────────────────────────────────────── */}
+          {/* ── Quick-Add Section ─────────────────────────────────────── */}
           <Text style={styles.sectionLabel}>Quick Add</Text>
 
           {/* Category tabs */}
@@ -321,20 +418,83 @@ export default function AddItemSheet({
             ))}
           </View>
 
-          {/* ── Voice / Barcode Placeholders (Phase 3) ────────────────── */}
-          <View style={styles.futureSection}>
-            <TouchableOpacity style={styles.futureBtn} disabled>
-              <Text style={styles.futureBtnText}>🎤 Voice Input</Text>
-              <Text style={styles.futureBadge}>Phase 3</Text>
+          {/* ── Voice Input Section ───────────────────────────────────── */}
+          <View style={styles.voiceSection}>
+            <TouchableOpacity
+              style={styles.voiceBtn}
+              onPress={openVoiceInput}
+              disabled={adding || voiceProcessing}
+              activeOpacity={0.7}
+            >
+              {voiceProcessing ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.voiceBtnText}>🎤 Voice Input</Text>
+              )}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.futureBtn} disabled>
-              <Text style={styles.futureBtnText}>📷 Barcode Scan</Text>
-              <Text style={styles.futureBadge}>Phase 3</Text>
+            <TouchableOpacity style={styles.voiceBtnDisabled}>
+              <Text style={styles.voiceBtnText}>📷 Barcode Scan</Text>
+              <Text style={styles.voiceBadge}>Phase 3</Text>
             </TouchableOpacity>
           </View>
 
+          {/* Voice parse result indicator */}
+          {voiceParsed && (
+            <View style={styles.voiceResult}>
+              <Text style={styles.voiceResultText}>
+                Voice: {voiceParsed.name} ({voiceParsed.quantity} {voiceParsed.unit})
+              </Text>
+            </View>
+          )}
+
           <View style={{ height: 40 }} />
         </ScrollView>
+
+        {/* ── Android Voice Text Input Modal ─────────────────────────── */}
+        <Modal
+          visible={voiceModalVisible}
+          animationType="fade"
+          transparent
+          onRequestClose={handleVoiceDismiss}
+        >
+          <View style={styles.voiceOverlay}>
+            <View style={styles.voiceDialog}>
+              <Text style={styles.voiceDialogTitle}>Voice Input</Text>
+              <Text style={styles.voiceDialogHint}>
+                Type or paste what you want to add, or use your keyboard's
+                microphone for dictation.
+              </Text>
+              <TextInput
+                style={styles.voiceDialogInput}
+                value={voiceText}
+                onChangeText={setVoiceText}
+                placeholder='e.g. "2% milk x2" or "half a kilo of chicken"'
+                placeholderTextColor="#bbb"
+                autoCapitalize="sentences"
+                autoFocus
+                multiline
+              />
+              <View style={styles.voiceDialogActions}>
+                <TouchableOpacity
+                  style={styles.voiceDialogCancel}
+                  onPress={handleVoiceDismiss}
+                >
+                  <Text style={styles.voiceDialogCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.voiceDialogParse,
+                    !voiceText.trim() && styles.voiceDialogParseDisabled,
+                  ]}
+                  onPress={handleVoiceParse}
+                  disabled={!voiceText.trim()}
+                >
+                  <Text style={styles.voiceDialogParseText}>Parse</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -505,31 +665,128 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#999',
   },
-  futureSection: {
+  // ── Voice Input Styles ────────────────────────────────────────────────
+  voiceSection: {
     flexDirection: 'row',
     gap: 8,
     marginTop: 8,
   },
-  futureBtn: {
+  voiceBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#4A90D9',
+    borderRadius: 10,
+    padding: 14,
+    gap: 6,
+  },
+  voiceBtnDisabled: {
     flex: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#f0f0f0',
     borderRadius: 10,
-    padding: 12,
+    padding: 14,
     borderWidth: 1,
     borderColor: '#e0e0e0',
     opacity: 0.6,
   },
-  futureBtnText: {
-    fontSize: 13,
-    color: '#999',
+  voiceBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
   },
-  futureBadge: {
+  voiceBadge: {
     fontSize: 10,
     color: '#bbb',
     fontWeight: '600',
     textTransform: 'uppercase',
+  },
+  voiceResult: {
+    backgroundColor: '#E8F5E9',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 8,
+  },
+  voiceResultText: {
+    fontSize: 13,
+    color: '#2E7D32',
+    fontWeight: '500',
+  },
+  // ── Voice Modal (Android) ─────────────────────────────────────────────
+  voiceOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  voiceDialog: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  voiceDialogTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 8,
+  },
+  voiceDialogHint: {
+    fontSize: 13,
+    color: '#777',
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  voiceDialogInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 10,
+    padding: 12,
+    fontSize: 15,
+    color: '#333',
+    backgroundColor: '#fafafa',
+    minHeight: 80,
+    textAlignVertical: 'top',
+    marginBottom: 12,
+  },
+  voiceDialogActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  voiceDialogCancel: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+  },
+  voiceDialogCancelText: {
+    fontSize: 14,
+    color: '#555',
+    fontWeight: '600',
+  },
+  voiceDialogParse: {
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    backgroundColor: '#4A90D9',
+  },
+  voiceDialogParseDisabled: {
+    opacity: 0.5,
+  },
+  voiceDialogParseText: {
+    fontSize: 14,
+    color: '#fff',
+    fontWeight: '600',
   },
 });

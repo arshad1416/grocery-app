@@ -105,7 +105,7 @@ function setupEchoRelay(familyId: string, clients: { client: YjsWebSocketClient;
   // Create a mock WebSocket class that echoes via our in-process relay
   class EchoWebSocket {
     url: string;
-    readyState: number = WebSocket.CONNECTING;
+    readyState: number = EchoWebSocket.CONNECTING;
     onopen: ((event: any) => void) | null = null;
     onclose: ((event: any) => void) | null = null;
     onmessage: ((event: any) => void) | null = null;
@@ -125,7 +125,7 @@ function setupEchoRelay(familyId: string, clients: { client: YjsWebSocketClient;
       
       // Simulate async connection
       setTimeout(() => {
-        this.readyState = WebSocket.OPEN;
+        this.readyState = EchoWebSocket.OPEN;
         this.onopen?.({});
       }, 10);
     }
@@ -149,7 +149,7 @@ function setupEchoRelay(familyId: string, clients: { client: YjsWebSocketClient;
     }
 
     close(): void {
-      this.readyState = WebSocket.CLOSED;
+      this.readyState = EchoWebSocket.CLOSED;
       this.onclose?.({ code: 1000, reason: 'ok' });
     }
   }
