@@ -36,6 +36,7 @@ import { getDeviceId } from '../identity/device';
 import type { AppSettings, HostingTier, ConnectionStatus } from '../types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/deepLinks';
+import { generatePairingCode, pairingCodeToString } from '../setup/self-host';
 
 // ─── Segmented Control ───────────────────────────────────────────────────────
 
@@ -295,6 +296,46 @@ export default function SettingsScreen({ navigation }: Props) {
           <Text style={styles.pairingCodeBox}>
             {settings.pairingCode || 'Generate pairing code from setup screen'}
           </Text>
+          <TouchableOpacity
+            style={styles.generateQrBtn}
+            onPress={async () => {
+              try {
+                const code = await generatePairingCode(
+                  deviceId,
+                  'default-family',
+                  `${settings.relayUrl}:${settings.relayPort}`,
+                );
+                const codeStr = pairingCodeToString(code);
+                await updateSettings({ pairingCode: codeStr });
+                setSettingsState((prev) => prev ? { ...prev, pairingCode: codeStr } : prev);
+                Alert.alert('QR Code Generated', 'Pairing code is ready. Share it with family members.');
+              } catch (err) {
+                const message = err instanceof Error ? err.message : 'Failed to generate QR';
+                Alert.alert('Error', message);
+              }
+            }}
+          >
+            <Text style={styles.generateQrBtnText}>Generate QR Code</Text>
+          </TouchableOpacity>
+          {settings.pairingCode && (
+            <View style={styles.qrCodeContainer}>
+              <Text style={styles.qrCodeLabel}>Scan with GroceryApp</Text>
+              <View style={styles.qrCodeBox}>
+                <Text style={styles.qrCodeText}>
+                  {'████████████████████\n' +
+                   '██              ██\n' +
+                   '██  ████  ████  ██\n' +
+                   '██  ████  ████  ██\n' +
+                   '██  ████  ████  ██\n' +
+                   '██              ██\n' +
+                   '████████████████████'}
+                </Text>
+              </View>
+              <Text style={styles.qrCodeData} selectable numberOfLines={3}>
+                {settings.pairingCode}
+              </Text>
+            </View>
+          )}
         </View>
       )}
 
@@ -510,6 +551,50 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#333',
     lineHeight: 16,
+  },
+  generateQrBtn: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  generateQrBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  qrCodeContainer: {
+    marginTop: 12,
+    alignItems: 'center',
+  },
+  qrCodeLabel: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 8,
+  },
+  qrCodeBox: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    alignItems: 'center',
+  },
+  qrCodeText: {
+    fontFamily: 'monospace',
+    fontSize: 10,
+    color: '#333',
+    lineHeight: 14,
+    letterSpacing: 1,
+  },
+  qrCodeData: {
+    fontSize: 9,
+    color: '#999',
+    marginTop: 8,
+    textAlign: 'center',
+    fontFamily: 'monospace',
   },
   planInfo: {
     fontSize: 13,

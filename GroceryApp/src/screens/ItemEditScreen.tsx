@@ -100,7 +100,7 @@ export default function ItemEditScreen({ route, navigation }: Props) {
             ? listItems[0].familyId
             : Object.values(useFamilyStore.getState().members).length > 0
               ? Object.values(useFamilyStore.getState().members)[0].familyId
-              : existingItem?.familyId ?? '';
+              : '';
 
         await addItem({
           listId,

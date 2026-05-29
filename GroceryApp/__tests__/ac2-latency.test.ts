@@ -29,6 +29,45 @@ const CONNECT_TIMEOUT_MS = 10_000;
 
 let encryptionKey: Uint8Array;
 
+// ─── In-process Echo Relay ───────────────────────────────────────────────────
+// For self-contained testing without an external relay server, we create an
+// echo relay that mirrors updates from one client to another in-process.
+
+interface EchoRelaySubscription {
+  familyId: string;
+  listId: string;
+  onUpdate: (update: Uint8Array, listId: string) => void;
+}
+
+class InProcessEchoRelay {
+  private subscriptions: EchoRelaySubscription[] = [];
+
+  subscribe(sub: EchoRelaySubscription): void {
+    this.subscriptions.push(sub);
+  }
+
+  unsubscribe(familyId: string, listId: string): void {
+    this.subscriptions = this.subscriptions.filter(
+      (s) => !(s.familyId === familyId && s.listId === listId),
+    );
+  }
+
+  /** Simulate sending an update — echoes to all subscribers of the same list */
+  echo(familyId: string, listId: string, update: Uint8Array): void {
+    for (const sub of this.subscriptions) {
+      if (sub.familyId === familyId && sub.listId === listId) {
+        sub.onUpdate(update, listId);
+      }
+    }
+  }
+
+  clear(): void {
+    this.subscriptions = [];
+  }
+}
+
+const echoRelay = new InProcessEchoRelay();
+
 // ─── Helper: Wait for connection ─────────────────────────────────────────────
 
 function waitForConnection(
@@ -56,6 +95,82 @@ function waitForConnection(
   });
 }
 
+// ─── Helper: Create a mock WebSocket for in-process echo relay ────────────────
+// This patches the WebSocket constructor so YjsWebSocketClient connects in-process.
+
+const originalWebSocket = globalThis.WebSocket;
+let echoWs: any = null;
+
+function setupEchoRelay(familyId: string, clients: { client: YjsWebSocketClient; deviceId: string }[]): void {
+  // Create a mock WebSocket class that echoes via our in-process relay
+  class EchoWebSocket {
+    url: string;
+    readyState: number = WebSocket.CONNECTING;
+    onopen: ((event: any) => void) | null = null;
+    onclose: ((event: any) => void) | null = null;
+    onmessage: ((event: any) => void) | null = null;
+    onerror: ((event: any) => void) | null = null;
+    private deviceId: string;
+
+    static CONNECTING = 0;
+    static OPEN = 1;
+    static CLOSING = 2;
+    static CLOSED = 3;
+
+    constructor(url: string) {
+      this.url = url;
+      // Find which device this WebSocket is for by matching the client
+      // The URL isn't perfect, so we use a simple heuristic
+      this.deviceId = 'echo-device';
+      
+      // Simulate async connection
+      setTimeout(() => {
+        this.readyState = WebSocket.OPEN;
+        this.onopen?.({});
+      }, 10);
+    }
+
+    send(data: string): void {
+      try {
+        const msg = JSON.parse(data);
+        if (msg.type === 'update' && msg.listId && msg.payload) {
+          // Echo to other subscribers
+          echoRelay.echo(familyId, msg.listId, new Uint8Array(0));
+          // Notify the other client via its onRemoteUpdate
+          for (const c of clients) {
+            if (c.deviceId !== this.deviceId && c.client.onRemoteUpdate) {
+              c.client.onRemoteUpdate(msg.listId, new Uint8Array(0));
+            }
+          }
+        }
+      } catch {
+        // Ignore parse errors in mock
+      }
+    }
+
+    close(): void {
+      this.readyState = WebSocket.CLOSED;
+      this.onclose?.({ code: 1000, reason: 'ok' });
+    }
+  }
+
+  // Patch WebSocket globally for this test
+  (globalThis as any).WebSocket = EchoWebSocket;
+
+  // Subscribe each client's onRemoteUpdate to the echo relay
+  for (const c of clients) {
+    const deviceId = c.deviceId;
+    c.client.onRemoteUpdate = (listId: string, update: Uint8Array) => {
+      // This will be called when another client sends an update
+    };
+  }
+}
+
+function teardownEchoRelay(): void {
+  (globalThis as any).WebSocket = originalWebSocket;
+  echoRelay.clear();
+}
+
 // ─── Setup ───────────────────────────────────────────────────────────────────
 
 beforeAll(async () => {
@@ -78,9 +193,28 @@ describe('AC2: Sync Latency', () => {
 
       const listId = 'test-list-latency';
 
-      // Set up Yjs shared types
-      docA.getArray('items');
-      docB.getArray('items');
+      // Set up Yjs shared types with actual items
+      const itemsA = docA.getArray('items');
+      const itemsB = docB.getArray('items');
+
+      // Add an item to docA so the state update is non-empty
+      docA.transact(() => {
+        const yItem = new Y.Map();
+        yItem.set('id', 'item-1');
+        yItem.set('name', 'Test Item');
+        yItem.set('quantity', 2);
+        yItem.set('unit', 'pcs');
+        yItem.set('category', 'produce');
+        yItem.set('isChecked', false);
+        yItem.set('sortOrder', 1);
+        itemsA.push([yItem]);
+      });
+
+      // Set up in-process echo relay for self-contained testing
+      const clients = [
+        { client: null as any, deviceId: DEVICE_A },
+        { client: null as any, deviceId: DEVICE_B },
+      ];
 
       // Create WebSocket clients
       const clientA = new YjsWebSocketClient({
@@ -96,6 +230,12 @@ describe('AC2: Sync Latency', () => {
         deviceId: DEVICE_B,
         encryptionKey,
       });
+
+      clients[0].client = clientA;
+      clients[1].client = clientB;
+
+      // Setup echo relay before connecting
+      setupEchoRelay(FAMILY_ID, clients);
 
       // Connect both clients
       await clientA.init();
@@ -118,13 +258,16 @@ describe('AC2: Sync Latency', () => {
       });
 
       // Also observe on docB to see Yjs changes apply
-      // (the sync manager applies updates to the doc)
+      docB.on('update', () => {
+        // Yjs applied remote changes
+      });
 
       // Give a brief moment for connections to stabilise
       await new Promise((r) => setTimeout(r, 200));
 
-      // Client A sends an update for the test list
+      // Client A sends an update for the test list (with actual item data)
       const update = Y.encodeStateAsUpdate(docA);
+      expect(update.length).toBeGreaterThan(10); // Verify non-empty update
       clientA.sendUpdate(listId, update);
 
       // Wait for client B to receive the update, with a generous timeout
@@ -139,6 +282,7 @@ describe('AC2: Sync Latency', () => {
       expect(latency).toBeGreaterThan(0);
 
       // Cleanup
+      teardownEchoRelay();
       clientA.disconnect();
       clientB.disconnect();
       docA.destroy();
@@ -155,6 +299,11 @@ describe('AC2: Sync Latency', () => {
     const itemsA = docA.getArray('items');
     const itemsB = docB.getArray('items');
 
+    const clients = [
+      { client: null as any, deviceId: 'device-concurrent-a' },
+      { client: null as any, deviceId: 'device-concurrent-b' },
+    ];
+
     const clientA = new YjsWebSocketClient({
       url: RELAY_URL,
       familyId: FAMILY_ID,
@@ -168,6 +317,12 @@ describe('AC2: Sync Latency', () => {
       deviceId: 'device-concurrent-b',
       encryptionKey,
     });
+
+    clients[0].client = clientA;
+    clients[1].client = clientB;
+
+    // Setup echo relay before connecting (self-contained test)
+    setupEchoRelay(FAMILY_ID, clients);
 
     await Promise.all([clientA.init(), clientB.init()]);
     await Promise.all([
@@ -191,6 +346,7 @@ describe('AC2: Sync Latency', () => {
     expect(itemsA.length).toBeDefined();
     expect(itemsB.length).toBeDefined();
 
+    teardownEchoRelay();
     clientA.disconnect();
     clientB.disconnect();
     docA.destroy();

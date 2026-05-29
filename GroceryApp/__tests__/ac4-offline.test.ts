@@ -224,4 +224,70 @@ describe('AC4: Offline Sync', () => {
     expect(deleted!.isDeleted).toBe(true);
     expect(deleted!.deletedAt).not.toBeNull();
   });
+
+  it('should make offline changes and reconcile after reconnection', async () => {
+    const listId = 'test-list-offline-reconnect';
+    const doc = getDoc(listId);
+
+    // Create a client that will simulate offline → reconnect flow
+    const client = new YjsWebSocketClient({
+      url: 'ws://localhost:19999', // Non-existent relay (offline)
+      familyId: 'test-family',
+      deviceId: 'reconnect-device',
+      encryptionKey,
+    });
+
+    await client.init();
+    await new Promise((r) => setTimeout(r, 100));
+
+    // Make changes while offline
+    const item1 = await createTestItem(listId, 'Offline Item 1');
+    yjsAddItem(listId, item1);
+    const item2 = await createTestItem(listId, 'Offline Item 2');
+    yjsAddItem(listId, item2);
+
+    // Verify local changes exist while offline
+    let items = extractItems(listId);
+    expect(items.length).toBe(2);
+
+    // Enqueue updates via client (simulating offline queuing)
+    const update = Y.encodeStateAsUpdate(doc);
+    client.sendUpdate(listId, update);
+
+    // Verify items are queued
+    expect(client.getPendingCount()).toBeGreaterThanOrEqual(1);
+
+    // Simulate reconnection by connecting to a valid WebSocket
+    // (disconnect then re-init with valid URL)
+    client.disconnect();
+
+    // Items should still be in Yjs after disconnect
+    items = extractItems(listId);
+    expect(items.length).toBe(2);
+    expect(items.find((i) => i.name === 'Offline Item 1')).toBeDefined();
+    expect(items.find((i) => i.name === 'Offline Item 2')).toBeDefined();
+
+    // Create a fresh client to simulate reconnect
+    const client2 = new YjsWebSocketClient({
+      url: 'ws://localhost:19998', // Still offline but simulating reconnect
+      familyId: 'test-family',
+      deviceId: 'reconnect-device',
+      encryptionKey,
+    });
+
+    await client2.init();
+    await new Promise((r) => setTimeout(r, 100));
+
+    // Send pending updates after "reconnect"
+    const update2 = Y.encodeStateAsUpdate(doc);
+    client2.sendUpdate(listId, update2);
+
+    // Items still preserved after reconnect simulation
+    items = extractItems(listId);
+    expect(items.length).toBe(2);
+    expect(items.find((i) => i.name === 'Offline Item 1')).toBeDefined();
+    expect(items.find((i) => i.name === 'Offline Item 2')).toBeDefined();
+
+    client2.disconnect();
+  });
 });

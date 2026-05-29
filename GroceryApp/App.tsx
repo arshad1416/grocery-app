@@ -45,6 +45,13 @@ const combinedLinking = {
   prefixes: [...(linkingConfig.prefixes ?? []), prefix],
 };
 
+// ─── Invite Screen Wrapper ──────────────────────────────────────────────────
+// Wraps PairingScreen so TypeScript is happy with the route name mismatch
+
+function InviteScreen({ route, navigation }: any) {
+  return <PairingScreen route={route} navigation={navigation} />;
+}
+
 // ─── App ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
@@ -175,7 +182,7 @@ export default function App() {
           <Stack.Screen name="ItemEdit" component={ItemEditScreen} />
           <Stack.Screen name="Pairing" component={PairingScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
-          <Stack.Screen name="Invite" component={PairingScreen} />
+          <Stack.Screen name="Invite" component={InviteScreen} />
         </Stack.Navigator>
         <StatusBar style="auto" />
       </NavigationContainer>

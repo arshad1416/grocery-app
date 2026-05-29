@@ -8,7 +8,7 @@
  *  - Connection status display (connecting, connected, error)
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -50,6 +50,59 @@ export default function PairingScreen({ navigation, route }: Props) {
   const [scannerActive, setScannerActive] = useState(false);
   const [parsedCode, setParsedCode] = useState<PairingCode | null>(null);
   const [statusMessage, setStatusMessage] = useState('');
+
+  // Process invite token if present
+  useEffect(() => {
+    if (inviteToken) {
+      setStatusMessage(`Processing invite token...`);
+      (async () => {
+        try {
+          // Try to parse the token as a pairing code
+          const code = await parsePairingCodeString(inviteToken);
+          setParsedCode(code);
+          setManualUrl(code.relayUrl);
+          setStatusMessage('Invite token parsed! Connecting...');
+
+          // Auto-test connection
+          const url = code.relayUrl.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:');
+          const portMatch = code.relayUrl.match(/:(\d+)$/);
+          const port = portMatch ? parseInt(portMatch[1], 10) : 8080;
+
+          setConnectionStatus('connecting');
+          const ok = await testRelayConnection(code.relayUrl, port);
+
+          if (ok) {
+            setConnectionStatus('connected');
+            setStatusMessage('Connected to relay server via invite!');
+
+            // Save pairing info
+            await updateSettings({
+              relayUrl: code.relayUrl,
+              relayPort: port,
+              pairingCode: inviteToken,
+            });
+
+            Alert.alert(
+              'Invite Accepted',
+              'You have been paired with the family relay server.',
+              [
+                {
+                  text: 'OK',
+                  onPress: () => navigation.navigate('Home'),
+                },
+              ],
+            );
+          } else {
+            setConnectionStatus('error');
+            setStatusMessage('Could not connect to relay server from invite');
+          }
+        } catch {
+          // If it's not a pairing code, it might be a family invite token
+          setStatusMessage('Invite token received. Please enter the relay URL manually to complete pairing.');
+        }
+      })();
+    }
+  }, [inviteToken]);
 
   // Handle QR code scan result
   const handleScan = useCallback(
@@ -150,7 +203,12 @@ export default function PairingScreen({ navigation, route }: Props) {
 
   return (
     <ScrollView style={styles.container}>
-      <Text style={styles.title}>Pair with Relay</Text>
+      <View style={styles.headerBar}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Text style={styles.backText}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.title}>Pair with Relay</Text>
+      </View>
 
       {/* ── QR Scanner Section ──────────────────────────────────────── */}
       <View style={styles.section}>
@@ -445,5 +503,21 @@ const styles = StyleSheet.create({
   },
   bottomSpacer: {
     height: 40,
+  },
+  headerBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  backBtn: {
+    paddingRight: 8,
+    paddingVertical: 4,
+  },
+  backText: {
+    fontSize: 16,
+    color: '#4CAF50',
+    fontWeight: '600',
   },
 });

@@ -85,7 +85,6 @@ describe('AC1: Family Invite Flow', () => {
 
   describe('Pairing Code', () => {
     it('should generate and verify a pairing code round-trip', async () => {
-      await initDeviceIdentity();
       const kp = getDeviceKeypair();
       const deviceId = sodium.to_base64(kp.publicKey, sodium.base64_variants.ORIGINAL);
 
@@ -108,7 +107,6 @@ describe('AC1: Family Invite Flow', () => {
     });
 
     it('should parse a pairing code from JSON string', async () => {
-      await initDeviceIdentity();
       const kp = getDeviceKeypair();
       const deviceId = sodium.to_base64(kp.publicKey, sodium.base64_variants.ORIGINAL);
 

@@ -34,6 +34,7 @@ export interface GroceryState {
   updateItem: (id: string, changes: Partial<GroceryItem>) => Promise<void>;
   toggleChecked: (id: string) => Promise<void>;
   deleteItem: (id: string) => Promise<void>;
+  reorderItem: (id: string, direction: 'up' | 'down', listId: string) => Promise<void>;
   removeItem: (id: string) => void;
   setActiveList: (listId: string | null) => void;
   clearError: () => void;
@@ -147,6 +148,29 @@ export const useGroceryStore = create<GroceryState>((set, get) => ({
         },
       },
     }));
+  },
+
+  reorderItem: async (id, direction, listId) => {
+    const items = Object.values(get().items)
+      .filter((i) => i.listId === listId && !i.isDeleted)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+
+    const idx = items.findIndex((i) => i.id === id);
+    if (idx === -1) return;
+
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= items.length) return;
+
+    const currentItem = items[idx];
+    const swapItem = items[swapIdx];
+
+    // Swap sort orders
+    const currentSort = currentItem.sortOrder;
+    const swapSort = swapItem.sortOrder;
+
+    // Update both items via Yjs
+    await get().updateItem(currentItem.id, { sortOrder: swapSort });
+    await get().updateItem(swapItem.id, { sortOrder: currentSort });
   },
 
   removeItem: (id) => {
