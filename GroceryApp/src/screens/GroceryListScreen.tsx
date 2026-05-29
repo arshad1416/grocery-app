@@ -34,6 +34,7 @@ import AddItemSheet from './AddItemSheet';
 import PriceBadge from '../components/PriceBadge';
 import UndoToast from '../components/UndoToast';
 import { usePriceStore } from '../pricing/price-store';
+import { CLAIM_EXPIRY_MS } from '../sync/yjs-adapter';
 
 // Enable LayoutAnimation on Android
 if (
@@ -116,9 +117,15 @@ interface ItemRowProps {
   isLast: boolean;
   price?: PriceResult | null;
   priceLoading?: boolean;
+  onClaim?: (id: string) => void;
+  onUnclaim?: (id: string) => void;
+  /** Display name of the claiming device (for UI rendering). */
+  claimerName?: string;
+  /** Whether the claim has expired */
+  claimExpired?: boolean;
 }
 
-function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFirst, isLast, price, priceLoading }: ItemRowProps) {
+function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFirst, isLast, price, priceLoading, onClaim, onUnclaim, claimerName, claimExpired }: ItemRowProps) {
   // Scale animation for checkbox
   const scaleAnim = useRef(new Animated.Value(1)).current;
   // Strikethrough width animation (0 → 1 over the text)
@@ -248,6 +255,28 @@ function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFi
             {item.quantity} {item.unit}
           </Text>
         </View>
+
+        {/* Claim-an-item lock */}
+        {item.claimedBy ? (
+          <TouchableOpacity
+            style={[
+              styles.claimBadge,
+              claimExpired && styles.claimBadgeExpired,
+            ]}
+            onPress={() => onUnclaim?.(item.id)}
+          >
+            <Text style={styles.claimText}>
+              {claimExpired ? '⚠ Claim expired' : `🛒 ${claimerName ?? item.claimedBy}`}
+            </Text>
+          </TouchableOpacity>
+        ) : onClaim ? (
+          <TouchableOpacity
+            style={styles.claimButton}
+            onPress={() => onClaim(item.id)}
+          >
+            <Text style={styles.claimButtonText}>Claim</Text>
+          </TouchableOpacity>
+        ) : null}
       </TouchableOpacity>
     </View>
   );
@@ -315,6 +344,8 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   const toggleChecked = useGroceryStore((s) => s.toggleChecked);
   const deleteItem = useGroceryStore((s) => s.deleteItem);
   const reorderItem = useGroceryStore((s) => s.reorderItem);
+  const claimItem = useGroceryStore((s) => s.claimItem);
+  const unclaimItem = useGroceryStore((s) => s.unclaimItem);
 
   // Price store
   const prices = usePriceStore((s) => s.prices);
@@ -332,6 +363,14 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     message: string;
     itemId: string;
   } | null>(null);
+  // Re-render timer for claim-an-item expiry checks (tick every 30s)
+  const [, forceRender] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      forceRender((n) => n + 1);
+    }, 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Load items and list name on mount
   useEffect(() => {
@@ -503,6 +542,21 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     [deleteItem],
   );
 
+  // Claim-an-item
+  const handleClaim = useCallback(
+    (id: string) => {
+      claimItem(id);
+    },
+    [claimItem],
+  );
+
+  const handleUnclaim = useCallback(
+    (id: string) => {
+      unclaimItem(id);
+    },
+    [unclaimItem],
+  );
+
   // Reorder handlers
   const handleMoveUp = useCallback(
     (id: string) => {
@@ -638,6 +692,13 @@ export default function GroceryListScreen({ route, navigation }: Props) {
                   isLast={index === section.data.length - 1}
                   price={prices[item.id] ?? null}
                   priceLoading={itemLoading[item.id] ?? false}
+                  onClaim={handleClaim}
+                  onUnclaim={handleUnclaim}
+                  claimExpired={
+                    item.claimedAt
+                      ? Date.now() - item.claimedAt >= CLAIM_EXPIRY_MS
+                      : false
+                  }
                 />
               );
             }
@@ -653,6 +714,13 @@ export default function GroceryListScreen({ route, navigation }: Props) {
                 isLast={index === section.data.length - 1}
                 price={prices[item.id] ?? null}
                 priceLoading={itemLoading[item.id] ?? false}
+                onClaim={handleClaim}
+                onUnclaim={handleUnclaim}
+                claimExpired={
+                  item.claimedAt
+                    ? Date.now() - item.claimedAt >= CLAIM_EXPIRY_MS
+                    : false
+                }
               />
             );
           }}
@@ -1044,5 +1112,34 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '300',
     lineHeight: 30,
+  },
+
+  // ─── Claim-an-item styles ──────────────────────────────────
+  claimBadge: {
+    backgroundColor: '#E3F2FD',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginLeft: 6,
+  },
+  claimBadgeExpired: {
+    backgroundColor: '#FFF3E0',
+  },
+  claimText: {
+    fontSize: 11,
+    color: '#1565C0',
+    fontWeight: '600',
+  },
+  claimButton: {
+    backgroundColor: '#E8F5E9',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginLeft: 6,
+  },
+  claimButtonText: {
+    fontSize: 11,
+    color: '#2E7D32',
+    fontWeight: '600',
   },
 });

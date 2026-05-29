@@ -271,6 +271,92 @@ export function yjsDeleteItem(listId: string, itemId: string): void {
 }
 
 /**
+ * Auto-release threshold: an item claimed for longer than this is unclaimed
+ * (prevents stale locks when someone claims and never unclaims).
+ */
+export const CLAIM_EXPIRY_MS = 30 * 60 * 1000; // 30 minutes
+
+/**
+ * Claim an item (lock it for shopping).
+ * Sets claimedBy and claimedAt on the item's Y.Map.
+ * If already claimed by another device, does nothing and returns false.
+ */
+export function yjsClaimItem(
+  listId: string,
+  itemId: string,
+  deviceId: string,
+): boolean {
+  const doc = getDoc(listId);
+  let didClaim = false;
+  doc.transact(() => {
+    const itemsArr = doc.getArray('items');
+    for (let i = 0; i < itemsArr.length; i++) {
+      const yItem = itemsArr.get(i) as Y.Map<any>;
+      if (yItem.get('id') === itemId) {
+        const existingClaim = yItem.get('claimedBy') as string | undefined;
+        const claimedAt = yItem.get('claimedAt') as number | undefined;
+        // Allow re-claim if existing claim has expired
+        const isExpired = claimedAt
+          ? Date.now() - claimedAt >= CLAIM_EXPIRY_MS
+          : false;
+        if (existingClaim && existingClaim !== deviceId && !isExpired) {
+          return; // Already claimed by someone else, no-op
+        }
+        yItem.set('claimedBy', deviceId);
+        yItem.set('claimedAt', Date.now());
+        yItem.set('version', (yItem.get('version') as number) + 1);
+        yItem.set('updatedAt', Date.now());
+        didClaim = true;
+        break;
+      }
+    }
+  });
+
+  if (didClaim) {
+    const meta = doc.getMap('meta');
+    doc.transact(() => {
+      meta.set('version', (meta.get('version') as number) + 1);
+      meta.set('updatedAt', Date.now());
+    });
+  }
+  return didClaim;
+}
+
+/**
+ * Unclaim an item (release the lock).
+ * Only the claiming device or an admin can unclaim.
+ * Returns true if the item was actually unclaimed, false if guarded or not found.
+ */
+export function yjsUnclaimItem(
+  listId: string,
+  itemId: string,
+  deviceId?: string,
+): boolean {
+  const doc = getDoc(listId);
+  let didUnclaim = false;
+  doc.transact(() => {
+    const itemsArr = doc.getArray('items');
+    for (let i = 0; i < itemsArr.length; i++) {
+      const yItem = itemsArr.get(i) as Y.Map<any>;
+      if (yItem.get('id') === itemId) {
+        const claimedBy = yItem.get('claimedBy') as string | undefined;
+        // If deviceId provided, only allow unclaim by the claimer
+        if (deviceId && claimedBy && claimedBy !== deviceId) {
+          return; // Not the claimer, no-op
+        }
+        yItem.delete('claimedBy');
+        yItem.delete('claimedAt');
+        yItem.set('version', (yItem.get('version') as number) + 1);
+        yItem.set('updatedAt', Date.now());
+        didUnclaim = true;
+        break;
+      }
+    }
+  });
+  return didUnclaim;
+}
+
+/**
  * Update list metadata via Yjs.
  */
 export function yjsUpdateListMeta(

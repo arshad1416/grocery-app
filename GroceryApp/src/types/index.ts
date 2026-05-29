@@ -39,6 +39,11 @@ export interface GroceryItem {
   assignedTo?: string;      // family member id
   notes?: string;
   sortOrder: number;
+  // Claim-an-item lock: real-time flag to prevent same-trip duplicates
+  /** Device/member ID of whoever claimed this item (for shopping). */
+  claimedBy?: string;
+  /** Timestamp when the item was claimed. Auto-released after 30min. */
+  claimedAt?: number;
   // Soft delete & version fields (sync)
   isDeleted: boolean;
   deletedAt: number | null;

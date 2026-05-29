@@ -1,11 +1,14 @@
 # GroceryApp Relay Server — Dockerfile
-#
-# Builds the zero-knowledge WebSocket relay server for Yjs sync.
+# Multi-arch: builds for linux/amd64 and linux/arm64 via Docker Buildx
 
-# Use official Node.js LTS image
+# Use official Node.js LTS image (multi-arch)
+FROM --platform=$TARGETPLATFORM node:20-alpine AS build
+
+ARG TARGETPLATFORM
+RUN echo "Building for $TARGETPLATFORM"
+
 FROM node:20-alpine
 
-# Create app directory
 WORKDIR /app
 
 # Copy package files and install dependencies
@@ -23,5 +26,6 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
   CMD wget -qO- http://localhost:8080/health || exit 1
 
-# Run the server
+# Run the server (non-root user)
+USER node
 CMD ["node", "server.js"]

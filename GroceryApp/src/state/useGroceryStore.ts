@@ -12,11 +12,14 @@
 import { create } from 'zustand';
 import type { GroceryItem, SyncStatus } from '../types';
 import { generateUUID } from '../crypto';
+import { getDeviceId } from '../identity/device';
 import {
   extractItems,
   yjsAddItem,
   yjsUpdateItem,
   yjsDeleteItem,
+  yjsClaimItem,
+  yjsUnclaimItem,
 } from '../sync/yjs-adapter';
 import { syncManager } from '../sync/sync-manager';
 
@@ -36,6 +39,10 @@ export interface GroceryState {
   deleteItem: (id: string) => Promise<void>;
   reorderItem: (id: string, direction: 'up' | 'down', listId: string) => Promise<void>;
   removeItem: (id: string) => void;
+  /** Claim an item for shopping (real-time lock to prevent duplicate buys). */
+  claimItem: (id: string) => boolean;
+  /** Unclaim an item (release the lock). */
+  unclaimItem: (id: string) => void;
   setActiveList: (listId: string | null) => void;
   clearError: () => void;
 }
@@ -178,6 +185,47 @@ export const useGroceryStore = create<GroceryState>((set, get) => ({
       const { [id]: _, ...rest } = state.items;
       return { items: rest };
     });
+  },
+
+  claimItem: (id) => {
+    const item = get().items[id];
+    if (!item) return false;
+    const listId = item.listId || get().activeListId;
+    if (!listId) return false;
+    const deviceId = getDeviceId();
+    const didClaim = yjsClaimItem(listId, id, deviceId);
+    if (didClaim) {
+      set((state) => ({
+        items: {
+          ...state.items,
+          [id]: {
+            ...state.items[id],
+            claimedBy: deviceId,
+            claimedAt: Date.now(),
+          },
+        },
+      }));
+    }
+    return didClaim;
+  },
+
+  unclaimItem: (id) => {
+    const item = get().items[id];
+    if (!item) return;
+    const listId = item.listId || get().activeListId;
+    if (!listId) return;
+    const deviceId = getDeviceId();
+    const didUnclaim = yjsUnclaimItem(listId, id, deviceId);
+    if (didUnclaim) {
+      set((state) => {
+        const updated = { ...state.items[id] };
+        delete updated.claimedBy;
+        delete updated.claimedAt;
+        return {
+          items: { ...state.items, [id]: updated },
+        };
+      });
+    }
   },
 
   setActiveList: (listId) => {
