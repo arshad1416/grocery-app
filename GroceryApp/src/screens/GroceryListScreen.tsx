@@ -24,6 +24,7 @@ import type { PriceResult } from '../pricing/types';
 import { BUILT_IN_CATEGORIES } from '../types';
 import { useGroceryStore } from '../state/useGroceryStore';
 import { useSyncStore } from '../state/useSyncStore';
+import { useListStore } from '../state/useListStore';
 import { getListMeta } from '../sync/yjs-adapter';
 import type { RootStackParamList } from '../navigation/deepLinks';
 import AddItemSheet from './AddItemSheet';
@@ -239,6 +240,8 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   }, [listId, loadItems]);
 
   // Load prices for visible items after items are loaded
+  const listPref = useListStore((s) => s.lists[listId]?.storePreference);
+  const storeId = listPref ?? 'default';
   useEffect(() => {
     const visibleItems = Object.values(items).filter(
       (item) => !item.isDeleted && item.listId === listId,
@@ -246,10 +249,10 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     if (visibleItems.length > 0) {
       loadPrices(
         visibleItems.map((item) => ({ id: item.id, name: item.name })),
-        'default',
+        storeId,
       ).catch(() => {});
     }
-  }, [items, listId, loadPrices]);
+  }, [Object.keys(items).length, listId, storeId, loadPrices]);
 
   // Filtered and grouped items
   const groupedSections = useMemo(() => {

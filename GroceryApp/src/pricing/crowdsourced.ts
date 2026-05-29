@@ -124,6 +124,7 @@ export class CrowdsourcedAdapter implements PriceAdapter {
       price: medianPrice,
       unitPrice,
       unit,
+      displayUnit,
       saleInfo: null, // crowd-sourced can't detect sales
       source: {
         adapterId: this.id,
@@ -173,11 +174,12 @@ export class CrowdsourcedAdapter implements PriceAdapter {
     const unit = recent.length > 0 ? recent[0].unit : 'each';
 
     return recent.map((s) => {
-      const { unitPrice } = normalizeUnitPrice(s.price, s.quantity, unit);
+      const { unitPrice, displayUnit } = normalizeUnitPrice(s.price, s.quantity, unit);
       return {
         price: s.price,
         unitPrice,
         unit,
+        displayUnit,
         saleInfo: null,
         source: {
           adapterId: this.id,

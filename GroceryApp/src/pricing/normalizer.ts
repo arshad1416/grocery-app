@@ -120,7 +120,7 @@ export function detectSale(
     return {
       isOnSale: true, // still "on sale" in the UI sense, but flagged
       salePrice: price,
-      regularPrice: price / (1 + fakePercent / 100), // estimated regular
+      regularPrice: price * (avgRecent / unitPrice), // estimated regular total price, avoiding percent-precision loss
       saleEndDate: null,
       unitPriceVsRegular, // positive = fake markdown
       savingsPercent: -fakePercent, // negative savings = bad deal

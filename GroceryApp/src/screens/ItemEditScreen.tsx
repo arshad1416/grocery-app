@@ -25,6 +25,7 @@ import { useGroceryStore } from '../state/useGroceryStore';
 import { useFamilyStore } from '../state/useFamilyStore';
 import type { RootStackParamList } from '../navigation/deepLinks';
 import { usePriceStore } from '../pricing/price-store';
+import { useListStore } from '../state/useListStore';
 import { crowdsourcedAdapter } from '../pricing/crowdsourced';
 
 // ─── Props ──────────────────────────────────────────────────────────────────
@@ -68,11 +69,13 @@ export default function ItemEditScreen({ route, navigation }: Props) {
   const itemPrice = itemId ? prices[itemId] : null;
 
   // Load price when item becomes available
+  const editStorePref = useListStore((s) => s.lists[listId]?.storePreference);
+  const editStoreId = editStorePref ?? 'default';
   useEffect(() => {
     if (existingItem && itemId) {
-      loadSinglePrice(itemId, existingItem.name, 'default');
+      loadSinglePrice(itemId, existingItem.name, editStoreId);
     }
-  }, [existingItem?.id, itemId, loadSinglePrice]);
+  }, [existingItem?.id, itemId, editStoreId, loadSinglePrice]);
 
   // Sync local state when item changes (e.g., from re-hydration)
   useEffect(() => {

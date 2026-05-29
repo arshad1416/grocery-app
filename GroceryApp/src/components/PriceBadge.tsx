@@ -68,8 +68,9 @@ export default function PriceBadge({ price, isLoading }: PriceBadgeProps) {
           : source.adapterId;
 
   // Format the unit price using the normalizer
+  const displayUnit = price.displayUnit ?? '/' + price.unit;
   const unitPriceStr = price.unit
-    ? formatUnitPrice(price.unitPrice, '/' + price.unit)
+    ? formatUnitPrice(price.unitPrice, displayUnit)
     : '';
 
   // Format the regular price for display

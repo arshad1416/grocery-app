@@ -23,6 +23,7 @@ export interface PriceResult {
   price: number;
   unitPrice: number;
   unit: string;
+  displayUnit?: string; // e.g. "/100g", "/100mL", "/ea" — computed by normalizeUnitPrice
   saleInfo: SaleInfo | null;
   source: PriceSource;
   timestamp: number;
