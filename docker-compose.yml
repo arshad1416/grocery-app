@@ -1,0 +1,38 @@
+# GroceryApp — Docker Compose
+#
+# Runs the zero-knowledge WebSocket relay server for Yjs CRDT sync.
+# The relay server is ephemeral — Yjs documents live on the clients.
+# Messages are end-to-end encrypted and the relay cannot read them.
+#
+# Usage:
+#   docker-compose up -d          # Start relay server
+#   docker-compose logs -f        # Follow logs
+#   docker-compose down           # Stop
+
+services:
+  relay:
+    build:
+      context: ./relay-server
+      dockerfile: Dockerfile
+    container_name: groceryapp-relay
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - MAX_CLIENTS_PER_ROOM=50
+    restart: unless-stopped
+    # Resource limits for a lightweight relay
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
