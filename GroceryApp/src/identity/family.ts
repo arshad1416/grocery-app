@@ -84,22 +84,15 @@ export async function createFamilyInvite(
 
   const familyId = await generateUUID();
   const exp = expiresAt ?? Date.now() + MAX_INVITE_AGE_MS;
-  const deviceId = uint8ArrayToBase64(inviterKeypair.publicKey);
 
-  const tokenPayload = { familyId, deviceId, expiresAt: exp };
+  // Derive Ed25519 sign keypair deterministically from the device's box secret key
+  const signKp = sodium.crypto_sign_seed_keypair(inviterKeypair.privateKey.slice(0, 32));
+  const edDeviceId = uint8ArrayToBase64(signKp.publicKey);
+
+  const tokenPayload = { familyId, deviceId: edDeviceId, expiresAt: exp };
   const serialized = serializeTokenPayload(tokenPayload);
 
   // Sign with the inviter's Ed25519 key
-  // Note: crypto_box keys are NOT Ed25519 keys. For Ed25519 signing we need
-  // a separate crypto_sign keypair. We'll use the device's public key as the
-  // identity and derive a signing key from the device keypair seed.
-  // For Phase 3, we use crypto_sign_detached with a device-derived signing key.
-
-  // Actually, let's use crypto_sign properly. The device stores box keys,
-  // but for family invites we need sign keys. We generate a sign keypair
-  // derived deterministically from the device keypair seed.
-  // Simplification: use crypto_sign directly with a generated sign keypair.
-  const signKp = sodium.crypto_sign_seed_keypair(inviterKeypair.privateKey.slice(0, 32));
   const signature = sodium.crypto_sign_detached(
     new TextEncoder().encode(serialized),
     signKp.privateKey,
@@ -107,7 +100,7 @@ export async function createFamilyInvite(
 
   return {
     familyId,
-    deviceId,
+    deviceId: edDeviceId,
     expiresAt: exp,
     signature: uint8ArrayToBase64(signature),
   };
@@ -135,7 +128,8 @@ export async function verifyFamilyInvite(
     throw new Error('Family invite has expired');
   }
 
-  // Reconstruct the public key from the deviceId (base64 public key)
+  // Reconstruct the Ed25519 public key from the deviceId
+  // (deviceId is now the Ed25519 public key, not the box public key)
   const publicKey = base64ToUint8Array(inviteToken.deviceId);
   const signatureBytes = base64ToUint8Array(signature);
 
@@ -143,13 +137,11 @@ export async function verifyFamilyInvite(
   const messageBytes = new TextEncoder().encode(serialized);
 
   // Verify signature using crypto_sign_verify_detached
-  // The sign public key is derived from the same seed as the device keypair
-  const signPk = sodium.crypto_sign_seed_keypair(publicKey.slice(0, 32)).publicKey;
-
+  // The deviceId IS the Ed25519 public key — no re-derivation needed
   const valid = sodium.crypto_sign_verify_detached(
     signatureBytes,
     messageBytes,
-    signPk,
+    publicKey,
   );
 
   if (!valid) {

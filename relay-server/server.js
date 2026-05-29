@@ -67,32 +67,23 @@ const familyDeviceTokens = new Map();
 // ─── Ed25519 Signature Verification ──────────────────────────────────────────
 
 /**
- * Verify an Ed25519 signature using Node.js crypto (supports Ed25519 since Node 12+).
+ * Verify an Ed25519 signature using tweetnacl (pure JS, zero native deps).
  *
- * In production, this would use libsodium. For the relay server, Node's crypto
- * module provides Ed25519 support.
+ * tweetnacl takes raw 32-byte Ed25519 public keys (no DER/SPKI wrapping),
+ * matching libsodium's crypto_sign_verify_detached format used by the client.
  *
  * @param {string} message - The original message that was signed.
  * @param {string} signature - Base64-encoded signature.
- * @param {string} publicKey - Base64-encoded Ed25519 public key.
+ * @param {string} publicKey - Base64-encoded Ed25519 public key (raw 32 bytes).
  * @returns {boolean} Whether the signature is valid.
  */
 function verifyEd25519Signature(message, signature, publicKey) {
   try {
-    const sigBuf = Buffer.from(signature, 'base64');
-    const keyBuf = Buffer.from(publicKey, 'base64');
-
-    // Node.js crypto supports Ed25519 via 'ed25519' key type
-    const verify = crypto.createVerify('ed25519');
-    verify.update(Buffer.from(message, 'utf8'));
-    return verify.verify(
-      {
-        key: keyBuf,
-        format: 'der',
-        type: 'spki',
-      },
-      sigBuf,
-    );
+    const nacl = require('tweetnacl');
+    const msgBytes = new TextEncoder().encode(message);
+    const sigBytes = Buffer.from(signature, 'base64');
+    const keyBytes = Buffer.from(publicKey, 'base64');
+    return nacl.sign.detached.verify(msgBytes, sigBytes, keyBytes);
   } catch (err) {
     console.warn(`[crypto] Signature verification error: ${err.message}`);
     return false;
