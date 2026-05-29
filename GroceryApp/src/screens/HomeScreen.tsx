@@ -22,6 +22,7 @@ import { useFamilyStore } from '../state/useFamilyStore';
 import { useSyncStore } from '../state/useSyncStore';
 import type { GroceryList } from '../types';
 import type { RootStackParamList } from '../navigation/deepLinks';
+import { useShareInvite } from '../hooks/useShareInvite';
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,8 @@ export default function HomeScreen({ navigation }: Props) {
   const syncState = useSyncStore((s) => s.syncState);
 
   const [loaded, setLoaded] = useState(false);
+
+  const { shareInvite } = useShareInvite();
 
   useEffect(() => {
     loadLists()
@@ -168,7 +171,25 @@ export default function HomeScreen({ navigation }: Props) {
                   </Text>
                 ) : null}
               </View>
-              <Text style={styles.listCardArrow}>›</Text>
+              <View style={styles.listCardActions}>
+                <TouchableOpacity
+                  style={styles.shareListBtn}
+                  onPress={() =>
+                    shareInvite(
+                      `grocceryapp://invite?token=${encodeURIComponent(
+                        JSON.stringify({
+                          listId: list.id,
+                          listName: list.name,
+                          familyId: list.familyId,
+                        }),
+                      )}`,
+                    )
+                  }
+                >
+                  <Text style={styles.shareListBtnText}>Share</Text>
+                </TouchableOpacity>
+                <Text style={styles.listCardArrow}>›</Text>
+              </View>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -323,6 +344,22 @@ const styles = StyleSheet.create({
     fontSize: 22,
     color: '#ccc',
     marginLeft: 8,
+  },
+  listCardActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  shareListBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    backgroundColor: '#2196F3',
+  },
+  shareListBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#fff',
   },
   fab: {
     position: 'absolute',

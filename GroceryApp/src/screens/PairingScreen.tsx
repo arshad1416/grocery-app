@@ -26,8 +26,7 @@ import type { ConnectionStatus, PairingCode } from '../types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/deepLinks';
 
-// Mock for expo-camera — real implementation would use CameraView with barcode scanner
-// import { CameraView } from 'expo-camera';
+import CameraScanner from '../components/CameraScanner';
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -218,30 +217,57 @@ export default function PairingScreen({ navigation, route }: Props) {
           server's setup page.
         </Text>
 
-        {/* QR Scanner placeholder — in production, use CameraView from expo-camera */}
-        <View style={styles.scannerPlaceholder}>
-          {scannerActive ? (
-            <View style={styles.scannerActive}>
-              <ActivityIndicator size="large" color="#4CAF50" />
-              <Text style={styles.scannerText}>
-                Camera active — point at QR code
-              </Text>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => setScannerActive(false)}
-              >
-                <Text style={styles.cancelText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.scanButton}
-              onPress={() => setScannerActive(true)}
-            >
-              <Text style={styles.scanButtonText}>Open Scanner</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        {scannerActive ? (
+          <View style={styles.scannerContainer}>
+            <CameraScanner
+              onScan={(token) => {
+                setScannerActive(false);
+                setStatusMessage(`Processing invite token: ${token.slice(0, 16)}...`);
+                // Process the scanned token similar to deep link invite tokens
+                (async () => {
+                  try {
+                    const code = await parsePairingCodeString(token);
+                    setParsedCode(code);
+                    setManualUrl(code.relayUrl);
+                    setStatusMessage('Pairing code valid! Connecting...');
+
+                    // Auto-test connection
+                    const url = code.relayUrl.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:');
+                    const portMatch = code.relayUrl.match(/:\d+$/);
+                    const port = portMatch ? parseInt(code.relayUrl.match(/:(\d+)$/)![1], 10) : 8080;
+
+                    setConnectionStatus('connecting');
+                    const ok = await testRelayConnection(code.relayUrl, port);
+
+                    if (ok) {
+                      setConnectionStatus('connected');
+                      setStatusMessage('Connected to relay server via QR scan!');
+                      await updateSettings({
+                        relayUrl: code.relayUrl,
+                        relayPort: port,
+                        pairingCode: token,
+                      });
+                      navigation.navigate('Home');
+                    } else {
+                      setConnectionStatus('error');
+                      setStatusMessage('Could not connect to relay server');
+                    }
+                  } catch {
+                    setStatusMessage('Scanned an invite token. Enter the relay URL manually to complete pairing.');
+                  }
+                })();
+              }}
+              onCancel={() => setScannerActive(false)}
+            />
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.scanButton}
+            onPress={() => setScannerActive(true)}
+          >
+            <Text style={styles.scanButtonText}>Scan QR Code</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* ── Manual URL Input ────────────────────────────────────────── */}
@@ -406,6 +432,11 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#ddd',
     borderStyle: 'dashed',
+  },
+  scannerContainer: {
+    height: 300,
+    borderRadius: 8,
+    overflow: 'hidden',
   },
   scannerActive: {
     alignItems: 'center',

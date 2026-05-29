@@ -41,6 +41,8 @@ import { priceRegistry } from '../pricing/registry';
 import { crowdsourcedAdapter } from '../pricing/crowdsourced';
 import { instacartAdapter } from '../pricing/instacart';
 import { scrapingAdapter } from '../pricing/scraping';
+import QRCode from '../components/QRCode';
+import { useShareInvite } from '../hooks/useShareInvite';
 
 // ─── Segmented Control ───────────────────────────────────────────────────────
 
@@ -162,6 +164,8 @@ export default function SettingsScreen({ navigation }: Props) {
   // Pricing opt-in state
   const [pricingOptedIn, setPricingOptedIn] = useState(false);
   const [pricingDisclosureShown, setPricingDisclosureShown] = useState(false);
+
+  const { shareInvite } = useShareInvite();
 
   // Load settings on mount
   useEffect(() => {
@@ -331,21 +335,25 @@ export default function SettingsScreen({ navigation }: Props) {
           </TouchableOpacity>
           {settings.pairingCode && (
             <View style={styles.qrCodeContainer}>
-              <Text style={styles.qrCodeLabel}>Scan with GroceryApp</Text>
-              <View style={styles.qrCodeBox}>
-                <Text style={styles.qrCodeText}>
-                  {'████████████████████\n' +
-                   '██              ██\n' +
-                   '██  ████  ████  ██\n' +
-                   '██  ████  ████  ██\n' +
-                   '██  ████  ████  ██\n' +
-                   '██              ██\n' +
-                   '████████████████████'}
-                </Text>
-              </View>
+              <Text style={styles.qrCodeLabel}>Scan to join your family list</Text>
+              <QRCode
+                data={`grocceryapp://invite?token=${encodeURIComponent(settings.pairingCode)}`}
+                size={180}
+                testID="pairing-qr-code"
+              />
               <Text style={styles.qrCodeData} selectable numberOfLines={3}>
                 {settings.pairingCode}
               </Text>
+              <TouchableOpacity
+                style={styles.shareInviteBtn}
+                onPress={() =>
+                  shareInvite(
+                    `grocceryapp://invite?token=${encodeURIComponent(settings.pairingCode)}`,
+                  )
+                }
+              >
+                <Text style={styles.shareInviteBtnText}>Share Invite</Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -788,6 +796,19 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
     fontFamily: 'monospace',
+  },
+  shareInviteBtn: {
+    backgroundColor: '#2196F3',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  shareInviteBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   planInfo: {
     fontSize: 13,
