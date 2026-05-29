@@ -137,3 +137,65 @@ export const FIELD_CONTEXTS = {
   GROCERY_LIST_STORE_PREFERENCE: 'grocery_list.store_preference',
   FAMILY_MEMBER_DISPLAY_NAME: 'family_member.display_name',
 } as const;
+
+// ─── Identity / Hosting Types (Phase 3) ────────────────────────────────────
+
+export type HostingTier = 'self_hosted' | 'managed';
+
+export interface AppSettings {
+  hostingTier: HostingTier;
+  relayUrl: string;
+  relayPort: number;
+  pairingCode: string;
+  managedSubscriptionKey: string;
+  localAiEndpoint: string;
+  priceServiceEnabled: boolean;
+  voiceInputEnabled: boolean;
+  barcodeScanningEnabled: boolean;
+}
+
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+
+export interface DeviceKeypair {
+  publicKey: Uint8Array;
+  privateKey: Uint8Array;
+}
+
+export interface FamilyInviteToken {
+  familyId: string;
+  deviceId: string;
+  expiresAt: number;
+  signature: string; // base64-encoded Ed25519 signature
+}
+
+export interface FamilyInviteVerification {
+  valid: boolean;
+  familyId: string;
+  inviterDeviceId: string;
+}
+
+export interface PairingCode {
+  version: number;
+  deviceId: string;
+  familyId: string;
+  relayUrl: string;
+  signature: string;
+  createdAt: number;
+}
+
+export interface FamilyMembership {
+  familyId: string;
+  deviceId: string;
+  joinedAt: number;
+  familyKey?: string; // base64-encoded derived key
+}
+
+export interface RelayEnrollmentRequest {
+  deviceToken: string;
+  familyInviteToken: string;
+}
+
+export interface RelayEnrollmentResponse {
+  relayToken: string;
+  familyId: string;
+}

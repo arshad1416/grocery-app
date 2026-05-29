@@ -1,57 +1,108 @@
 /**
- * GroceryApp Relay Server
+ * GroceryApp Relay Server — v2 with Identity + Rate Limiting
  *
- * A lightweight, zero-knowledge WebSocket relay for encrypted Yjs sync updates.
+ * Enhanced relay server with:
+ *  - Device enrollment endpoint (POST /enroll)
+ *  - Family invite signature verification
+ *  - Rate limiting per device token (max 100 messages/min)
+ *  - WebSocket authentication via relayToken
+ *  - Configurable ports via environment variables
  *
  * Design:
- *  - Relays encrypted update blobs between family members
- *  - No message persistence (ephemeral — Yjs documents live on clients)
- *  - Family-based routing: clients join a room by familyId
- *  - Each message is an encrypted blob — server cannot read contents
- *  - Optional REST endpoint for device enrollment (exchange device key)
- *
- * Usage:
- *   npm install
- *   node server.js [--port PORT]
- *
- * Environment variables:
- *   PORT (default: 8080)
- *   MAX_CLIENTS_PER_ROOM (default: 50)
+ *  - REST endpoints: /health, /enroll, /stats
+ *  - WebSocket endpoint: /ws with relayToken auth
+ *  - Rate limiting uses in-memory counters with 1-minute windows
+ *  - Invite verification validates Ed25519 signatures
  */
 
 const http = require('http');
 const { WebSocketServer } = require('ws');
+const crypto = require('crypto');
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
-const PORT = parseInt(process.env.PORT || '8080', 10);
-const MAX_CLIENTS_PER_FAMILY = parseInt(process.env.MAX_CLIENTS_PER_ROOM || '50', 10);
+const RELAY_PORT = parseInt(process.env.RELAY_PORT || process.env.PORT || '8080', 10);
+const API_PORT = parseInt(process.env.API_PORT || process.env.PORT || '8080', 10);
+const WS_PORT = parseInt(process.env.WS_PORT || process.env.PORT || '8080', 10);
+const MAX_CLIENTS_PER_FAMILY = parseInt(process.env.MAX_CLIENTS_PER_FAMILY || '50', 10);
+const MAX_FAMILIES = parseInt(process.env.MAX_FAMILIES || '100', 10);
+const MAX_DEVICES_PER_FAMILY = parseInt(process.env.MAX_DEVICES_PER_FAMILY || '20', 10);
+const RATE_LIMIT_MESSAGES = parseInt(process.env.RATE_LIMIT_MESSAGES || '100', 10);
+const RATE_LIMIT_WINDOW_MS = 60_000; // 1 minute
 
 // ─── State ───────────────────────────────────────────────────────────────────
 
 /**
  * Map<familyId, Set<WebSocket>>
- * Each family has a room of connected WebSocket clients.
  */
 const familyRooms = new Map();
 
 /**
- * Map<WebSocket, { familyId: string, deviceId: string }>
- * Tracks which client belongs to which family.
+ * Map<WebSocket, { familyId: string, deviceId: string, relayToken: string }>
  */
 const clientInfo = new Map();
 
 /**
  * Map<deviceId, WebSocket>
- * Fast lookup to find and close old sockets on re-identity.
  */
 const deviceSockets = new Map();
+
+/**
+ * Map<relayToken, { deviceId: string, familyId: string, enrolledAt: number }>
+ * Enrolled devices that have completed POST /enroll.
+ */
+const enrolledDevices = new Map();
+
+/**
+ * Map<relayToken, { count: number, windowStart: number }>
+ * Rate limiting counters keyed by relay token.
+ */
+const rateLimiters = new Map();
+
+/**
+ * Map<familyId, Set<string>> — relay tokens per family for enforcement.
+ */
+const familyDeviceTokens = new Map();
+
+// ─── Ed25519 Signature Verification ──────────────────────────────────────────
+
+/**
+ * Verify an Ed25519 signature using Node.js crypto (supports Ed25519 since Node 12+).
+ *
+ * In production, this would use libsodium. For the relay server, Node's crypto
+ * module provides Ed25519 support.
+ *
+ * @param {string} message - The original message that was signed.
+ * @param {string} signature - Base64-encoded signature.
+ * @param {string} publicKey - Base64-encoded Ed25519 public key.
+ * @returns {boolean} Whether the signature is valid.
+ */
+function verifyEd25519Signature(message, signature, publicKey) {
+  try {
+    const sigBuf = Buffer.from(signature, 'base64');
+    const keyBuf = Buffer.from(publicKey, 'base64');
+
+    // Node.js crypto supports Ed25519 via 'ed25519' key type
+    const verify = crypto.createVerify('ed25519');
+    verify.update(Buffer.from(message, 'utf8'));
+    return verify.verify(
+      {
+        key: keyBuf,
+        format: 'der',
+        type: 'spki',
+      },
+      sigBuf,
+    );
+  } catch (err) {
+    console.warn(`[crypto] Signature verification error: ${err.message}`);
+    return false;
+  }
+}
 
 // ─── Shared Cleanup ──────────────────────────────────────────────────────────
 
 /**
  * Remove a client from all internal state.
- * Called on close, error, or when replacing an old socket on re-identity.
  */
 function removeClient(ws) {
   if (ws._pingInterval) {
@@ -66,13 +117,9 @@ function removeClient(ws) {
       room.delete(ws);
       if (room.size === 0) {
         familyRooms.delete(info.familyId);
-        console.log(`[room] Family "${info.familyId}" room emptied, removed`);
-      } else {
-        console.log(`[room] Family "${info.familyId}" has ${room.size} remaining clients`);
       }
     }
 
-    // Clean up device socket mapping
     const currentSocket = deviceSockets.get(info.deviceId);
     if (currentSocket === ws) {
       deviceSockets.delete(info.deviceId);
@@ -82,13 +129,53 @@ function removeClient(ws) {
   }
 }
 
+// ─── Rate Limiting ───────────────────────────────────────────────────────────
+
+/**
+ * Check if a relay token has exceeded the rate limit.
+ * Returns true if the message should be allowed, false if rate limited.
+ */
+function checkRateLimit(relayToken) {
+  const now = Date.now();
+  let limiter = rateLimiters.get(relayToken);
+
+  if (!limiter || now - limiter.windowStart > RATE_LIMIT_WINDOW_MS) {
+    // Start a new window
+    limiter = { count: 1, windowStart: now };
+    rateLimiters.set(relayToken, limiter);
+    return true;
+  }
+
+  limiter.count++;
+  if (limiter.count > RATE_LIMIT_MESSAGES) {
+    return false; // Rate limited
+  }
+
+  return true;
+}
+
+/**
+ * Reset rate limiters periodically to prevent memory leaks.
+ */
+function cleanRateLimiters() {
+  const now = Date.now();
+  for (const [token, limiter] of rateLimiters) {
+    if (now - limiter.windowStart > RATE_LIMIT_WINDOW_MS * 2) {
+      rateLimiters.delete(token);
+    }
+  }
+}
+
+// Clean rate limiters every 5 minutes
+setInterval(cleanRateLimiters, 5 * 60_000);
+
 // ─── HTTP Server ─────────────────────────────────────────────────────────────
 
 const server = http.createServer((req, res) => {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -104,40 +191,121 @@ const server = http.createServer((req, res) => {
       uptime: process.uptime(),
       families: familyRooms.size,
       clients: clientInfo.size,
+      enrolledDevices: enrolledDevices.size,
+      version: '2.0',
     }));
     return;
   }
 
-  // Simple REST enrollment endpoint (future: device key exchange)
+  // Device enrollment
   if (req.url === '/enroll' && req.method === 'POST') {
     let body = '';
     req.on('data', (chunk) => { body += chunk; });
     req.on('end', () => {
-      // Enforce 1KB body size limit
-      if (body.length > 1024) {
+      // Enforce body size limit
+      if (body.length > 4096) {
         res.writeHead(413, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Request body too large (max 1024 bytes)' }));
+        res.end(JSON.stringify({ error: 'Request body too large (max 4096 bytes)' }));
         return;
       }
 
       try {
         const data = JSON.parse(body);
-        const { deviceId, familyId } = data;
+        const { deviceToken, familyInviteToken } = data;
 
-        if (!deviceId || !familyId) {
+        if (!deviceToken || !familyInviteToken) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'deviceId and familyId are required' }));
+          res.end(JSON.stringify({
+            error: 'deviceToken and familyInviteToken are required',
+          }));
           return;
         }
 
+        // Parse the family invite token
+        let invite;
+        try {
+          invite = JSON.parse(familyInviteToken);
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid familyInviteToken format' }));
+          return;
+        }
+
+        const { familyId, deviceId: inviterDeviceId, expiresAt, signature } = invite;
+
+        if (!familyId || !inviterDeviceId || !expiresAt || !signature) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid invite token structure' }));
+          return;
+        }
+
+        // Check expiry
+        if (Date.now() > expiresAt) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invite token has expired' }));
+          return;
+        }
+
+        // Verify invite signature using Ed25519
+        const invitePayload = JSON.stringify({
+          familyId,
+          deviceId: inviterDeviceId,
+          expiresAt,
+        });
+
+        const signatureValid = verifyEd25519Signature(
+          invitePayload,
+          signature,
+          inviterDeviceId,
+        );
+
+        if (!signatureValid) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid invite signature' }));
+          return;
+        }
+
+        // Check family limits
+        const totalFamilies = familyRooms.size;
+        if (totalFamilies >= MAX_FAMILIES) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Server at maximum family capacity' }));
+          return;
+        }
+
+        // Check devices per family limit
+        const familyTokens = familyDeviceTokens.get(familyId);
+        if (familyTokens && familyTokens.size >= MAX_DEVICES_PER_FAMILY) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Family at maximum device capacity' }));
+          return;
+        }
+
+        // Generate a relay token (opaque routing token)
+        const relayToken = crypto.randomBytes(32).toString('hex');
+
+        // Store enrollment
+        enrolledDevices.set(relayToken, {
+          deviceId: deviceToken,
+          familyId,
+          enrolledAt: Date.now(),
+        });
+
+        // Track family device count
+        if (!familyDeviceTokens.has(familyId)) {
+          familyDeviceTokens.set(familyId, new Set());
+        }
+        familyDeviceTokens.get(familyId).add(relayToken);
+
+        console.log(`[enroll] Device "${deviceToken.slice(0, 12)}..." enrolled in family "${familyId}"`);
+
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
-          status: 'enrolled',
-          deviceId,
+          relayToken,
           familyId,
-          relayUrl: `ws://localhost:${PORT}`,
         }));
       } catch (err) {
+        console.warn(`[enroll] Error: ${err.message}`);
         res.writeHead(400, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Invalid JSON' }));
       }
@@ -155,7 +323,7 @@ const server = http.createServer((req, res) => {
         connectedClients: clients.size,
         deviceIds: Array.from(clients).map((ws) => {
           const info = clientInfo.get(ws);
-          return info ? info.deviceId : 'unknown';
+          return info ? info.deviceId.slice(0, 12) + '...' : 'unknown';
         }),
       };
     });
@@ -164,7 +332,15 @@ const server = http.createServer((req, res) => {
       uptime: process.uptime(),
       totalFamilies: familyRooms.size,
       totalClients: clientInfo.size,
+      totalEnrolled: enrolledDevices.size,
       families: stats,
+      rateLimiters: rateLimiters.size,
+      config: {
+        maxFamilies: MAX_FAMILIES,
+        maxDevicesPerFamily: MAX_DEVICES_PER_FAMILY,
+        maxClientsPerFamily: MAX_CLIENTS_PER_FAMILY,
+        rateLimitMessagesPerMin: RATE_LIMIT_MESSAGES,
+      },
     }));
     return;
   }
@@ -181,8 +357,34 @@ const wss = new WebSocketServer({
   maxPayload: 10 * 1024 * 1024, // 10MB max payload
 });
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
   console.log(`[connect] New WebSocket connection`);
+
+  // Parse relayToken from URL query parameter or initial message
+  // Expected: ws://host:port/?token=RELAY_TOKEN
+  const url = new URL(req.url, 'http://localhost');
+  const initialToken = url.searchParams.get('token');
+
+  let authenticated = false;
+
+  // If token provided in URL, validate immediately
+  if (initialToken) {
+    const enrollment = enrolledDevices.get(initialToken);
+    if (enrollment) {
+      authenticated = true;
+      ws._relayToken = initialToken;
+      ws._enrollment = enrollment;
+      console.log(`[auth] WebSocket authenticated via URL token`);
+    } else {
+      console.warn(`[auth] WebSocket rejected: invalid URL token`);
+      sendTo(ws, {
+        type: 'error',
+        message: 'Invalid relay token',
+      });
+      ws.close(4001, 'Invalid relay token');
+      return;
+    }
+  }
 
   ws.on('message', (raw) => {
     try {
@@ -222,8 +424,60 @@ wss.on('connection', (ws) => {
  */
 function handleMessage(sender, message) {
   switch (message.type) {
+    case 'auth': {
+      // Authenticate via relayToken in message body
+      const { relayToken } = message;
+
+      if (!relayToken) {
+        sendTo(sender, {
+          type: 'error',
+          message: 'auth message requires relayToken',
+        });
+        return;
+      }
+
+      const enrollment = enrolledDevices.get(relayToken);
+      if (!enrollment) {
+        sendTo(sender, {
+          type: 'error',
+          message: 'Invalid relay token',
+        });
+        return;
+      }
+
+      sender._relayToken = relayToken;
+      sender._enrollment = enrollment;
+
+      sendTo(sender, {
+        type: 'auth_ack',
+        message: 'Authenticated',
+        familyId: enrollment.familyId,
+      });
+      console.log(`[auth] WebSocket authenticated via message`);
+      break;
+    }
+
     case 'identity': {
-      const { familyId, deviceId } = message;
+      // Check authentication
+      if (!sender._relayToken) {
+        sendTo(sender, {
+          type: 'error',
+          message: 'Not authenticated. Send auth message first.',
+        });
+        return;
+      }
+
+      // Check rate limit
+      if (!checkRateLimit(sender._relayToken)) {
+        sendTo(sender, {
+          type: 'error',
+          message: 'Rate limit exceeded (max 100 messages/min)',
+        });
+        return;
+      }
+
+      const enrollment = sender._enrollment;
+      const { deviceId, familyId } = message;
 
       if (!familyId || !deviceId) {
         sendTo(sender, {
@@ -233,11 +487,19 @@ function handleMessage(sender, message) {
         return;
       }
 
+      // Verify the claimed familyId matches enrollment
+      if (familyId !== enrollment.familyId) {
+        sendTo(sender, {
+          type: 'error',
+          message: 'familyId does not match enrollment',
+        });
+        return;
+      }
+
       // ── Zombie socket cleanup ──────────────────────────────────────
-      // If this deviceId is already connected on an OLD socket, close it.
       const oldSocket = deviceSockets.get(deviceId);
       if (oldSocket && oldSocket !== sender) {
-        console.log(`[identity] Device "${deviceId}" re-identifying — closing old socket`);
+        console.log(`[identity] Device "${deviceId.slice(0, 12)}..." re-identifying — closing old socket`);
         removeClient(oldSocket);
         try {
           oldSocket.close();
@@ -246,7 +508,7 @@ function handleMessage(sender, message) {
         }
       }
 
-      // Remove from old room if re-identifying (same socket, different family)
+      // Remove from old room if re-identifying
       const oldInfo = clientInfo.get(sender);
       if (oldInfo) {
         const oldRoom = familyRooms.get(oldInfo.familyId);
@@ -274,10 +536,10 @@ function handleMessage(sender, message) {
       }
 
       room.add(sender);
-      clientInfo.set(sender, { familyId, deviceId });
+      clientInfo.set(sender, { familyId, deviceId, relayToken: sender._relayToken });
       deviceSockets.set(deviceId, sender);
 
-      console.log(`[identity] Device "${deviceId}" joined family "${familyId}" (${room.size} clients in room)`);
+      console.log(`[identity] Device "${deviceId.slice(0, 12)}..." joined family "${familyId}" (${room.size} clients)`);
 
       sendTo(sender, {
         type: 'ack',
@@ -289,6 +551,24 @@ function handleMessage(sender, message) {
     }
 
     case 'update': {
+      // Check authentication
+      if (!sender._relayToken) {
+        sendTo(sender, {
+          type: 'error',
+          message: 'Not authenticated. Send auth message first.',
+        });
+        return;
+      }
+
+      // Check rate limit
+      if (!checkRateLimit(sender._relayToken)) {
+        sendTo(sender, {
+          type: 'error',
+          message: 'Rate limit exceeded (max 100 messages/min)',
+        });
+        return;
+      }
+
       const { familyId, deviceId, listId, payload } = message;
 
       if (!familyId || !listId || !payload) {
@@ -318,17 +598,16 @@ function handleMessage(sender, message) {
             sendTo(client, {
               type: 'update',
               familyId,
-              deviceId, // origin device
+              deviceId,
               listId,
               payload,
             });
             relayed++;
           }
         });
-        console.log(`[relay] Device "${deviceId}" → family "${familyId}" list "${listId}" → ${relayed} peers`);
+        console.log(`[relay] Device "${deviceId.slice(0, 12)}..." → family "${familyId}" list "${listId}" → ${relayed} peers`);
       }
 
-      // Acknowledge to sender
       sendTo(sender, {
         type: 'ack',
         message: 'Update relayed',
@@ -346,10 +625,6 @@ function handleMessage(sender, message) {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/**
- * Send a JSON message to a specific WebSocket client.
- * Safely handles errors (e.g. if the socket closed between checks).
- */
 function sendTo(ws, data) {
   if (ws.readyState === ws.OPEN) {
     try {
@@ -362,17 +637,22 @@ function sendTo(ws, data) {
 
 // ─── Start ───────────────────────────────────────────────────────────────────
 
-server.listen(PORT, () => {
+server.listen(RELAY_PORT, () => {
   console.log(`
 ╔══════════════════════════════════════════════════════════════╗
-║      GroceryApp Relay Server                                ║
-║      Listening on port ${String(PORT).padEnd(5)}                               ║
-║      Zero-knowledge WebSocket relay for Yjs sync            ║
+║      GroceryApp Relay Server v2                             ║
+║      Listening on port ${String(RELAY_PORT).padEnd(5)}                               ║
+║      Identity-aware WebSocket relay for Yjs sync            ║
 ╚══════════════════════════════════════════════════════════════╝
 
-WebSocket: ws://localhost:${PORT}
-Health:    http://localhost:${PORT}/health
-Stats:     http://localhost:${PORT}/stats
-Enroll:    POST http://localhost:${PORT}/enroll  { deviceId, familyId }
+WebSocket:   ws://localhost:${RELAY_PORT}?token=RELAY_TOKEN
+Health:      http://localhost:${RELAY_PORT}/health
+Stats:       http://localhost:${RELAY_PORT}/stats
+Enroll:      POST http://localhost:${RELAY_PORT}/enroll  { deviceToken, familyInviteToken }
+
+Rate limit:  ${RATE_LIMIT_MESSAGES} messages/min per device
+Max families: ${MAX_FAMILIES}
+Max devices/family: ${MAX_DEVICES_PER_FAMILY}
+Max clients/family: ${MAX_CLIENTS_PER_FAMILY}
 `);
 });
