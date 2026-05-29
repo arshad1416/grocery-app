@@ -23,11 +23,15 @@ import {
 import { testRelayConnection, updateSettings } from '../config/settings';
 import { parsePairingCodeString } from '../setup/self-host';
 import type { ConnectionStatus, PairingCode } from '../types';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/deepLinks';
 
 // Mock for expo-camera — real implementation would use CameraView with barcode scanner
 // import { CameraView } from 'expo-camera';
 
 // ─── Props ──────────────────────────────────────────────────────────────────
+
+type Props = NativeStackScreenProps<RootStackParamList, 'Pairing'>;
 
 interface PairingScreenProps {
   onPairingComplete?: (pairingCode: PairingCode) => void;
@@ -35,7 +39,9 @@ interface PairingScreenProps {
 
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
-export default function PairingScreen({ onPairingComplete }: PairingScreenProps) {
+export default function PairingScreen({ navigation, route }: Props) {
+  // Extract token from route params if navigated from Invite screen
+  const inviteToken = (route.params as any)?.token;
   const [manualUrl, setManualUrl] = useState('');
   const [manualPort, setManualPort] = useState('8080');
   const [connectionStatus, setConnectionStatus] =
@@ -74,7 +80,8 @@ export default function PairingScreen({ onPairingComplete }: PairingScreenProps)
             pairingCode: data,
           });
 
-          onPairingComplete?.(code);
+          // Navigate back to home after successful pairing
+          navigation.navigate('Home');
         } else {
           setConnectionStatus('error');
           setStatusMessage('Could not connect to relay server');
@@ -85,7 +92,7 @@ export default function PairingScreen({ onPairingComplete }: PairingScreenProps)
         Alert.alert('Invalid Code', message);
       }
     },
-    [onPairingComplete],
+    [navigation],
   );
 
   // Handle manual test connection

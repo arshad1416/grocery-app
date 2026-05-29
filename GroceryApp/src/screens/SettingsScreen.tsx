@@ -34,6 +34,8 @@ import {
 } from '../config/settings';
 import { getDeviceId } from '../identity/device';
 import type { AppSettings, HostingTier, ConnectionStatus } from '../types';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/deepLinks';
 
 // ─── Segmented Control ───────────────────────────────────────────────────────
 
@@ -140,7 +142,9 @@ function ToggleRow({ label, value, onValueChange, disabled }: ToggleRowProps) {
 
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
-export default function SettingsScreen() {
+type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
+
+export default function SettingsScreen({ navigation }: Props) {
   const [settings, setSettingsState] = useState<AppSettings | null>(null);
   const [connectionStatus, setConnectionStatus] =
     useState<ConnectionStatus>('disconnected');
@@ -208,7 +212,12 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <Text style={styles.title}>Settings</Text>
+      <View style={styles.headerBar}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+          <Text style={styles.backText}>← Back</Text>
+        </TouchableOpacity>
+        <Text style={styles.title}>Settings</Text>
+      </View>
 
       {/* ── Tier Selector ─────────────────────────────────────────────── */}
       <View style={styles.section}>
@@ -372,6 +381,22 @@ const styles = StyleSheet.create({
     color: '#333',
     padding: 20,
     paddingBottom: 8,
+  },
+  headerBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  backBtn: {
+    paddingRight: 8,
+    paddingVertical: 4,
+  },
+  backText: {
+    fontSize: 16,
+    color: '#4CAF50',
+    fontWeight: '600',
   },
   section: {
     margin: 12,

@@ -194,7 +194,7 @@ export class YjsWebSocketClient {
     }
 
     try {
-      const encrypted = this.encryptUpdate(update);
+      const encrypted = this.encryptUpdate(update, listId);
       this.sendMessage({
         type: 'update',
         familyId: this.config.familyId,
@@ -220,7 +220,7 @@ export class YjsWebSocketClient {
     for (const entry of queue) {
       if (this.state === 'connected' && this.ws) {
         try {
-          const encrypted = this.encryptUpdate(entry.update);
+          const encrypted = this.encryptUpdate(entry.update, entry.listId);
           this.sendMessage({
             type: 'update',
             familyId: this.config.familyId,
@@ -248,7 +248,7 @@ export class YjsWebSocketClient {
     switch (data.type) {
       case 'update': {
         if (data.listId && data.payload) {
-          const decrypted = this.decryptUpdate(data.payload);
+          const decrypted = this.decryptUpdate(data.payload, data.listId);
           this.onRemoteUpdate?.(data.listId, decrypted);
         }
         break;
@@ -267,21 +267,24 @@ export class YjsWebSocketClient {
   }
 
   // ─── Encryption / Decryption of Yjs Updates ───────────────────────────
+  // Uses listId as AAD (Additional Authenticated Data) to bind each
+  // ciphertext to its specific list context, preventing cross-list replay.
 
   /**
    * Encrypt a raw Yjs update (Uint8Array) using crypto/index.ts (XChaCha20-Poly1305).
-   * Converts Uint8Array to base64 string for the string-based encrypt interface.
+   * Uses listId as AAD to bind ciphertext to a specific list context.
    */
-  private encryptUpdate(update: Uint8Array): EncryptedData {
+  private encryptUpdate(update: Uint8Array, listId: string): EncryptedData {
     // Convert Uint8Array to base64 string for the encrypt function
     const updateB64 = sodium.to_base64(update, sodium.base64_variants.ORIGINAL);
-    // Use a sync-style call — encrypt is async but we wrap it
     // We keep it simple by using the underlying sodium directly to avoid
     // making sendUpdate async throughout the codebase.
     const nonce = sodium.randombytes_buf(sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
+    // Use listId as AAD to bind ciphertext to a specific list
+    const additionalData = new TextEncoder().encode(listId);
     const cipherWithTag = sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
       update,
-      null,
+      additionalData,
       null,
       nonce,
       this.encryptKey,
@@ -298,11 +301,10 @@ export class YjsWebSocketClient {
   }
 
   /**
-   * Decrypt an encrypted Yjs update using crypto/index.ts.
+   * Decrypt an encrypted Yjs update using the listId as AAD.
+   * The listId must match what was used during encryption.
    */
-  private decryptUpdate(data: EncryptedData): Uint8Array {
-    // The crypto/index.ts encrypt/decrypt functions work with strings,
-    // but Yjs updates are binary. We use sodium directly here.
+  private decryptUpdate(data: EncryptedData, listId: string): Uint8Array {
     const nonce = sodium.from_base64(data.iv, sodium.base64_variants.ORIGINAL);
     const tag = sodium.from_base64(data.tag, sodium.base64_variants.ORIGINAL);
     const ciphertext = sodium.from_base64(data.ciphertext, sodium.base64_variants.ORIGINAL);
@@ -311,10 +313,12 @@ export class YjsWebSocketClient {
     cipherWithTag.set(ciphertext);
     cipherWithTag.set(tag, ciphertext.length);
 
+    const additionalData = new TextEncoder().encode(listId);
+
     return sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
       null,
       cipherWithTag,
-      null,
+      additionalData,
       nonce,
       this.encryptKey,
     );
@@ -324,10 +328,18 @@ export class YjsWebSocketClient {
 
   /**
    * Enqueue an update for later delivery, dropping oldest entry if queue is full.
+   * When dropping, logs a warning and calls onError callback.
    */
   private enqueueOffline(update: Uint8Array, listId: string): void {
     if (this.offlineQueue.length >= MAX_QUEUE_SIZE) {
-      this.offlineQueue.shift(); // drop oldest
+      const dropped = this.offlineQueue.shift(); // drop oldest
+      this.onError?.(new Error(
+        `Offline queue full (${MAX_QUEUE_SIZE}). Dropped oldest update for list ${dropped?.listId ?? 'unknown'}.`,
+      ));
+      console.warn(
+        `YjsWebSocket: offline queue full. Dropped ${dropped ? 1 : 0} oldest entry(s). ` +
+        `Queue now has ${this.offlineQueue.length} pending entries.`,
+      );
     }
     this.offlineQueue.push({ update, listId, timestamp: Date.now() });
   }

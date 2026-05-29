@@ -232,10 +232,26 @@ export async function testRelayConnection(
   port: number,
 ): Promise<boolean> {
   try {
-    const httpUrl = url
+    // Parse the URL properly — if URL already has a port, don't append another one
+    let httpUrl = url
       .replace(/^ws:/, 'http:')
       .replace(/^wss:/, 'https:');
-    const fullUrl = `${httpUrl}:${port}/health`;
+    
+    // If URL doesn't already have a port, append the provided port
+    let fullUrl: string;
+    try {
+      const parsed = new URL(httpUrl);
+      if (parsed.port) {
+        // URL already has a port, use it as-is
+        fullUrl = `${httpUrl}/health`;
+      } else {
+        fullUrl = `${httpUrl}:${port}/health`;
+      }
+    } catch {
+      // If URL parsing fails, fall back to simple append
+      fullUrl = `${httpUrl}:${port}/health`;
+    }
+    
     const response = await fetch(fullUrl, {
       method: 'GET',
       headers: { Accept: 'application/json' },
