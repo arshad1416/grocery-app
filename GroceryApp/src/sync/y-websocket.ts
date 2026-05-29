@@ -28,6 +28,12 @@ export interface WebSocketConfig {
   encryptionKey: Uint8Array;
   /** Relay token obtained from POST /enroll (used for auth, never in URL) */
   relayToken?: string;
+  /**
+   * Explicit opt-in for unauthenticated connections (test environments only).
+   * When false (default) and relayToken is missing, init() throws.
+   * When true, skips auth and sends identity directly.
+   */
+  allowUnauthenticated?: boolean;
   /** Maximum reconnect delay in ms (default: 30s) */
   maxReconnectDelay?: number;
   /** Initial reconnect delay in ms (default: 1s) */
@@ -97,7 +103,8 @@ export class YjsWebSocketClient {
    * Connect (or reconnect) to the relay server.
    */
   connect(): void {
-    if (this.ws?.readyState === WebSocket.OPEN || this.ws?.readyState === WebSocket.CONNECTING) {
+    if (this.ws?.readyState === (typeof WebSocket !== 'undefined' ? WebSocket.OPEN : 1) ||
+        this.ws?.readyState === (typeof WebSocket !== 'undefined' ? WebSocket.CONNECTING : 0)) {
       return;
     }
 
@@ -106,19 +113,19 @@ export class YjsWebSocketClient {
 
     this.ws.onopen = () => {
       this.reconnectAttempt = 0;
-      this.authPending = true;
+      this.authPending = this.config.relayToken ? true : false;
       // State stays 'connecting' until auth_ack received
       // (prevents sending updates before authentication)
 
-      // Send auth message with relay token (if available)
-      // If no relayToken (e.g. tests), fall through to identity directly
       if (this.config.relayToken) {
+        // Normal flow: authenticate via relay token
+        this.authPending = true;
         this.sendMessage({
           type: 'auth',
           relayToken: this.config.relayToken,
         });
-      } else {
-        // No relay token — go straight to identity (test mode)
+      } else if (this.config.allowUnauthenticated) {
+        // Test mode: skip auth, send identity directly
         this.authPending = false;
         this.setState('connected');
         this.sendMessage({
@@ -127,6 +134,12 @@ export class YjsWebSocketClient {
           deviceId: this.config.deviceId,
         });
         this.flushOfflineQueue();
+      } else {
+        // Production: missing relayToken is a fatal error
+        this.onError?.(new Error(
+          'No relay token available. Call enrollWithRelay() first or set allowUnauthenticated=true in tests.',
+        ));
+        this.disconnect();
       }
     };
 

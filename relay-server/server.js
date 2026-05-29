@@ -385,6 +385,17 @@ wss.on('connection', (ws, req) => {
 
   // Authentication is done via 'auth' message (not URL parameter).
   // Client sends { type: 'auth', relayToken: '...' } after WebSocket connects.
+  // If auth doesn't arrive within 10s, close the connection.
+  ws._authTimeout = setTimeout(() => {
+    if (!ws._relayToken) {
+      console.warn(`[auth] Connection timed out — closing unauthenticated socket`);
+      sendTo(ws, {
+        type: 'error',
+        message: 'Authentication timeout. Send auth message within 10s.',
+      });
+      try { ws.close(4001, 'Authentication timeout'); } catch (_) {}
+    }
+  }, 10_000);
 
   ws.on('message', (raw) => {
     try {
@@ -445,7 +456,7 @@ function handleMessage(sender, message) {
         return;
       }
 
-      // Check token expiry
+      // Check token expiry with sliding window
       if (Date.now() > enrollment.expiresAt) {
         enrolledDevices.delete(relayToken);
         // Also clean up from family device tracking
@@ -459,8 +470,13 @@ function handleMessage(sender, message) {
         return;
       }
 
+      // Sliding-window TTL: refresh expiry on successful auth
+      enrollment.expiresAt = Date.now() + TOKEN_TTL_MS;
+
       sender._relayToken = relayToken;
       sender._enrollment = enrollment;
+      // Clear auth timeout since we're authenticated
+      clearTimeout(sender._authTimeout);
 
       sendTo(sender, {
         type: 'auth_ack',
@@ -498,6 +514,17 @@ function handleMessage(sender, message) {
           type: 'error',
           message: 'identity message requires familyId and deviceId',
         });
+        return;
+      }
+
+      // Verify the claimed deviceId matches the enrolled token's deviceId
+      // Prevents a token-holder from impersonating a sibling device
+      if (deviceId !== enrollment.deviceId) {
+        sendTo(sender, {
+          type: 'error',
+          message: 'deviceId does not match enrollment',
+        });
+        console.warn(`[identity] Device "${deviceId.slice(0, 12)}..." tried to impersonate enrollment device "${enrollment.deviceId.slice(0, 12)}..."`);
         return;
       }
 

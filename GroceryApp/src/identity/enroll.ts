@@ -1,0 +1,92 @@
+/**
+ * Relay Enrollment — obtains and stores a relay token.
+ *
+ * Flow:
+ *  1. During invite-accept/pairing, call enrollWithRelay() with the
+ *     device token and the family invite token obtained from QR/deep link.
+ *  2. The relay returns a relayToken (opaque, 32-byte hex string).
+ *  3. relayToken is stored in SecureStore and loaded on subsequent app starts.
+ *  4. relayToken is passed to YjsWebSocketClient for auth on connect.
+ *
+ * If the relay token expires (default 30-day TTL with sliding window),
+ * re-enrollment requires a fresh family invite from an existing member.
+ */
+
+import * as SecureStore from 'expo-secure-store';
+import type { RelayEnrollmentResponse } from '../types';
+
+const RELAY_TOKEN_ALIAS = 'groceryapp.relay_token';
+const RELAY_URL_ALIAS = 'groceryapp.relay_url';
+
+/**
+ * Enroll this device with the relay server.
+ * Must be called during the invite-accept/pairing flow.
+ *
+ * @param relayBaseUrl - Relay base URL (e.g. 'http://192.168.0.102:8080')
+ * @param deviceToken - This device's opaque device token (base64 public key)
+ * @param familyInviteToken - The invite token JSON string from QR/deep link
+ * @returns The relay token string.
+ * @throws If enrollment fails (bad invite, server error, network).
+ */
+export async function enrollWithRelay(
+  relayBaseUrl: string,
+  deviceToken: string,
+  familyInviteToken: string,
+): Promise<string> {
+  const url = `${relayBaseUrl.replace(/\/$/, '')}/enroll`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      deviceToken,
+      familyInviteToken,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Enrollment failed (${res.status}): ${body}`);
+  }
+
+  const { relayToken } = (await res.json()) as RelayEnrollmentResponse;
+  if (!relayToken) {
+    throw new Error('Enrollment response missing relayToken');
+  }
+
+  // Persist for future app starts
+  await SecureStore.setItemAsync(RELAY_TOKEN_ALIAS, relayToken);
+  await SecureStore.setItemAsync(RELAY_URL_ALIAS, relayBaseUrl);
+
+  return relayToken;
+}
+
+/**
+ * Get the stored relay token (if any).
+ * Returns null if not enrolled yet.
+ */
+export async function getRelayToken(): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync(RELAY_TOKEN_ALIAS);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get the stored relay URL (if any).
+ */
+export async function getRelayUrl(): Promise<string | null> {
+  try {
+    return await SecureStore.getItemAsync(RELAY_URL_ALIAS);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Clear stored relay credentials (e.g. on family leave or key rotation).
+ */
+export async function clearRelayCredentials(): Promise<void> {
+  await SecureStore.deleteItemAsync(RELAY_TOKEN_ALIAS);
+  await SecureStore.deleteItemAsync(RELAY_URL_ALIAS);
+}

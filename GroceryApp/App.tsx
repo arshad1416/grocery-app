@@ -19,6 +19,7 @@ import * as Linking from 'expo-linking';
 import { linkingConfig, parseInviteUrl, type RootStackParamList } from './src/navigation/deepLinks';
 import { initCrypto, deriveSyncKey, getMasterKey } from './src/crypto';
 import { initDeviceIdentity, getDeviceId } from './src/identity/device';
+import { getRelayToken } from './src/identity/enroll';
 import { initSettings, getSettings } from './src/config/settings';
 import { database } from './src/storage/database';
 import { syncManager } from './src/sync/sync-manager';
@@ -91,13 +92,17 @@ export default function App() {
         const familyId = (await getFamilyId()) ?? 'default-family';
         const settings = getSettings();
 
-        // Step 5: Initialise sync manager
+        // Step 5: Load relay token (obtained during enrollment)
+        const relayToken = await getRelayToken();
+
+        // Step 6: Initialise sync manager
         await syncManager.init(
           {
             url: `${settings.relayUrl}:${settings.relayPort}`,
             familyId,
             deviceId,
             encryptionKey,
+            relayToken: relayToken ?? undefined,
           },
           {
             onConnectionChange: (state) => {

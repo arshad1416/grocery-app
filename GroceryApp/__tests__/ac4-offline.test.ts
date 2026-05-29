@@ -56,6 +56,28 @@ beforeAll(async () => {
   await initCrypto();
   await sodium.ready;
   encryptionKey = sodium.crypto_aead_xchacha20poly1305_ietf_keygen();
+
+  // Provide a minimal WebSocket polyfill for Node test environment
+  // (ac4 tests create YjsWebSocketClient instances but never actually connect)
+  if (typeof globalThis.WebSocket === 'undefined') {
+    class NoopWebSocket {
+      static CONNECTING = 0;
+      static OPEN = 1;
+      static CLOSING = 2;
+      static CLOSED = 3;
+      readyState = 3;
+      onopen: any = null;
+      onclose: any = null;
+      onerror: any = null;
+      onmessage: any = null;
+      constructor(_url: string) {
+        // Never connect — just exist so YjsWebSocketClient can instantiate
+      }
+      send(_data: string) {}
+      close() { this.readyState = 3; }
+    }
+    (globalThis as any).WebSocket = NoopWebSocket;
+  }
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
