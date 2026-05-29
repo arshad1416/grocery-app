@@ -5,17 +5,20 @@
  * FAB add button, and sync indicator.
  */
 
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
-  FlatList,
   TextInput,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
   Alert,
   SectionList,
+  Animated,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -29,7 +32,16 @@ import { getListMeta } from '../sync/yjs-adapter';
 import type { RootStackParamList } from '../navigation/deepLinks';
 import AddItemSheet from './AddItemSheet';
 import PriceBadge from '../components/PriceBadge';
+import UndoToast from '../components/UndoToast';
 import { usePriceStore } from '../pricing/price-store';
+
+// Enable LayoutAnimation on Android
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -107,25 +119,77 @@ interface ItemRowProps {
 }
 
 function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFirst, isLast, price, priceLoading }: ItemRowProps) {
+  // Scale animation for checkbox
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  // Strikethrough width animation (0 → 1 over the text)
+  const strikeAnim = useRef(new Animated.Value(item.isChecked ? 1 : 0)).current;
+
+  // Keep strikeAnim in sync if item.isChecked changes externally
+  useEffect(() => {
+    Animated.timing(strikeAnim, {
+      toValue: item.isChecked ? 1 : 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+  }, [item.isChecked, strikeAnim]);
+
+  const handleCheckToggle = useCallback(() => {
+    // Bounce scale animation
+    Animated.sequence([
+      Animated.spring(scaleAnim, {
+        toValue: 1.2,
+        useNativeDriver: true,
+        damping: 8,
+        stiffness: 200,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        useNativeDriver: true,
+        damping: 8,
+        stiffness: 200,
+      }),
+    ]).start();
+
+    // Strikethrough animation — interpolate to new value
+    const targetValue = item.isChecked ? 0 : 1;
+    Animated.timing(strikeAnim, {
+      toValue: targetValue,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+
+    onToggle(item.id);
+  }, [item.isChecked, item.id, onToggle, scaleAnim, strikeAnim]);
+
+  const strikeWidth = strikeAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0%', '100%'],
+    extrapolate: 'clamp',
+  });
+
   return (
     <View style={styles.itemRowContainer}>
-      {/* Reorder buttons */}
-      <View style={styles.reorderButtons}>
-        <TouchableOpacity
-          style={[styles.reorderBtn, isFirst && styles.reorderBtnDisabled]}
-          onPress={() => onMoveUp?.(item.id)}
-          disabled={isFirst}
-        >
-          <Text style={[styles.reorderBtnText, isFirst && styles.reorderBtnTextDisabled]}>▲</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.reorderBtn, isLast && styles.reorderBtnDisabled]}
-          onPress={() => onMoveDown?.(item.id)}
-          disabled={isLast}
-        >
-          <Text style={[styles.reorderBtnText, isLast && styles.reorderBtnTextDisabled]}>▼</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Reorder buttons — only show when both handlers are provided */}
+      {onMoveUp && onMoveDown ? (
+        <View style={styles.reorderButtons}>
+          <TouchableOpacity
+            style={[styles.reorderBtn, isFirst && styles.reorderBtnDisabled]}
+            onPress={() => onMoveUp(item.id)}
+            disabled={isFirst}
+          >
+            <Text style={[styles.reorderBtnText, isFirst && styles.reorderBtnTextDisabled]}>▲</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.reorderBtn, isLast && styles.reorderBtnDisabled]}
+            onPress={() => onMoveDown(item.id)}
+            disabled={isLast}
+          >
+            <Text style={[styles.reorderBtnText, isLast && styles.reorderBtnTextDisabled]}>▼</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={[styles.reorderButtons, styles.reorderButtonsHidden]} />
+      )}
       {/* Main item row */}
       <TouchableOpacity
         style={[styles.itemRow, item.isChecked && styles.itemRowChecked]}
@@ -133,28 +197,41 @@ function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFi
         onLongPress={() => onDelete(item.id, item.name)}
         activeOpacity={0.7}
       >
-        {/* Checkbox */}
+        {/* Animated Checkbox */}
         <TouchableOpacity
           style={[
             styles.checkbox,
             item.isChecked && styles.checkboxChecked,
           ]}
-          onPress={() => onToggle(item.id)}
+          onPress={handleCheckToggle}
         >
-          {item.isChecked && <Text style={styles.checkmark}>✓</Text>}
+          <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+            {item.isChecked && <Text style={styles.checkmark}>✓</Text>}
+          </Animated.View>
         </TouchableOpacity>
 
-        {/* Item info */}
+        {/* Item info with strikethrough */}
         <View style={styles.itemInfo}>
-          <Text
-            style={[
-              styles.itemName,
-              item.isChecked && styles.itemNameChecked,
-            ]}
-            numberOfLines={1}
-          >
-            {item.name}
-          </Text>
+          <View style={styles.itemNameContainer}>
+            <Text
+              style={[
+                styles.itemName,
+                item.isChecked && styles.itemNameChecked,
+              ]}
+              numberOfLines={1}
+            >
+              {item.name}
+            </Text>
+            {item.isChecked && (
+              <Animated.View
+                style={[
+                  styles.strikethrough,
+                  { width: strikeWidth },
+                ]}
+                pointerEvents="none"
+              />
+            )}
+          </View>
           {item.notes ? (
             <Text style={styles.itemNotes} numberOfLines={1}>
               {item.notes}
@@ -195,6 +272,35 @@ function CategoryHeader({ category, count }: CategoryHeaderProps) {
   );
 }
 
+// ─── "Got It ✓" Section Header ──────────────────────────────────────────────
+
+interface GotItHeaderProps {
+  count: number;
+  isExpanded: boolean;
+  onToggle: () => void;
+}
+
+function GotItHeader({ count, isExpanded, onToggle }: GotItHeaderProps) {
+  return (
+    <TouchableOpacity
+      style={styles.gotItHeader}
+      onPress={onToggle}
+      activeOpacity={0.7}
+    >
+      <View style={styles.gotItHeaderLeft}>
+        <Text style={styles.gotItIcon}>✓</Text>
+        <Text style={styles.gotItTitle}>Got It</Text>
+      </View>
+      <View style={styles.gotItHeaderRight}>
+        <Text style={styles.gotItCount}>
+          {count} {count === 1 ? 'item' : 'items'}
+        </Text>
+        <Text style={styles.gotItChevron}>{isExpanded ? '▼' : '▶'}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export default function GroceryListScreen({ route, navigation }: Props) {
@@ -220,6 +326,12 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddSheet, setShowAddSheet] = useState(false);
   const [listName, setListName] = useState('Grocery List');
+  const [gotItExpanded, setGotItExpanded] = useState(false);
+  const [toastState, setToastState] = useState<{
+    visible: boolean;
+    message: string;
+    itemId: string;
+  } | null>(null);
 
   // Load items and list name on mount
   useEffect(() => {
@@ -254,7 +366,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     }
   }, [Object.keys(items).length, listId, storeId, loadPrices]);
 
-  // Filtered and grouped items
+  // Filtered and grouped items — unchecked stay in categories, checked go to "Got It"
   const groupedSections = useMemo(() => {
     const allItems = Object.values(items).filter(
       (item) => !item.isDeleted && item.listId === listId,
@@ -270,9 +382,13 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     // Sort by sortOrder
     filtered.sort((a, b) => a.sortOrder - b.sortOrder);
 
-    // Group by category
+    // Split into unchecked and checked
+    const unchecked = filtered.filter((item) => !item.isChecked);
+    const checked = filtered.filter((item) => item.isChecked);
+
+    // Group unchecked by category
     const groups: Record<string, GroceryItem[]> = {};
-    for (const item of filtered) {
+    for (const item of unchecked) {
       const cat = item.category || 'other';
       if (!groups[cat]) groups[cat] = [];
       groups[cat].push(item);
@@ -294,8 +410,16 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       sections.push({ title: cat, data: groups[cat] });
     }
 
+    // Add "Got It" section at the bottom if there are checked items
+    if (checked.length > 0) {
+      sections.push({
+        title: '__got_it__',
+        data: gotItExpanded ? checked : [],
+      });
+    }
+
     return sections;
-  }, [items, listId, searchQuery]);
+  }, [items, listId, searchQuery, gotItExpanded]);
 
   // Item press → navigate to edit
   const handleItemPress = useCallback(
@@ -305,15 +429,60 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     [navigation, listId],
   );
 
-  // Toggle check
+  // Toggle check with animation + toast
+  const [togglingItems, setTogglingItems] = useState<Set<string>>(new Set());
   const handleToggle = useCallback(
     (id: string) => {
-      toggleChecked(id).catch((err: Error) => {
-        Alert.alert('Error', err.message);
-      });
+      const item = items[id];
+      if (!item) return;
+
+      // Guard against rapid spam-clicks
+      if (togglingItems.has(id)) return;
+      setTogglingItems((prev) => new Set(prev).add(id));
+
+      // If checking off (not un-checking), show toast + animation
+      if (!item.isChecked) {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      }
+
+      toggleChecked(id)
+        .catch((err: Error) => {
+          Alert.alert('Error', err.message);
+        })
+        .finally(() => {
+          setTogglingItems((prev) => {
+            const next = new Set(prev);
+            next.delete(id);
+            return next;
+          });
+        });
+
+      // Show toast when checking off
+      if (!item.isChecked) {
+        setToastState({
+          visible: true,
+          message: `${item.name} ✓ checked off`,
+          itemId: item.id,
+        });
+      }
     },
-    [toggleChecked],
+    [items, toggleChecked, togglingItems],
   );
+
+  // Undo check — un-check the item
+  const handleUndo = useCallback(() => {
+    if (!toastState) return;
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    toggleChecked(toastState.itemId).catch((err: Error) => {
+      Alert.alert('Error', err.message);
+    });
+    setToastState(null);
+  }, [toastState, toggleChecked]);
+
+  // Dismiss toast
+  const handleDismissToast = useCallback(() => {
+    setToastState(null);
+  }, []);
 
   // Long-press delete
   const handleDelete = useCallback(
@@ -385,6 +554,17 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     (i) => !i.isDeleted && i.listId === listId,
   ).length;
 
+  const checkedItemsCount = Object.values(items).filter(
+    (i) => {
+      if (i.isDeleted || i.listId !== listId || !i.isChecked) return false;
+      // Apply search filter if active — match what the section list shows
+      if (searchQuery.trim()) {
+        return i.name.toLowerCase().includes(searchQuery.toLowerCase());
+      }
+      return true;
+    },
+  ).length;
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
@@ -446,29 +626,66 @@ export default function GroceryListScreen({ route, navigation }: Props) {
         <SectionList
           sections={groupedSections}
           keyExtractor={(item) => item.id}
-          renderItem={({ item, index, section }) => (
-            <ItemRow
-              item={item}
-              onToggle={handleToggle}
-              onPress={handleItemPress}
-              onDelete={handleDelete}
-              onMoveUp={handleMoveUp}
-              onMoveDown={handleMoveDown}
-              isFirst={index === 0}
-              isLast={index === section.data.length - 1}
-              price={prices[item.id] ?? null}
-              priceLoading={itemLoading[item.id] ?? false}
-            />
-          )}
-          renderSectionHeader={({ section }) => (
-            <CategoryHeader
-              category={section.title}
-              count={section.data.length}
-            />
-          )}
+          renderItem={({ item, index, section }) => {
+            if (section.title === '__got_it__') {
+              return (
+                <ItemRow
+                  item={item}
+                  onToggle={handleToggle}
+                  onPress={handleItemPress}
+                  onDelete={handleDelete}
+                  isFirst={index === 0}
+                  isLast={index === section.data.length - 1}
+                  price={prices[item.id] ?? null}
+                  priceLoading={itemLoading[item.id] ?? false}
+                />
+              );
+            }
+            return (
+              <ItemRow
+                item={item}
+                onToggle={handleToggle}
+                onPress={handleItemPress}
+                onDelete={handleDelete}
+                onMoveUp={handleMoveUp}
+                onMoveDown={handleMoveDown}
+                isFirst={index === 0}
+                isLast={index === section.data.length - 1}
+                price={prices[item.id] ?? null}
+                priceLoading={itemLoading[item.id] ?? false}
+              />
+            );
+          }}
+          renderSectionHeader={({ section }) => {
+            if (section.title === '__got_it__') {
+              return (
+                <GotItHeader
+                  count={checkedItemsCount}
+                  isExpanded={gotItExpanded}
+                  onToggle={() => setGotItExpanded((prev) => !prev)}
+                />
+              );
+            }
+            return (
+              <CategoryHeader
+                category={section.title}
+                count={section.data.length}
+              />
+            );
+          }}
           contentContainerStyle={styles.listContent}
           stickySectionHeadersEnabled={false}
           showsVerticalScrollIndicator={false}
+        />
+      )}
+
+      {/* Undo Toast */}
+      {toastState?.visible && (
+        <UndoToast
+          message={toastState.message}
+          onUndo={handleUndo}
+          duration={5000}
+          onDismiss={handleDismissToast}
         />
       )}
 
@@ -665,6 +882,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 2,
   },
+  reorderButtonsHidden: {
+    opacity: 0,
+    pointerEvents: 'none',
+  },
   reorderBtn: {
     width: 24,
     height: 16,
@@ -707,14 +928,25 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
+  itemNameContainer: {
+    position: 'relative',
+    alignSelf: 'flex-start',
+  },
   itemName: {
     fontSize: 15,
     color: '#333',
     fontWeight: '500',
   },
   itemNameChecked: {
-    textDecorationLine: 'line-through',
     color: '#999',
+  },
+  strikethrough: {
+    position: 'absolute',
+    left: 0,
+    top: '50%',
+    height: 1.5,
+    backgroundColor: '#999',
+    borderRadius: 1,
   },
   itemNotes: {
     fontSize: 12,
@@ -731,6 +963,48 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     fontWeight: '600',
+  },
+  gotItHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginTop: 8,
+    marginHorizontal: 12,
+    backgroundColor: '#E8F5E9',
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#4CAF50',
+  },
+  gotItHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  gotItIcon: {
+    fontSize: 16,
+    color: '#4CAF50',
+    fontWeight: 'bold',
+  },
+  gotItTitle: {
+    fontSize: 15,
+    color: '#2E7D32',
+    fontWeight: '700',
+  },
+  gotItHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  gotItCount: {
+    fontSize: 13,
+    color: '#558B2F',
+    fontWeight: '600',
+  },
+  gotItChevron: {
+    fontSize: 12,
+    color: '#558B2F',
   },
   emptyContainer: {
     flex: 1,
