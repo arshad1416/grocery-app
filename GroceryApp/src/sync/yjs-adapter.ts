@@ -135,8 +135,10 @@ export function extractList(listId: string): GroceryList | null {
   const doc = docs.get(listId);
   if (!doc) return null;
   const meta = doc.getMap('meta');
+  const id = meta.get('id') as string | undefined;
+  if (!id) return null; // doc exists but not hydrated yet
   return {
-    id: meta.get('id') as string,
+    id: id as string,
     familyId: meta.get('familyId') as string,
     name: meta.get('name') as string,
     description: (meta.get('description') as string) || undefined,
@@ -222,7 +224,7 @@ export function yjsUpdateItem(
   const doc = getDoc(listId);
   doc.transact(() => {
     const itemsArr = doc.getArray('items');
-    const { createdAt: _, ...safeChanges } = changes;
+    const { createdAt: _, id: _id, listId: _listId, familyId: _familyId, addedBy: _addedBy, ...safeChanges } = changes;
 
     for (let i = 0; i < itemsArr.length; i++) {
       const yItem = itemsArr.get(i) as Y.Map<any>;

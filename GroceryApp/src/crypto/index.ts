@@ -269,6 +269,35 @@ export async function hasMasterKey(): Promise<boolean> {
 }
 
 /**
+ * Derive a sub-key for Yjs sync updates from the master key using libsodium's KDF.
+ *
+ * This ensures key separation: the master key is used for encrypting stored data,
+ * while a derived sub-key is used for encrypting Yjs sync updates over the wire.
+ * Compromise of one does not compromise the other.
+ *
+ * Uses crypto_kdf_derive_from_key with a fixed context string 'yjs-sync '.
+ *
+ * @param masterKey - The 256-bit master encryption key.
+ * @param subKeyIndex - Optional sub-key index (default: 0). Use different indices
+ *                      for different sub-keys if needed.
+ * @returns A 256-bit derived sub-key.
+ */
+export async function deriveSyncKey(
+  masterKey: Uint8Array,
+  subKeyIndex: number = 0,
+): Promise<Uint8Array> {
+  await ensureReady();
+  // crypto_kdf_derive_from_key(subKeyLen, subKeyId, ctx, masterKey)
+  // ctx must be exactly 8 bytes
+  return sodium.crypto_kdf_derive_from_key(
+    KEY_LENGTH_BYTES,
+    subKeyIndex,
+    'yjs-sync',
+    masterKey,
+  );
+}
+
+/**
  * Clear the master key from secure storage (e.g. on family reset).
  */
 export async function clearMasterKey(): Promise<void> {

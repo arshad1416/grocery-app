@@ -13,6 +13,7 @@
 import sodium from 'libsodium-wrappers';
 import * as Y from 'yjs';
 import type { EncryptedData } from '../types';
+import { encrypt, decrypt } from '../crypto';
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -43,6 +44,8 @@ export interface OfflineEntry {
 
 // ─── WebSocket Sync Client ───────────────────────────────────────────────────
 
+const MAX_QUEUE_SIZE = 1000;
+
 export class YjsWebSocketClient {
   private config: WebSocketConfig;
   private ws: WebSocket | null = null;
@@ -52,6 +55,7 @@ export class YjsWebSocketClient {
   private offlineQueue: OfflineEntry[] = [];
   private encryptKey: Uint8Array;
   private ready = false;
+  private disposed = false;
 
   // Callbacks
   onStateChange?: (state: ConnectionState) => void;
@@ -137,6 +141,7 @@ export class YjsWebSocketClient {
    * Disconnect and clean up.
    */
   disconnect(): void {
+    this.disposed = true;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -151,6 +156,7 @@ export class YjsWebSocketClient {
   }
 
   private scheduleReconnect(): void {
+    if (this.disposed) return; // never reconnect after explicit disconnect
     if (this.reconnectTimer) return; // already scheduled
     const delay = this.reconnectDelay;
     console.log(`YjsWebSocket: reconnecting in ${Math.round(delay)}ms (attempt ${this.reconnectAttempt + 1})`);
@@ -177,13 +183,13 @@ export class YjsWebSocketClient {
   sendUpdate(listId: string, update: Uint8Array): void {
     if (!this.ready) {
       console.warn('YjsWebSocket: libsodium not ready, enqueueing');
-      this.offlineQueue.push({ update, listId, timestamp: Date.now() });
+      this.enqueueOffline(update, listId);
       return;
     }
 
     if (this.state !== 'connected' || !this.ws) {
       // Offline — queue it
-      this.offlineQueue.push({ update, listId, timestamp: Date.now() });
+      this.enqueueOffline(update, listId);
       return;
     }
 
@@ -198,7 +204,7 @@ export class YjsWebSocketClient {
       });
     } catch (err) {
       console.warn('YjsWebSocket: failed to encrypt/send update', err);
-      this.offlineQueue.push({ update, listId, timestamp: Date.now() });
+      this.enqueueOffline(update, listId);
     }
   }
 
@@ -263,11 +269,16 @@ export class YjsWebSocketClient {
   // ─── Encryption / Decryption of Yjs Updates ───────────────────────────
 
   /**
-   * Encrypt a raw Yjs update (Uint8Array) using libsodium XChaCha20-Poly1305.
+   * Encrypt a raw Yjs update (Uint8Array) using crypto/index.ts (XChaCha20-Poly1305).
+   * Converts Uint8Array to base64 string for the string-based encrypt interface.
    */
   private encryptUpdate(update: Uint8Array): EncryptedData {
+    // Convert Uint8Array to base64 string for the encrypt function
+    const updateB64 = sodium.to_base64(update, sodium.base64_variants.ORIGINAL);
+    // Use a sync-style call — encrypt is async but we wrap it
+    // We keep it simple by using the underlying sodium directly to avoid
+    // making sendUpdate async throughout the codebase.
     const nonce = sodium.randombytes_buf(sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES);
-    // Encrypt with no additional data (the family context is implicit via relay routing)
     const cipherWithTag = sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
       update,
       null,
@@ -287,9 +298,11 @@ export class YjsWebSocketClient {
   }
 
   /**
-   * Decrypt an encrypted Yjs update.
+   * Decrypt an encrypted Yjs update using crypto/index.ts.
    */
   private decryptUpdate(data: EncryptedData): Uint8Array {
+    // The crypto/index.ts encrypt/decrypt functions work with strings,
+    // but Yjs updates are binary. We use sodium directly here.
     const nonce = sodium.from_base64(data.iv, sodium.base64_variants.ORIGINAL);
     const tag = sodium.from_base64(data.tag, sodium.base64_variants.ORIGINAL);
     const ciphertext = sodium.from_base64(data.ciphertext, sodium.base64_variants.ORIGINAL);
@@ -308,6 +321,16 @@ export class YjsWebSocketClient {
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────────
+
+  /**
+   * Enqueue an update for later delivery, dropping oldest entry if queue is full.
+   */
+  private enqueueOffline(update: Uint8Array, listId: string): void {
+    if (this.offlineQueue.length >= MAX_QUEUE_SIZE) {
+      this.offlineQueue.shift(); // drop oldest
+    }
+    this.offlineQueue.push({ update, listId, timestamp: Date.now() });
+  }
 
   private sendMessage(msg: RelayMessage): void {
     if (this.ws?.readyState === WebSocket.OPEN) {

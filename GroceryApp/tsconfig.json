@@ -4,5 +4,13 @@
     "strict": true,
     "experimentalDecorators": true,
     "useDefineForClassFields": false
-  }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx"
+  ],
+  "exclude": [
+    "node_modules",
+    "__tests__"
+  ]
 }

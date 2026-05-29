@@ -97,7 +97,7 @@ export async function persistItem(
     key,
     FIELD_CONTEXTS.GROCERY_ITEM_NAME,
   );
-  const encryptedNotes = item.notes
+  const encryptedNotes = item.notes !== undefined && item.notes !== null
     ? await encryptField(item.notes, key, FIELD_CONTEXTS.GROCERY_ITEM_NOTES)
     : null;
 

@@ -41,6 +41,47 @@ const familyRooms = new Map();
  */
 const clientInfo = new Map();
 
+/**
+ * Map<deviceId, WebSocket>
+ * Fast lookup to find and close old sockets on re-identity.
+ */
+const deviceSockets = new Map();
+
+// ─── Shared Cleanup ──────────────────────────────────────────────────────────
+
+/**
+ * Remove a client from all internal state.
+ * Called on close, error, or when replacing an old socket on re-identity.
+ */
+function removeClient(ws) {
+  if (ws._pingInterval) {
+    clearInterval(ws._pingInterval);
+    ws._pingInterval = null;
+  }
+
+  const info = clientInfo.get(ws);
+  if (info) {
+    const room = familyRooms.get(info.familyId);
+    if (room) {
+      room.delete(ws);
+      if (room.size === 0) {
+        familyRooms.delete(info.familyId);
+        console.log(`[room] Family "${info.familyId}" room emptied, removed`);
+      } else {
+        console.log(`[room] Family "${info.familyId}" has ${room.size} remaining clients`);
+      }
+    }
+
+    // Clean up device socket mapping
+    const currentSocket = deviceSockets.get(info.deviceId);
+    if (currentSocket === ws) {
+      deviceSockets.delete(info.deviceId);
+    }
+
+    clientInfo.delete(ws);
+  }
+}
+
 // ─── HTTP Server ─────────────────────────────────────────────────────────────
 
 const server = http.createServer((req, res) => {
@@ -72,6 +113,13 @@ const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (chunk) => { body += chunk; });
     req.on('end', () => {
+      // Enforce 1KB body size limit
+      if (body.length > 1024) {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Request body too large (max 1024 bytes)' }));
+        return;
+      }
+
       try {
         const data = JSON.parse(body);
         const { deviceId, familyId } = data;
@@ -128,12 +176,13 @@ const server = http.createServer((req, res) => {
 
 // ─── WebSocket Server ────────────────────────────────────────────────────────
 
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({
+  server,
+  maxPayload: 10 * 1024 * 1024, // 10MB max payload
+});
 
 wss.on('connection', (ws) => {
   console.log(`[connect] New WebSocket connection`);
-
-  let pingInterval = null;
 
   ws.on('message', (raw) => {
     try {
@@ -150,31 +199,16 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     console.log(`[disconnect] Client disconnected`);
-    if (pingInterval) clearInterval(pingInterval);
-
-    // Remove from family room
-    const info = clientInfo.get(ws);
-    if (info) {
-      const room = familyRooms.get(info.familyId);
-      if (room) {
-        room.delete(ws);
-        if (room.size === 0) {
-          familyRooms.delete(info.familyId);
-          console.log(`[room] Family "${info.familyId}" room emptied, removed`);
-        } else {
-          console.log(`[room] Family "${info.familyId}" has ${room.size} remaining clients`);
-        }
-      }
-      clientInfo.delete(ws);
-    }
+    removeClient(ws);
   });
 
   ws.on('error', (err) => {
     console.warn(`[error] WebSocket error: ${err.message}`);
+    removeClient(ws);
   });
 
   // Ping/pong for keepalive
-  pingInterval = setInterval(() => {
+  ws._pingInterval = setInterval(() => {
     if (ws.readyState === ws.OPEN) {
       ws.ping();
     }
@@ -199,11 +233,28 @@ function handleMessage(sender, message) {
         return;
       }
 
-      // Remove from old room if re-identifying
+      // ── Zombie socket cleanup ──────────────────────────────────────
+      // If this deviceId is already connected on an OLD socket, close it.
+      const oldSocket = deviceSockets.get(deviceId);
+      if (oldSocket && oldSocket !== sender) {
+        console.log(`[identity] Device "${deviceId}" re-identifying — closing old socket`);
+        removeClient(oldSocket);
+        try {
+          oldSocket.close();
+        } catch (_) {
+          // already closed
+        }
+      }
+
+      // Remove from old room if re-identifying (same socket, different family)
       const oldInfo = clientInfo.get(sender);
       if (oldInfo) {
         const oldRoom = familyRooms.get(oldInfo.familyId);
         if (oldRoom) oldRoom.delete(sender);
+        const currentSocket = deviceSockets.get(oldInfo.deviceId);
+        if (currentSocket === sender) {
+          deviceSockets.delete(oldInfo.deviceId);
+        }
       }
 
       // Join family room
@@ -224,6 +275,7 @@ function handleMessage(sender, message) {
 
       room.add(sender);
       clientInfo.set(sender, { familyId, deviceId });
+      deviceSockets.set(deviceId, sender);
 
       console.log(`[identity] Device "${deviceId}" joined family "${familyId}" (${room.size} clients in room)`);
 

@@ -44,6 +44,7 @@ export class SyncManager {
   private observedDocs = new Map<string, () => void>(); // cleanup functions
   private encryptionKey: Uint8Array | null = null;
   private ready = false;
+  private isHydrating = false;
 
   /**
    * Initialise the sync manager.
@@ -79,6 +80,9 @@ export class SyncManager {
     const observer = (updates: Uint8Array, origin: any) => {
       // Ignore updates we applied locally (origin is non-null for remote)
       if (origin === 'remote') return;
+
+      // Skip observer during hydration to prevent spurious DB writes
+      if (this.isHydrating) return;
 
       // Send update via WebSocket
       if (this.wsClient) {
@@ -179,11 +183,16 @@ export class SyncManager {
    * Called on app start.
    */
   async hydrateFromDB(encryptionKey: Uint8Array): Promise<void> {
-    const lists = await loadListsFromDB(encryptionKey);
-    for (const list of lists) {
-      const items = await loadItemsFromDB(encryptionKey);
-      const listItems = items.filter((item) => item.listId === list.id);
-      hydrateList(list.id, list, listItems);
+    this.isHydrating = true;
+    try {
+      const lists = await loadListsFromDB(encryptionKey);
+      const allItems = await loadItemsFromDB(encryptionKey);
+      for (const list of lists) {
+        const listItems = allItems.filter((item) => item.listId === list.id);
+        hydrateList(list.id, list, listItems);
+      }
+    } finally {
+      this.isHydrating = false;
     }
   }
 

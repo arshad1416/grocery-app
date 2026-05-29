@@ -93,7 +93,7 @@ export interface FamilyMember {
  */
 export interface EncryptedData {
   ciphertext: string;
-  iv: string;       // base64-encoded IV (12 bytes, 96-bit, standard for GCM)
+  iv: string;       // base64-encoded IV (24 bytes, 192-bit nonce for XChaCha20-Poly1305)
   tag: string;      // base64-encoded auth tag (16 bytes, 128-bit GCM tag)
 }
 
