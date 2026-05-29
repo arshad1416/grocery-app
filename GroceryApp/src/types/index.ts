@@ -1,0 +1,139 @@
+// ─── Core Data Models ───────────────────────────────────────────────────────
+
+export type SyncStatus = 'created' | 'updated' | 'deleted' | 'synced';
+
+/**
+ * Extensible category system.
+ * Built-in categories are provided as constants, but users can define custom ones.
+ * The type is `string` so new categories can be added without code changes.
+ */
+export const BUILT_IN_CATEGORIES = [
+  'produce',
+  'dairy',
+  'meat',
+  'bakery',
+  'frozen',
+  'pantry',
+  'beverages',
+  'other',
+] as const;
+
+export type BuiltInCategory = (typeof BUILT_IN_CATEGORIES)[number];
+
+/**
+ * Grocery category — accepts built-in or user-defined category strings.
+ * This allows extensibility without modifying types.
+ */
+export type GroceryCategory = string;
+
+export interface GroceryItem {
+  id: string;
+  listId: string;
+  familyId: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  category: GroceryCategory;
+  isChecked: boolean;
+  addedBy: string;          // family member id
+  assignedTo?: string;      // family member id
+  notes?: string;
+  sortOrder: number;
+  // Soft delete & version fields (sync)
+  isDeleted: boolean;
+  deletedAt: number | null;
+  version: number;
+  syncStatus: SyncStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface GroceryList {
+  id: string;
+  familyId: string;
+  name: string;
+  description?: string;
+  storePreference?: string;
+  isActive: boolean;
+  // Soft delete fields (consistent with GroceryItem)
+  isDeleted: boolean;
+  deletedAt: number | null;
+  // Sync fields
+  version: number;
+  syncStatus: SyncStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface FamilyMember {
+  id: string;
+  familyId: string;
+  displayName: string;
+  avatarUrl?: string;
+  role: 'admin' | 'editor' | 'viewer';
+  isActive: boolean;
+  // Soft delete fields (consistent with GroceryItem)
+  isDeleted: boolean;
+  deletedAt: number | null;
+  // Sync fields
+  version: number;
+  syncStatus: SyncStatus;
+  joinedAt: number;
+  updatedAt: number;
+}
+
+// ─── Encryption Types ────────────────────────────────────────────────────────
+
+/**
+ * Encrypted data envelope.
+ *
+ * NOTE: `salt` is NOT stored here — it is only used during key derivation
+ * (setupMasterKey / verifyAndGetMasterKey) and persisted in expo-secure-store.
+ * Each encryption call generates a unique IV, stored alongside the ciphertext.
+ */
+export interface EncryptedData {
+  ciphertext: string;
+  iv: string;       // base64-encoded IV (12 bytes, 96-bit, standard for GCM)
+  tag: string;      // base64-encoded auth tag (16 bytes, 128-bit GCM tag)
+}
+
+// ─── Sync Types ──────────────────────────────────────────────────────────────
+
+export interface SyncPayload<T> {
+  changes: T[];
+  lastSyncedAt: number;
+  deviceId: string;
+}
+
+export interface SyncResult {
+  success: boolean;
+  serverVersion: number;
+  conflicts: SyncConflict[];
+}
+
+export interface SyncConflict {
+  localId: string;
+  remoteId: string;
+  localVersion: number;
+  remoteVersion: number;
+  resolution: 'local_wins' | 'remote_wins';
+}
+
+// ─── Store Types ─────────────────────────────────────────────────────────────
+
+export type SyncState = 'idle' | 'syncing' | 'error' | 'offline';
+
+// ─── Field Encryption Contexts ───────────────────────────────────────────────
+
+/**
+ * AAD contexts binding ciphertext to specific fields.
+ * Prevents ciphertext re-use across different fields.
+ */
+export const FIELD_CONTEXTS = {
+  GROCERY_ITEM_NAME: 'grocery_item.name',
+  GROCERY_ITEM_NOTES: 'grocery_item.notes',
+  GROCERY_LIST_NAME: 'grocery_list.name',
+  GROCERY_LIST_DESCRIPTION: 'grocery_list.description',
+  GROCERY_LIST_STORE_PREFERENCE: 'grocery_list.store_preference',
+  FAMILY_MEMBER_DISPLAY_NAME: 'family_member.display_name',
+} as const;

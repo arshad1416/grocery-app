@@ -1,0 +1,276 @@
+/**
+ * Encryption layer using libsodium-wrappers (XChaCha20-Poly1305 AEAD + Argon2id KDF).
+ *
+ * Design:
+ *  - Master key derived from family passphrase via libsodium crypto_pwhash (Argon2id,
+ *    OPSLIMIT_MODERATE / MEMLIMIT_MODERATE), replacing the previous PBKDF2-HMAC-SHA256.
+ *  - Master key stored in expo-secure-store (passphrase NEVER stored)
+ *  - Each encryption uses XChaCha20-Poly1305 with a fresh random nonce
+ *  - Ciphertext, nonce, and auth tag stored together via EncryptedData envelope
+ *  - AAD (Additional Authenticated Data) binds each ciphertext to its field context,
+ *    supported natively by libsodium's AEAD interface
+ *  - UUID v4 generated via libsodium's randombytes_buf for crypto-safe randomness
+ *  - Constant-time passphrase verification via sodium_memcmp
+ */
+
+import * as SecureStore from 'expo-secure-store';
+import sodium from 'libsodium-wrappers';
+
+import type { EncryptedData } from '../types';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const KEY_LENGTH_BYTES = sodium.crypto_aead_xchacha20poly1305_ietf_KEYBYTES; // 32
+const NONCE_LENGTH_BYTES = sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES; // 24
+const ABYTES = sodium.crypto_aead_xchacha20poly1305_ietf_ABYTES; // 16 (auth tag)
+const SALT_LENGTH_BYTES = 16; // Argon2id salt
+
+const SECURE_STORE_KEY_ALIAS = 'groceryapp.master_key';
+
+// Argon2id parameters (moderate — ~1s on mobile)
+const OPSLIMIT = sodium.crypto_pwhash_OPSLIMIT_MODERATE;
+const MEMLIMIT = sodium.crypto_pwhash_MEMLIMIT_MODERATE;
+
+// ─── Ready / Init ─────────────────────────────────────────────────────────────
+
+let ready = false;
+
+/**
+ * Ensure libsodium is initialised before any operation.
+ * Must be called once at app startup.
+ */
+export async function initCrypto(): Promise<void> {
+  if (!ready) {
+    await sodium.ready;
+    ready = true;
+  }
+}
+
+async function ensureReady(): Promise<void> {
+  if (!ready) {
+    await sodium.ready;
+    ready = true;
+  }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  return sodium.to_base64(bytes, sodium.base64_variants.ORIGINAL);
+}
+
+function base64ToUint8Array(b64: string): Uint8Array {
+  return sodium.from_base64(b64, sodium.base64_variants.ORIGINAL);
+}
+
+// ─── Key Derivation (Argon2id via libsodium crypto_pwhash) ────────────────────
+
+/**
+ * Derive a 256-bit encryption key from a passphrase + salt using Argon2id.
+ *
+ * Uses libsodium's recommended memory-hard KDF:
+ *   crypto_pwhash(keyLen, passwd, salt, opsLimit, memLimit, algo)
+ *
+ * Argon2id resists both side-channel and GPU/ASIC parallel attacks.
+ * OPSLIMIT_MODERATE / MEMLIMIT_MODERATE target ~1 second on mobile devices.
+ */
+export async function deriveKeyFromPassphrase(
+  passphrase: string,
+  salt: Uint8Array,
+): Promise<Uint8Array> {
+  await ensureReady();
+  const normalized = passphrase.normalize('NFKC');
+  const key = sodium.crypto_pwhash(
+    KEY_LENGTH_BYTES,
+    normalized,
+    salt,
+    OPSLIMIT,
+    MEMLIMIT,
+    sodium.crypto_pwhash_ALG_ARGON2ID13,
+  );
+  return key;
+}
+
+/**
+ * Generate a cryptographically random salt (16 bytes).
+ */
+export async function generateSalt(): Promise<Uint8Array> {
+  await ensureReady();
+  return sodium.randombytes_buf(SALT_LENGTH_BYTES);
+}
+
+/**
+ * Generate a cryptographically random nonce (24 bytes for XChaCha20-Poly1305).
+ */
+export async function generateNonce(): Promise<Uint8Array> {
+  await ensureReady();
+  return sodium.randombytes_buf(NONCE_LENGTH_BYTES);
+}
+
+/**
+ * Generate a cryptographically random UUID v4 string using libsodium.
+ */
+export async function generateUUID(): Promise<string> {
+  await ensureReady();
+  // 16 random bytes → format as UUID v4
+  const bytes = sodium.randombytes_buf(16);
+  // Set version (4) and variant bits
+  bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+  bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant RFC 4122
+  const hex = Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+// ─── Encryption / Decryption (XChaCha20-Poly1305) ────────────────────────────
+
+/**
+ * Encrypt plaintext using XChaCha20-Poly1305 with AAD.
+ *
+ * AAD binds the ciphertext to a specific field context (e.g., 'grocery_item.name'),
+ * preventing an attacker from moving ciphertext between fields.
+ *
+ * @param plaintext  - The text to encrypt (UTF-8).
+ * @param key        - 256-bit encryption key as Uint8Array.
+ * @param context    - AAD context string identifying the field being encrypted.
+ * @returns EncryptedData containing ciphertext, nonce, and auth tag (all base64).
+ */
+export async function encrypt(
+  plaintext: string,
+  key: Uint8Array,
+  context?: string,
+): Promise<EncryptedData> {
+  await ensureReady();
+  const nonce = await generateNonce();
+  const additionalData = context ? new TextEncoder().encode(context) : null;
+
+  // libsodium: crypto_aead_xchacha20poly1305_ietf_encrypt
+  // Returns ciphertext + tag concatenated
+  const cipherWithTag = sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
+    plaintext,
+    additionalData,
+    null, // no secret nonce
+    nonce,
+    key,
+  );
+
+  // Split ciphertext and auth tag
+  const ciphertext = cipherWithTag.slice(0, cipherWithTag.length - ABYTES);
+  const tag = cipherWithTag.slice(cipherWithTag.length - ABYTES);
+
+  return {
+    ciphertext: uint8ArrayToBase64(ciphertext),
+    iv: uint8ArrayToBase64(nonce),
+    tag: uint8ArrayToBase64(tag),
+  };
+}
+
+/**
+ * Decrypt ciphertext previously encrypted with `encrypt`.
+ *
+ * Uses the same context string as AAD to verify ciphertext integrity.
+ *
+ * @param data    - EncryptedData envelope.
+ * @param key     - 256-bit encryption key as Uint8Array.
+ * @param context - AAD context string (must match what was used during encryption).
+ * @returns The original plaintext string.
+ */
+export async function decrypt(
+  data: EncryptedData,
+  key: Uint8Array,
+  context?: string,
+): Promise<string> {
+  await ensureReady();
+  const nonce = base64ToUint8Array(data.iv);
+  const tag = base64ToUint8Array(data.tag);
+  const ciphertext = base64ToUint8Array(data.ciphertext);
+  const additionalData = context ? new TextEncoder().encode(context) : null;
+
+  // Recombine ciphertext + tag for libsodium
+  const cipherWithTag = new Uint8Array(ciphertext.length + tag.length);
+  cipherWithTag.set(ciphertext);
+  cipherWithTag.set(tag, ciphertext.length);
+
+  const plaintext = sodium.crypto_aead_xchacha20poly1305_ietf_decrypt(
+    null, // no secret nonce
+    cipherWithTag,
+    additionalData,
+    nonce,
+    key,
+  );
+
+  return new TextDecoder().decode(plaintext);
+}
+
+// ─── Master Key Management ───────────────────────────────────────────────────
+
+/**
+ * Derive and persist the master key from a family passphrase.
+ * The passphrase is NEVER stored on device — only the derived key.
+ */
+export async function setupMasterKey(passphrase: string): Promise<void> {
+  await ensureReady();
+  const salt = await generateSalt();
+  const derivedKey = await deriveKeyFromPassphrase(passphrase, salt);
+  const keyBase64 = uint8ArrayToBase64(derivedKey);
+  const saltBase64 = uint8ArrayToBase64(salt);
+  await SecureStore.setItemAsync(
+    SECURE_STORE_KEY_ALIAS,
+    JSON.stringify({ key: keyBase64, salt: saltBase64 }),
+  );
+}
+
+/**
+ * Retrieve the stored master key. Returns null if not yet set up.
+ */
+export async function getMasterKey(): Promise<Uint8Array | null> {
+  await ensureReady();
+  try {
+    const stored = await SecureStore.getItemAsync(SECURE_STORE_KEY_ALIAS);
+    if (!stored) return null;
+    const { key: keyBase64 } = JSON.parse(stored);
+    return base64ToUint8Array(keyBase64);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Derive master key from passphrase and verify against stored key.
+ * Uses libsodium's sodium_memcmp for constant-time comparison.
+ *
+ * @returns The derived key if passphrase is correct, null otherwise.
+ */
+export async function verifyAndGetMasterKey(
+  passphrase: string,
+): Promise<Uint8Array | null> {
+  await ensureReady();
+  const stored = await SecureStore.getItemAsync(SECURE_STORE_KEY_ALIAS);
+  if (!stored) return null;
+  const { key: storedKeyBase64, salt: saltBase64 } = JSON.parse(stored);
+  const salt = base64ToUint8Array(saltBase64);
+  const derivedKey = await deriveKeyFromPassphrase(passphrase, salt);
+  const storedKey = base64ToUint8Array(storedKeyBase64);
+
+  // Constant-time comparison using libsodium's sodium_memcmp
+  const match = sodium.memcmp(derivedKey, storedKey);
+  if (!match) {
+    return null; // Wrong passphrase
+  }
+  return derivedKey;
+}
+
+/**
+ * Check if a master key has been set up.
+ */
+export async function hasMasterKey(): Promise<boolean> {
+  return (await getMasterKey()) !== null;
+}
+
+/**
+ * Clear the master key from secure storage (e.g. on family reset).
+ */
+export async function clearMasterKey(): Promise<void> {
+  await SecureStore.deleteItemAsync(SECURE_STORE_KEY_ALIAS);
+}
