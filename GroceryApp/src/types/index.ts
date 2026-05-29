@@ -150,6 +150,8 @@ export interface AppSettings {
   managedSubscriptionKey: string;
   localAiEndpoint: string;
   priceServiceEnabled: boolean;
+  /** Opt-in flag for pricing — user must explicitly enable */
+  pricingOptedIn: boolean;
   voiceInputEnabled: boolean;
   barcodeScanningEnabled: boolean;
   // Price subsystem adapter enable states

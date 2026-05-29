@@ -17,6 +17,7 @@ export type RootStackParamList = {
   Pairing: undefined;
   Settings: undefined;
   Invite: { token: string };
+  Recovery: { mode: 'show' | 'recover' } | undefined;
 };
 
 // ─── Deep Link Config ───────────────────────────────────────────────────────

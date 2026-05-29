@@ -231,3 +231,71 @@ export async function clearFamilyMembership(): Promise<void> {
   cachedMembership = null;
   await SecureStore.deleteItemAsync(FAMILY_MEMBERSHIP_ALIAS);
 }
+
+// ─── Social Re-Invite Flow ──────────────────────────────────────────────────
+
+/**
+ * Generate a re-invite token for a replacement device.
+ *
+ * This is the "social recovery" path — an existing family member generates
+ * a new invite token that a replacement device can use to re-join the family.
+ * The re-invite has a longer expiry (7 days) to accommodate real-world delays.
+ *
+ * The token is shared via QR code (same as the original pairing flow).
+ *
+ * @param inviterKeypair - The device keypair of the existing family member.
+ * @param customExpiryMs - Optional custom expiry (default: 7 days).
+ * @returns A FamilyInviteToken with an Ed25519 signature and extended expiry.
+ */
+export async function generateReinvite(
+  inviterKeypair: DeviceKeypair,
+  customExpiryMs?: number,
+): Promise<FamilyInviteToken> {
+  const membership = await getFamilyMembership();
+  if (!membership) {
+    throw new Error(
+      'No family membership found. You must be an active family member to generate a re-invite.',
+    );
+  }
+
+  // Create a new invite with 7-day expiry (or custom)
+  const expiresMs = customExpiryMs ?? MAX_INVITE_AGE_MS; // 7 days
+  return createFamilyInvite(inviterKeypair, Date.now() + expiresMs);
+}
+
+/**
+ * Format a re-invite token as a QR-code-friendly string.
+ * Returns a string that can be encoded in a QR code for scanning.
+ *
+ * @param inviteToken - The FamilyInviteToken to format.
+ * @returns A compact JSON string for QR encoding.
+ */
+export function reinviteToString(inviteToken: FamilyInviteToken): string {
+  return JSON.stringify({
+    action: 'reinvite',
+    familyId: inviteToken.familyId,
+    deviceId: inviteToken.deviceId,
+    expiresAt: inviteToken.expiresAt,
+    signature: inviteToken.signature,
+  });
+}
+
+/**
+ * Parse a re-invite string (from QR code) back into a FamilyInviteToken.
+ *
+ * @param data - The QR code string.
+ * @returns A parsed FamilyInviteToken.
+ * @throws If the data is not a valid re-invite format.
+ */
+export function parseReinviteString(data: string): FamilyInviteToken {
+  const parsed = JSON.parse(data);
+  if (parsed.action !== 'reinvite') {
+    throw new Error('Not a valid re-invite token');
+  }
+  return {
+    familyId: parsed.familyId,
+    deviceId: parsed.deviceId,
+    expiresAt: parsed.expiresAt,
+    signature: parsed.signature,
+  };
+}

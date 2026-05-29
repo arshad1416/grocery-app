@@ -33,6 +33,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   managedSubscriptionKey: '',
   localAiEndpoint: DEFAULT_LOCAL_AI_ENDPOINT,
   priceServiceEnabled: false,
+  pricingOptedIn: false,
   voiceInputEnabled: false,
   barcodeScanningEnabled: false,
 };

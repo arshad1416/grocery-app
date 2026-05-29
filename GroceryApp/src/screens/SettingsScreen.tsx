@@ -159,6 +159,9 @@ export default function SettingsScreen({ navigation }: Props) {
   const [crowdEnabled, setCrowdEnabled] = useState(true);
   const [instacartEnabled, setInstacartEnabled] = useState(true);
   const [scrapingEnabled, setScrapingEnabled] = useState(false);
+  // Pricing opt-in state
+  const [pricingOptedIn, setPricingOptedIn] = useState(false);
+  const [pricingDisclosureShown, setPricingDisclosureShown] = useState(false);
 
   // Load settings on mount
   useEffect(() => {
@@ -166,6 +169,7 @@ export default function SettingsScreen({ navigation }: Props) {
       await initSettings();
       const s = getSettings();
       setSettingsState(s);
+      setPricingOptedIn(s.pricingOptedIn);
       setLoaded(true);
     })();
   }, []);
@@ -361,6 +365,9 @@ export default function SettingsScreen({ navigation }: Props) {
           <Text style={styles.planInfo}>
             Plan: Managed Relay + Encrypted Sync
           </Text>
+          <Text style={styles.tierDescription}>
+            Managed: Price queries are anonymized through our relay. Item names are hashed.
+          </Text>
         </View>
       )}
 
@@ -388,6 +395,43 @@ export default function SettingsScreen({ navigation }: Props) {
           onValueChange={(v) => handleUpdate({ priceServiceEnabled: v })}
         />
 
+        {/* Pricing Opt-In Toggle with Privacy Disclosure */}
+        <ToggleRow
+          label="Pricing Lookups (Opt-In)"
+          value={pricingOptedIn}
+          onValueChange={async (v) => {
+            if (v && !pricingDisclosureShown) {
+              // Show privacy disclosure dialog on first enable
+              setPricingDisclosureShown(true);
+              Alert.alert(
+                'Privacy Disclosure',
+                'Enabling pricing sends anonymized item names to price sources. Your shopping habits are not tracked or stored. You can disable this anytime.',
+                [
+                  { text: 'Cancel', style: 'cancel', onPress: () => {
+                    setPricingDisclosureShown(false);
+                    setPricingOptedIn(false);
+                  }},
+                  {
+                    text: 'Enable',
+                    onPress: async () => {
+                      setPricingOptedIn(true);
+                      await handleUpdate({ pricingOptedIn: true } as any);
+                    },
+                  },
+                ],
+              );
+            } else {
+              setPricingOptedIn(v);
+              await handleUpdate({ pricingOptedIn: v } as any);
+            }
+          }}
+        />
+        {pricingOptedIn && (
+          <Text style={styles.privacyNote}>
+            Item names are normalized and hashed before being sent to price sources.
+          </Text>
+        )}
+
         <ToggleRow
           label="Voice Input"
           value={settings.voiceInputEnabled}
@@ -401,9 +445,55 @@ export default function SettingsScreen({ navigation }: Props) {
         />
       </View>
 
+      {/* ── Security ────────────────────────────────────────────────── */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Security</Text>
+        <Text style={styles.sectionDescription}>
+          Manage your recovery phrase and key backup options.
+        </Text>
+
+        <TouchableOpacity
+          style={styles.securityButton}
+          onPress={() => {
+            Alert.alert(
+              'View Recovery Phrase',
+              'Your recovery phrase gives access to your family data. Only view this in a private setting.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'View Phrase',
+                  onPress: () => navigation.navigate('Recovery', { mode: 'show' }),
+                },
+              ],
+            );
+          }}
+        >
+          <Text style={styles.securityButtonText}>
+            🔐 View Recovery Phrase
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.securityButton, styles.securityButtonSecondary]}
+          onPress={() =>
+            navigation.navigate('Recovery', { mode: 'recover' })
+          }
+        >
+          <Text style={styles.securityButtonTextSecondary}>
+            🔑 Recover from Backup
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {/* ── Pricing Subsystem ──────────────────────────────────────────── */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Pricing</Text>
+
+        {isSelfHosted && (
+          <Text style={styles.pricingNote}>
+            Self-host: All price lookups stay local. No data leaves your network.
+          </Text>
+        )}
 
         <View style={styles.toggleRow}>
           <Text style={styles.toggleLabel}>Crowd-Sourced</Text>
@@ -721,5 +811,47 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#f44336',
     fontWeight: '600',
+  },
+  securityButton: {
+    backgroundColor: '#4CAF50',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  securityButtonSecondary: {
+    backgroundColor: '#FF9800',
+  },
+  securityButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  securityButtonTextSecondary: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  privacyNote: {
+    fontSize: 12,
+    color: '#888',
+    fontStyle: 'italic',
+    marginBottom: 8,
+    marginTop: -4,
+    lineHeight: 16,
+  },
+  tierDescription: {
+    fontSize: 12,
+    color: '#888',
+    fontStyle: 'italic',
+    marginTop: 4,
+    lineHeight: 16,
+  },
+  pricingNote: {
+    fontSize: 12,
+    color: '#4CAF50',
+    fontWeight: '500',
+    marginBottom: 8,
+    lineHeight: 16,
   },
 });

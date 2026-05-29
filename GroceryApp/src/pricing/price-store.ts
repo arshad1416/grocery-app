@@ -3,12 +3,22 @@
  *
  * Manages pricing state: prices keyed by item ID, loading states,
  * and actions to load/submit prices via the adapter registry.
+ *
+ * PRIVACY NOTE: Price queries are batched at the item level. When self-hosted,
+ * all price lookups stay local. When relay is used, queries go through the relay
+ * server which sees only (ciphertext listId, storeId, hashed item names). Item
+ * names are normalized (lowercased, trimmed) before hashing for maximum privacy.
+ *
+ * The pricingOptedIn flag must be true before any price lookups are performed.
+ * This flag is managed via the SettingsScreen with a privacy disclosure dialog
+ * shown on first enable.
  */
 
 import { create } from 'zustand';
 import type { PriceResult, SubmittedPrice } from './types';
 import { priceRegistry } from './registry';
 import { crowdsourcedAdapter } from './crowdsourced';
+import { getSettings } from '../config/settings';
 
 // ─── State Shape ────────────────────────────────────────────────────────────
 
@@ -47,6 +57,13 @@ export const usePriceStore = create<PriceState>((set, get) => ({
   error: null,
 
   loadPrices: async (items, defaultStoreId) => {
+    // Check opt-in flag before making any lookups
+    const settings = getSettings();
+    if (!settings.pricingOptedIn) {
+      set({ isLoading: false, error: null });
+      return;
+    }
+
     set({ isLoading: true, error: null });
 
     try {
@@ -88,6 +105,12 @@ export const usePriceStore = create<PriceState>((set, get) => ({
   },
 
   loadSinglePrice: async (itemId, itemName, storeId) => {
+    // Check opt-in flag before making any lookups
+    const settings = getSettings();
+    if (!settings.pricingOptedIn) {
+      return;
+    }
+
     set((state) => ({
       itemLoading: { ...state.itemLoading, [itemId]: true },
     }));

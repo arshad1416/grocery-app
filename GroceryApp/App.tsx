@@ -30,6 +30,7 @@ import GroceryListScreen from './src/screens/GroceryListScreen';
 import ItemEditScreen from './src/screens/ItemEditScreen';
 import PairingScreen from './src/screens/PairingScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import RecoveryScreen from './src/screens/RecoveryScreen';
 
 // Pricing subsystem
 import { priceRegistry } from './src/pricing/registry';
@@ -196,6 +197,7 @@ export default function App() {
           <Stack.Screen name="ItemEdit" component={ItemEditScreen} />
           <Stack.Screen name="Pairing" component={PairingScreen} />
           <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="Recovery" component={RecoveryScreen} />
           <Stack.Screen name="Invite" component={InviteScreen} />
         </Stack.Navigator>
         <StatusBar style="auto" />

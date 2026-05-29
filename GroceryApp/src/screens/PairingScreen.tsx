@@ -293,6 +293,25 @@ export default function PairingScreen({ navigation, route }: Props) {
         </TouchableOpacity>
       </View>
 
+      {/* ── Recover from Backup ──────────────────────────────────────── */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Lost Your Device?</Text>
+        <Text style={styles.sectionDescription}>
+          If you've lost access to all your devices but have your recovery
+          phrase, you can restore your family key here.
+        </Text>
+        <TouchableOpacity
+          style={styles.recoverButton}
+          onPress={() =>
+            navigation.navigate('Recovery', { mode: 'recover' })
+          }
+        >
+          <Text style={styles.recoverButtonText}>
+            🔑 Recover from Backup
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {/* ── Connection Status ───────────────────────────────────────── */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Status</Text>
@@ -518,6 +537,19 @@ const styles = StyleSheet.create({
   backText: {
     fontSize: 16,
     color: '#4CAF50',
+    fontWeight: '600',
+  },
+  recoverButton: {
+    backgroundColor: '#FF9800',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  recoverButtonText: {
+    color: '#fff',
+    fontSize: 14,
     fontWeight: '600',
   },
 });
