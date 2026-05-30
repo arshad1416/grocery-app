@@ -38,6 +38,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   barcodeScanningEnabled: false,
   flyerScanEnabled: false,
   cloudFlyerEnabled: false,
+  contributeEnabled: false,
+  contributeStoreGranularity: 'region',
+  contributeConsentShown: false,
 };
 
 // ─── Cache ───────────────────────────────────────────────────────────────────

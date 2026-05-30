@@ -37,6 +37,45 @@ export interface ScannedFlyerPrice {
   confidence: number;
 }
 
+// ─── ContributedFlyerPrice (Stage 3 — Anonymous Contribution) ───────────────
+
+/**
+ * An anonymized, minimal flyer price payload sent to the shared price pool.
+ *
+ * PRIVACY CONTRACT:
+ *   - NEVER contains deviceId, familyId, GPS, IP, or fine timestamps
+ *   - `validFromWeek` is an ISO week string (not epoch ms) to prevent
+ *     fingerprinting via scan timing
+ *   - `storeId` is composed as "chain:region" to avoid leaking exact branch
+ *     unless the user explicitly opts in to branch-level granularity
+ */
+export interface ContributedFlyerPrice {
+  /** Composed as "chain:region" (or "chain:branch" if user opts in) */
+  storeId: string;
+  /** Display item name */
+  itemName: string;
+  /** Normalized item name for matching */
+  itemNormalized: string;
+  /** Optional brand name */
+  brand?: string;
+  /** Optional size descriptor (e.g. "2L", "500g") */
+  size?: string;
+  /** Unit of measurement (e.g. "kg", "L", "each") */
+  unit: string;
+  /** Display price */
+  price: number;
+  /** Regular price before sale (if on sale) */
+  regularPrice?: number;
+  /** Normalised unit price */
+  unitPrice: number;
+  /** ISO week string (e.g. "2026-W22") — NOT epoch ms */
+  validFromWeek: string;
+  /** Unix timestamp when the sale ends */
+  validTo: number;
+  /** Flyer week identifier (e.g. "2026-W22") */
+  flyerWeek: string;
+}
+
 // ─── FlyerExtractor Interface ────────────────────────────────────────────────
 
 /**

@@ -42,6 +42,7 @@ import { crowdsourcedAdapter } from '../pricing/crowdsourced';
 import { instacartAdapter } from '../pricing/instacart';
 import { scrapingAdapter } from '../pricing/scraping';
 import QRCode from '../components/QRCode';
+import ContributeConsentModal from '../components/ContributeConsentModal';
 import { useShareInvite } from '../hooks/useShareInvite';
 
 // ─── Segmented Control ───────────────────────────────────────────────────────
@@ -164,6 +165,11 @@ export default function SettingsScreen({ navigation }: Props) {
   // Pricing opt-in state
   const [pricingOptedIn, setPricingOptedIn] = useState(false);
   const [pricingDisclosureShown, setPricingDisclosureShown] = useState(false);
+  // Contribution state (Stage 3)
+  const [contributeEnabled, setContributeEnabled] = useState(false);
+  const [contributeStoreGranularity, setContributeStoreGranularity] = useState<'region' | 'branch'>('region');
+  const [contributeConsentShown, setContributeConsentShown] = useState(false);
+  const [showContributeConsent, setShowContributeConsent] = useState(false);
 
   const { shareInvite } = useShareInvite();
 
@@ -174,6 +180,9 @@ export default function SettingsScreen({ navigation }: Props) {
       const s = getSettings();
       setSettingsState(s);
       setPricingOptedIn(s.pricingOptedIn);
+      setContributeEnabled(s.contributeEnabled ?? false);
+      setContributeStoreGranularity(s.contributeStoreGranularity ?? 'region');
+      setContributeConsentShown(s.contributeConsentShown ?? false);
       setLoaded(true);
     })();
   }, []);
@@ -503,6 +512,36 @@ export default function SettingsScreen({ navigation }: Props) {
           </Text>
         )}
 
+        <ToggleRow
+          label="Use community flyer prices"
+          value={settings.cloudFlyerEnabled ?? false}
+          onValueChange={(v) => handleUpdate({ cloudFlyerEnabled: v })}
+        />
+        {settings.cloudFlyerEnabled && (
+          <Text style={styles.privacyNote}>
+            Prices from the community flyer pool — anonymized and aggregated.
+          </Text>
+        )}
+
+        <ToggleRow
+          label="Contribute my scans"
+          value={contributeEnabled}
+          onValueChange={async (v) => {
+            if (v && !contributeConsentShown) {
+              // Show consent modal on first enable
+              setShowContributeConsent(true);
+            } else {
+              setContributeEnabled(v);
+              await handleUpdate({ contributeEnabled: v } as any);
+            }
+          }}
+        />
+        {contributeEnabled && (
+          <Text style={styles.privacyNote}>
+            Anonymized scan prices are shared to help others. Your identity is never included.
+          </Text>
+        )}
+
         <View style={styles.toggleRow}>
           <Text style={styles.toggleLabel}>Crowd-Sourced</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -595,6 +634,32 @@ export default function SettingsScreen({ navigation }: Props) {
       </View>
 
       <View style={styles.bottomSpacer} />
+
+      {/* ── Contribute Consent Modal ──────────────────────────────── */}
+      <ContributeConsentModal
+        visible={showContributeConsent}
+        onConfirm={async (granularity) => {
+          setContributeStoreGranularity(granularity);
+          setContributeConsentShown(true);
+          setContributeEnabled(true);
+          setShowContributeConsent(false);
+          await handleUpdate({
+            contributeEnabled: true,
+            contributeStoreGranularity: granularity,
+            contributeConsentShown: true,
+          } as any);
+        }}
+        onCancel={() => {
+          setShowContributeConsent(false);
+          setContributeConsentShown(true);
+          handleUpdate({ contributeConsentShown: true } as any);
+        }}
+        onSkip={() => {
+          setShowContributeConsent(false);
+          setContributeConsentShown(true);
+          handleUpdate({ contributeConsentShown: true } as any);
+        }}
+      />
     </ScrollView>
   );
 }

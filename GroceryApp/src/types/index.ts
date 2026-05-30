@@ -169,6 +169,13 @@ export interface AppSettings {
   flyerScanEnabled?: boolean;
   // Cloud flyer pool opt-in
   cloudFlyerEnabled?: boolean;
+  // Anonymous contribution (Stage 3)
+  /** Opt-in: submit anonymized scan prices to the shared pool */
+  contributeEnabled?: boolean;
+  /** Granularity of store identifier in contributed prices */
+  contributeStoreGranularity?: 'region' | 'branch';
+  /** Whether the consent modal has been shown to the user */
+  contributeConsentShown?: boolean;
 }
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
