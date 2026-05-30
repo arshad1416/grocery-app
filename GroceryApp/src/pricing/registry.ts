@@ -126,8 +126,9 @@ class PriceRegistry {
   private sortByTier(): void {
     const tierOrder: Record<string, number> = {
       official: 0,
-      crowd: 1,
-      scraping: 2,
+      flyer: 1,
+      crowd: 2,
+      scraping: 3,
     };
     this.adapters.sort(
       (a, b) => (tierOrder[a.tier] ?? 99) - (tierOrder[b.tier] ?? 99),

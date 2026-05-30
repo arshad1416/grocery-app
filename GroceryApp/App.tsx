@@ -38,6 +38,7 @@ import { priceRegistry } from './src/pricing/registry';
 import { crowdsourcedAdapter } from './src/pricing/crowdsourced';
 import { instacartAdapter } from './src/pricing/instacart';
 import { scrapingAdapter } from './src/pricing/scraping';
+import { flyerScanAdapter } from './src/pricing/flyer-scan';
 
 // ─── Stack Navigator ─────────────────────────────────────────────────────────
 
@@ -96,6 +97,7 @@ export default function App() {
           // Still initialise pricing subsystem
           priceRegistry.registerAdapter(crowdsourcedAdapter);
           priceRegistry.registerAdapter(scrapingAdapter);
+          priceRegistry.registerAdapter(flyerScanAdapter);
           if (settings.hostingTier === 'managed') {
             priceRegistry.registerAdapter(instacartAdapter);
           }
@@ -146,6 +148,7 @@ export default function App() {
         // Step 7: Initialise pricing subsystem
         priceRegistry.registerAdapter(crowdsourcedAdapter);
         priceRegistry.registerAdapter(scrapingAdapter);
+        priceRegistry.registerAdapter(flyerScanAdapter);
         // Register Instacart adapter only if managed tier
         if (settings.hostingTier === 'managed') {
           priceRegistry.registerAdapter(instacartAdapter);

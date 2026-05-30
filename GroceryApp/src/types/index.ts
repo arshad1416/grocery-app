@@ -165,6 +165,8 @@ export interface AppSettings {
   instacartApiKey?: string;
   // Scraping tier opt-in (self-host only)
   scrapingEnabled?: boolean;
+  // Flyer scan opt-in
+  flyerScanEnabled?: boolean;
 }
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';

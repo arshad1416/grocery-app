@@ -29,6 +29,7 @@ const SOURCE_COLORS: Record<string, string> = {
   crowdsourced: '#FF9800',
   instacart: '#4CAF50',
   scraping: '#9C27B0',
+  'flyer-scan': '#2196F3',
 };
 
 // ─── Shimmer / Skeleton ────────────────────────────────────────────────────
@@ -65,7 +66,9 @@ export default function PriceBadge({ price, isLoading }: PriceBadgeProps) {
         ? 'Instacart'
         : source.adapterId === 'scraping'
           ? 'Scrape'
-          : source.adapterId;
+          : source.adapterId === 'flyer-scan'
+            ? 'Flyer'
+            : source.adapterId;
 
   // Format the unit price using the normalizer
   const displayUnit = price.displayUnit ?? '/' + price.unit;

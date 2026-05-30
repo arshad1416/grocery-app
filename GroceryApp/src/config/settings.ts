@@ -36,6 +36,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   pricingOptedIn: false,
   voiceInputEnabled: false,
   barcodeScanningEnabled: false,
+  flyerScanEnabled: false,
 };
 
 // ─── Cache ───────────────────────────────────────────────────────────────────

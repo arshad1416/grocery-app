@@ -5,7 +5,7 @@
  * sale detection, and crowd-sourced price submissions.
  */
 
-export type PriceSourceTier = 'official' | 'crowd' | 'scraping';
+export type PriceSourceTier = 'official' | 'flyer' | 'crowd' | 'scraping';
 
 export type ConfidenceLevel = 'real_time' | 'recent' | 'stale' | 'estimated';
 
