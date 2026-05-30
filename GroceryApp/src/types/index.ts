@@ -178,8 +178,6 @@ export interface AppSettings {
   contributeConsentShown?: boolean;
   /** Separate pool server URL for contribution transport isolation */
   poolUrl?: string;
-  /** Token issuer URL for blind-signed contribution tokens */
-  tokenIssuerUrl?: string;
 }
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';

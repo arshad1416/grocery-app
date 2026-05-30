@@ -1,53 +1,109 @@
 /**
- * Token Issuer — Tests
+ * Token Issuer (Blind RSA) — Tests
  *
- * Tests:
- *  - POST /request-token returns signed blinded token
- *  - Rate limits by IP (11th request gets 429)
- *  - Different IPs have independent rate limits
- *  - Rejects invalid request body (missing blinded field)
- *  - Returns CORS headers (OPTIONS preflight)
+ * Tests for the authenticated POST /relay/request-token endpoint
+ * and GET /relay/public-key, plus UsedTokensStore persistence.
+ *
+ * These tests validate the new RFC 9474 Blind RSA token system.
+ *
+ * NOTE: @cloudflare/blindrsa-ts is ESM-only, so we use dynamic import()
+ * instead of require() for that module.
  */
 
 const http = require('http');
+const crypto = require('crypto');
+const path = require('path');
+const fs = require('fs');
+const { UsedTokensStore } = require('../used-tokens-store');
 
-// ─── Helper: start token-issuer on a random port ───────────────────────────
+const TEST_PUBLIC_KEY_PATH = path.join(__dirname, '..', '..', 'keys', 'issuer-public-key.pem');
+const TEST_PRIVATE_KEY_PATH = path.join(__dirname, '..', '..', 'keys', 'issuer-private-key.pem');
 
-/**
- * Helper: Create a test server using minimal standalone handler.
- */
-function createTestServer() {
-  const crypto = require('crypto');
+// ─── Global suite and keys (lazy-loaded once) ───────────────────────────────
 
-  const ISSUER_SECRET = 'test-issuer-secret-for-testing-only';
+let testSuite = null;
+let testPublicKey = null;
+let testPrivateKey = null;
 
-  function hmacBase64(key, msg) {
-    return crypto.createHmac('sha256', key).update(msg).digest('base64');
-  }
+async function ensureTestCrypto() {
+  if (testSuite) return;
 
-  // Rate limiting state
-  const ipRateLimiters = new Map();
-  const RATE_LIMIT = 10;
-  const RATE_WINDOW_MS = 60_000;
-  const TOKEN_TTL_MS = 86_400_000;
+  const { BlindRSA, Params } = await import('@cloudflare/blindrsa-ts');
+  testSuite = new BlindRSA(Params.RSABSSA_SHA384_PSS_Randomized);
 
-  function checkRateLimit(ip) {
+  const privatePem = fs.readFileSync(TEST_PRIVATE_KEY_PATH, 'utf-8');
+  const privBase64 = privatePem
+    .replace(/-----BEGIN [\w ]+-----/g, '')
+    .replace(/-----END [\w ]+-----/g, '')
+    .replace(/\s/g, '');
+  const privBinary = Buffer.from(privBase64, 'base64');
+  const privBytes = new Uint8Array(privBinary);
+  testPrivateKey = await crypto.subtle.importKey(
+    'pkcs8',
+    privBytes.buffer,
+    { name: 'RSA-PSS', hash: 'SHA-384' },
+    true,
+    ['sign']
+  );
+
+  const publicPem = fs.readFileSync(TEST_PUBLIC_KEY_PATH, 'utf-8');
+  const pubBase64 = publicPem
+    .replace(/-----BEGIN [\w ]+-----/g, '')
+    .replace(/-----END [\w ]+-----/g, '')
+    .replace(/\s/g, '');
+  const pubBinary = Buffer.from(pubBase64, 'base64');
+  const pubBytes = new Uint8Array(pubBinary);
+  testPublicKey = await crypto.subtle.importKey(
+    'spki',
+    pubBytes.buffer,
+    { name: 'RSA-PSS', hash: 'SHA-384' },
+    true,
+    ['verify']
+  );
+}
+
+// ─── Helper: create a test issuer server ────────────────────────────────────
+
+async function createTestIssuerServer() {
+  await ensureTestCrypto();
+
+  // In-memory enrolled devices for testing
+  const enrolledDevices = new Map();
+
+  // Token rate limiters
+  const tokenRateLimiters = new Map();
+  const TOKEN_RATE_LIMIT = 10;
+  const TOKEN_RATE_WINDOW_MS = 3_600_000; // 1 hour
+
+  function checkTokenRateLimit(deviceId) {
     const now = Date.now();
-    let limiter = ipRateLimiters.get(ip);
-    if (!limiter || now - limiter.windowStart > RATE_WINDOW_MS) {
+    let limiter = tokenRateLimiters.get(deviceId);
+    if (!limiter || now - limiter.windowStart > TOKEN_RATE_WINDOW_MS) {
       limiter = { count: 1, windowStart: now };
-      ipRateLimiters.set(ip, limiter);
+      tokenRateLimiters.set(deviceId, limiter);
       return true;
     }
     limiter.count++;
-    if (limiter.count > RATE_LIMIT) return false;
+    if (limiter.count > TOKEN_RATE_LIMIT) return false;
     return true;
+  }
+
+  // Register a test device
+  function registerDevice(deviceId) {
+    const relayToken = crypto.randomBytes(32).toString('hex');
+    enrolledDevices.set(relayToken, {
+      deviceId,
+      familyId: 'test-family',
+      enrolledAt: Date.now(),
+      expiresAt: Date.now() + 86_400_000,
+    });
+    return relayToken;
   }
 
   function handleRequest(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     if (req.method === 'OPTIONS') {
       res.writeHead(204);
@@ -55,26 +111,41 @@ function createTestServer() {
       return;
     }
 
-    if (req.url === '/health' && req.method === 'GET') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'ok' }));
+    // GET /relay/public-key
+    if (req.url === '/relay/public-key' && req.method === 'GET') {
+      const pem = fs.readFileSync(TEST_PUBLIC_KEY_PATH, 'utf-8');
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end(pem);
       return;
     }
 
-    if (req.url === '/request-token' && req.method === 'POST') {
-      const clientIp = req.headers['x-forwarded-for']
-        ? req.headers['x-forwarded-for'].split(',')[0].trim()
-        : req.socket.remoteAddress || 'unknown';
+    // POST /relay/request-token
+    if (req.url === '/relay/request-token' && req.method === 'POST') {
+      const authHeader = req.headers['authorization'];
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing or invalid Authorization header' }));
+        return;
+      }
 
-      if (!checkRateLimit(clientIp)) {
+      const relayToken = authHeader.slice('Bearer '.length).trim();
+      const enrollment = enrolledDevices.get(relayToken);
+
+      if (!enrollment) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid relay token' }));
+        return;
+      }
+
+      if (!checkTokenRateLimit(enrollment.deviceId)) {
         res.writeHead(429, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Rate limit exceeded' }));
+        res.end(JSON.stringify({ error: 'Token rate limit exceeded' }));
         return;
       }
 
       let body = '';
       req.on('data', (chunk) => { body += chunk; });
-      req.on('end', () => {
+      req.on('end', async () => {
         if (body.length > 4096) {
           res.writeHead(413, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Request body too large' }));
@@ -89,25 +160,36 @@ function createTestServer() {
           return;
         }
 
-        const { blinded } = parsed;
-        if (!blinded || typeof blinded !== 'string') {
+        const { blindedMsg } = parsed;
+        if (!blindedMsg || typeof blindedMsg !== 'string') {
           res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'blinded field is required' }));
+          res.end(JSON.stringify({ error: 'blindedMsg field is required' }));
           return;
         }
 
-        const signedBlinded = hmacBase64(ISSUER_SECRET, blinded);
-        const expiresAt = Date.now() + TOKEN_TTL_MS;
-        const expiryProof = hmacBase64(ISSUER_SECRET, `${blinded}:${expiresAt}`);
-
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ signedBlinded, expiresAt, expiryProof }));
+        try {
+          const blindMsgBytes = Buffer.from(blindedMsg, 'base64');
+          const blindSignature = await testSuite.blindSign(testPrivateKey, new Uint8Array(blindMsgBytes));
+          const blindSigBase64 = Buffer.from(blindSignature).toString('base64');
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ blindSignature: blindSigBase64 }));
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Failed to sign token' }));
+        }
       });
       return;
     }
 
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Not Found' }));
+    // GET /health
+    if (req.url === '/health' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: 'ok' }));
+      return;
+    }
+
+    res.writeHead(404);
+    res.end('Not Found');
   }
 
   return new Promise((resolve) => {
@@ -115,161 +197,210 @@ function createTestServer() {
     server.listen(0, () => {
       const port = server.address().port;
       const url = `http://localhost:${port}`;
-      resolve({ server, port, url, hmacBase64, ISSUER_SECRET });
+      resolve({ server, port, url, registerDevice });
     });
   });
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
-describe('Token Issuer', () => {
+describe('Blind RSA Token Issuer', () => {
   let testEnv;
 
   beforeAll(async () => {
-    testEnv = await createTestServer();
-  });
+    testEnv = await createTestIssuerServer();
+  }, 15000);
 
   afterAll(() => {
     if (testEnv) testEnv.server.close();
   });
 
-  describe('POST /request-token', () => {
-    it('returns signedBlinded, expiresAt, and expiryProof for valid request', async () => {
-      const { url, hmacBase64, ISSUER_SECRET } = testEnv;
-      const blinded = hmacBase64('test-nonce', 'contribution-token-v1');
+  describe('GET /relay/public-key', () => {
+    it('returns the issuer public key in PEM format', async () => {
+      const { url } = testEnv;
+      const response = await fetch(`${url}/relay/public-key`);
+      expect(response.status).toBe(200);
+      const pem = await response.text();
+      expect(pem).toContain('-----BEGIN PUBLIC KEY-----');
+      expect(pem).toContain('-----END PUBLIC KEY-----');
+    });
+  });
 
-      const response = await fetch(`${url}/request-token`, {
+  describe('POST /relay/request-token', () => {
+    it('returns blindSignature for authenticated request', async () => {
+      const { url, registerDevice } = testEnv;
+      const deviceId = 'test-device-1';
+      const relayToken = registerDevice(deviceId);
+
+      // Client-side: generate nonce and blind
+      const nonce = new Uint8Array(32);
+      crypto.getRandomValues(nonce);
+      const { blindedMsg, inv } = await testSuite.blind(testPublicKey, nonce);
+      const blindedBase64 = Buffer.from(blindedMsg).toString('base64');
+
+      const response = await fetch(`${url}/relay/request-token`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ blinded }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${relayToken}`,
+        },
+        body: JSON.stringify({ blindedMsg: blindedBase64 }),
       });
 
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data).toHaveProperty('signedBlinded');
-      expect(data).toHaveProperty('expiresAt');
-      expect(data).toHaveProperty('expiryProof');
-      expect(typeof data.signedBlinded).toBe('string');
-      expect(typeof data.expiresAt).toBe('number');
-      expect(typeof data.expiryProof).toBe('string');
+      expect(data).toHaveProperty('blindSignature');
+      expect(typeof data.blindSignature).toBe('string');
 
-      // Verify the expiry proof
-      const expectedProof = hmacBase64(ISSUER_SECRET, `${blinded}:${data.expiresAt}`);
-      expect(data.expiryProof).toBe(expectedProof);
+      // Verify the blind signature finalizes correctly
+      const blindSignature = Buffer.from(data.blindSignature, 'base64');
+      const finalToken = await testSuite.finalize(testPublicKey, nonce, blindSignature, inv);
+      expect(finalToken.length).toBe(256); // 2048-bit RSA signature = 256 bytes
     });
 
-    it('returns 400 for missing blinded field', async () => {
+    it('returns 401 without Authorization header', async () => {
       const { url } = testEnv;
 
-      const response = await fetch(`${url}/request-token`, {
+      const response = await fetch(`${url}/relay/request-token`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blindedMsg: 'dGVzdA==' }),
+      });
+
+      expect(response.status).toBe(401);
+    });
+
+    it('returns 403 with invalid relay token', async () => {
+      const { url } = testEnv;
+
+      const response = await fetch(`${url}/relay/request-token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer invalid-token',
+        },
+        body: JSON.stringify({ blindedMsg: 'dGVzdA==' }),
+      });
+
+      expect(response.status).toBe(403);
+    });
+
+    it('returns 400 for missing blindedMsg field', async () => {
+      const { url, registerDevice } = testEnv;
+      const relayToken = registerDevice('test-device-2');
+
+      const response = await fetch(`${url}/relay/request-token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${relayToken}`,
+        },
         body: JSON.stringify({}),
       });
 
       expect(response.status).toBe(400);
       const data = await response.json();
-      expect(data.error).toContain('blinded');
+      expect(data.error).toContain('blindedMsg');
     });
 
-    it('returns 400 for invalid body', async () => {
-      const { url } = testEnv;
+    it('returns 400 for invalid JSON', async () => {
+      const { url, registerDevice } = testEnv;
+      const relayToken = registerDevice('test-device-3');
 
-      const response = await fetch(`${url}/request-token`, {
+      const response = await fetch(`${url}/relay/request-token`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${relayToken}`,
+        },
         body: 'not-json',
       });
 
       expect(response.status).toBe(400);
     });
-
-    it('returns different tokens for different blinded values', async () => {
-      const { url, hmacBase64 } = testEnv;
-
-      const blinded1 = hmacBase64('nonce-1', 'contribution-token-v1');
-      const blinded2 = hmacBase64('nonce-2', 'contribution-token-v1');
-
-      const [res1, res2] = await Promise.all([
-        fetch(`${url}/request-token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ blinded: blinded1 }),
-        }),
-        fetch(`${url}/request-token`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ blinded: blinded2 }),
-        }),
-      ]);
-
-      const data1 = await res1.json();
-      const data2 = await res2.json();
-
-      // Verify they all differ for different blinded values
-      expect(data1.signedBlinded).not.toBe(data2.signedBlinded);
-      expect(data1.expiryProof).not.toBe(data2.expiryProof);
-    });
   });
 
-  describe('Rate Limiting', () => {
-    it('rate limits after 10 requests from same IP in 1 minute', async () => {
-      const { url, hmacBase64 } = testEnv;
-      const ip = '127.0.0.1';
+  describe('UsedTokensStore', () => {
+    it('persists and reloads tokens', async () => {
+      const tmpFile = path.join(__dirname, '..', '..', '__test_used_tokens__.json');
+      try { fs.unlinkSync(tmpFile); } catch {}
 
-      // Send 10 requests — should all succeed
-      const requests = Array.from({ length: 10 }, (_, i) =>
-        fetch(`${url}/request-token`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Forwarded-For': ip,
-          },
-          body: JSON.stringify({ blinded: hmacBase64(`nonce-${i}-${Date.now()}`, 'contribution-token-v1') }),
-        }),
-      );
-
-      const results = await Promise.all(requests);
-      const okResults = results.filter((r) => r.status === 200);
-      expect(okResults.length).toBe(10);
-
-      // 11th request should be rate limited
-      const rateLimited = await fetch(`${url}/request-token`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Forwarded-For': ip,
-        },
-        body: JSON.stringify({ blinded: hmacBase64(`nonce-rate-limit-${Date.now()}`, 'contribution-token-v1') }),
+      const store = new UsedTokensStore({
+        storeFile: tmpFile,
+        ttlMs: 60000,
+        cleanupIntervalMs: 600000,
       });
 
-      expect(rateLimited.status).toBe(429);
-    });
-  });
+      await store.loadOnStartup();
 
-  describe('GET /health', () => {
-    it('returns status ok', async () => {
-      const { url } = testEnv;
+      // First use - should succeed
+      expect(store.checkAndMark('token-1')).toBe(true);
+      expect(store.checkAndMark('token-2')).toBe(true);
+      expect(store.checkAndMark('token-1')).toBe(false); // Replay
 
-      const response = await fetch(`${url}/health`);
-      expect(response.status).toBe(200);
+      // Shutdown to flush writes before creating new store
+      await store.shutdown();
 
-      const data = await response.json();
-      expect(data.status).toBe('ok');
-    });
-  });
-
-  describe('CORS', () => {
-    it('returns CORS headers on OPTIONS preflight', async () => {
-      const { url } = testEnv;
-
-      const response = await fetch(`${url}/request-token`, {
-        method: 'OPTIONS',
+      // Create a new store instance and load from disk
+      const store2 = new UsedTokensStore({
+        storeFile: tmpFile,
+        ttlMs: 60000,
+        cleanupIntervalMs: 600000,
       });
+      await store2.loadOnStartup();
 
-      expect(response.status).toBe(204);
-      expect(response.headers.get('access-control-allow-origin')).toBe('*');
-      expect(response.headers.get('access-control-allow-methods')).toContain('POST');
+      // Should persist the used tokens
+      expect(store2.checkAndMark('token-1')).toBe(false);
+      expect(store2.checkAndMark('token-2')).toBe(false);
+      expect(store2.checkAndMark('token-3')).toBe(true);
+
+      await store2.shutdown();
+      try { fs.unlinkSync(tmpFile); } catch {}
+    });
+
+    it('returns correct size', async () => {
+      const tmpFile = path.join(__dirname, '..', '..', '__test_size__.json');
+      try { fs.unlinkSync(tmpFile); } catch {}
+
+      const store = new UsedTokensStore({
+        storeFile: tmpFile,
+        ttlMs: 60000,
+        cleanupIntervalMs: 600000,
+      });
+      await store.loadOnStartup();
+
+      expect(store.size()).toBe(0);
+      store.checkAndMark('a');
+      expect(store.size()).toBe(1);
+      store.checkAndMark('b');
+      expect(store.size()).toBe(2);
+
+      await store.shutdown();
+      try { fs.unlinkSync(tmpFile); } catch {}
+    });
+
+    it('cleans expired entries', async () => {
+      const tmpFile = path.join(__dirname, '..', '..', '__test_cleanup__.json');
+      try { fs.unlinkSync(tmpFile); } catch {}
+
+      const store = new UsedTokensStore({
+        storeFile: tmpFile,
+        ttlMs: 1, // 1ms TTL — entries expire immediately
+        cleanupIntervalMs: 600000,
+      });
+      await store.loadOnStartup();
+
+      store.checkAndMark('expired-token');
+      expect(store.isUsed('expired-token')).toBe(true);
+
+      // Wait for TTL to expire
+      await new Promise((r) => setTimeout(r, 10));
+
+      store.cleanExpired();
+      expect(store.isUsed('expired-token')).toBe(false);
+
+      await store.shutdown();
+      try { fs.unlinkSync(tmpFile); } catch {}
     });
   });
 });

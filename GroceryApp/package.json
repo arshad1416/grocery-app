@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
+    "@cloudflare/blindrsa-ts": "^0.4.4",
     "@nozbe/watermelondb": "^0.28.0",
     "@react-navigation/native": "^7.2.5",
     "@react-navigation/native-stack": "^7.16.0",

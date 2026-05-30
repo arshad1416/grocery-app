@@ -6,9 +6,10 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "test": "jest --forceExit"
+    "test": "NODE_OPTIONS=--experimental-vm-modules npx jest --forceExit"
   },
   "dependencies": {
+    "@cloudflare/blindrsa-ts": "^0.4.4",
     "tweetnacl": "^1.0.3",
     "ws": "^8.18.1"
   },

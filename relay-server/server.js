@@ -18,6 +18,121 @@
 const http = require('http');
 const { WebSocketServer } = require('ws');
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+// ─── Blind RSA Token Issuer ──────────────────────────────────────────────────
+
+const { UsedTokensStore } = require('./tokens/used-tokens-store');
+
+/**
+ * Lazy-loaded BlindRSA suite instance and issuer private key.
+ * Loaded asynchronously on first request to /relay/request-token.
+ */
+let _blindRsaSuite = null;
+let _issuerPrivateKey = null;
+
+const ISSUER_PRIVATE_KEY_PATH =
+  process.env.ISSUER_PRIVATE_KEY_PATH || path.join(__dirname, 'keys', 'issuer-private-key.pem');
+const ISSUER_PRIVATE_KEY_PEM = process.env.ISSUER_PRIVATE_KEY || null;
+
+/** Per-device token rate limit: N tokens per hour */
+const TOKEN_RATE_LIMIT = parseInt(process.env.TOKEN_RATE_LIMIT || '10', 10);
+const TOKEN_RATE_WINDOW_MS = 3_600_000; // 1 hour
+
+/**
+ * Map<deviceId, { count: number, windowStart: number }>
+ * Per-device token issuance rate limiters.
+ */
+const tokenRateLimiters = new Map();
+
+/**
+ * Used tokens store for single-use enforcement at the pool level.
+ * Shared with pool-server via handlePoolRequest pass-through.
+ */
+const usedTokensStore = new UsedTokensStore();
+
+/**
+ * Parse a PEM-encoded key to DER bytes (ArrayBuffer).
+ * Strips header/footer lines and base64-decodes.
+ * @param {string} pem
+ * @returns {ArrayBuffer}
+ */
+function pemToDer(pem) {
+  const base64 = pem
+    .replace(/-----BEGIN [\w ]+-----/g, '')
+    .replace(/-----END [\w ]+-----/g, '')
+    .replace(/\s/g, '');
+  const binary = Buffer.from(base64, 'base64');
+  const bytes = new Uint8Array(binary);
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+}
+
+/**
+ * Load (or reload) the BlindRSA suite and issuer private key.
+ */
+async function ensureIssuerLoaded() {
+  if (_blindRsaSuite && _issuerPrivateKey) return;
+
+  const { BlindRSA, Params } = await import('@cloudflare/blindrsa-ts');
+
+  // Create the suite using RSABSSA-SHA384-PSS-Randomized (RFC 9474 standard)
+  const suite = new BlindRSA(Params.RSABSSA_SHA384_PSS_Randomized);
+
+  // Load private key PEM
+  let pemData = ISSUER_PRIVATE_KEY_PEM;
+  if (!pemData) {
+    pemData = fs.readFileSync(ISSUER_PRIVATE_KEY_PATH, 'utf-8');
+  }
+
+  // Parse PEM to DER (raw binary)
+  const derBytes = pemToDer(pemData);
+  const privateKey = await crypto.subtle.importKey(
+    'pkcs8',
+    derBytes,
+    { name: 'RSA-PSS', hash: 'SHA-384' },
+    true,
+    ['sign']
+  );
+
+  _blindRsaSuite = suite;
+  _issuerPrivateKey = privateKey;
+}
+
+/**
+ * Check per-device token issuance rate limit.
+ * @param {string} deviceId
+ * @returns {boolean} true if allowed
+ */
+function checkTokenRateLimit(deviceId) {
+  const now = Date.now();
+  let limiter = tokenRateLimiters.get(deviceId);
+
+  if (!limiter || now - limiter.windowStart > TOKEN_RATE_WINDOW_MS) {
+    limiter = { count: 1, windowStart: now };
+    tokenRateLimiters.set(deviceId, limiter);
+    return true;
+  }
+
+  limiter.count++;
+  if (limiter.count > TOKEN_RATE_LIMIT) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Clean expired token rate limiters.
+ */
+function cleanTokenRateLimiters() {
+  const now = Date.now();
+  for (const [deviceId, limiter] of tokenRateLimiters) {
+    if (now - limiter.windowStart > TOKEN_RATE_WINDOW_MS * 2) {
+      tokenRateLimiters.delete(deviceId);
+    }
+  }
+}
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -45,11 +160,13 @@ const STATE_FILE = process.env.RELAY_STATE_FILE || './relay-state.json';
 // ─── Pool Server ────────────────────────────────────────────────────────────────
 
 const { PoolStore } = require('./pool/store');
-const { handlePoolRequest } = require('./pool/pool-server');
+const { handlePoolRequest, setUsedTokensStore } = require('./pool/pool-server');
 const { seedTestData } = require('./seed-pool');
 const poolStore = new PoolStore();
 // Seed test data on startup
 seedTestData(poolStore);
+// Wire the used-tokens store into the pool server
+setUsedTokensStore(usedTokensStore);
 
 /**
  * Serialize relay state to a plain object (JSON-compatible).
@@ -276,7 +393,6 @@ setInterval(cleanRateLimiters, 5 * 60_000);
 // If TLS_CERT and TLS_KEY env vars are set, create HTTPS server.
 // Otherwise, create plain HTTP (expected to run behind reverse proxy for TLS).
 
-const fs = require('fs');
 const https = require('https');
 
 function createServer(requestListener) {
@@ -318,6 +434,29 @@ const server = createServer((req, res) => {
       enrolledDevices: enrolledDevices.size,
       version: '2.0',
     }));
+    return;
+  }
+
+  // GET /relay/public-key — unauthenticated, returns issuer's public key PEM
+  if (req.url === '/relay/public-key' && req.method === 'GET') {
+    try {
+      const publicKeyPath = process.env.ISSUER_PUBLIC_KEY_PATH ||
+        path.join(__dirname, 'keys', 'issuer-public-key.pem');
+      const publicKeyPem = process.env.ISSUER_PUBLIC_KEY ||
+        fs.readFileSync(publicKeyPath, 'utf-8');
+      res.writeHead(200, { 'Content-Type': 'text/plain' });
+      res.end(publicKeyPem);
+    } catch (err) {
+      console.warn('[public-key] Failed to load public key:', err.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Issuer public key not configured' }));
+    }
+    return;
+  }
+
+  // POST /relay/request-token — authenticated, requires relayToken
+  if (req.url === '/relay/request-token' && req.method === 'POST') {
+    handleTokenRequest(req, res);
     return;
   }
 
@@ -812,10 +951,115 @@ function sendTo(ws, data) {
   }
 }
 
+// ─── Blind RSA Token Request Handler ────────────────────────────────────────
+
+/**
+ * Handle POST /relay/request-token.
+ *
+ * Authentication: extract relayToken from Authorization header.
+ * Per-device rate limit: N tokens per hour (default: 10).
+ * Body: { blindedMsg: "<base64>" }
+ * Response: { blindSignature: "<base64>" }
+ */
+async function handleTokenRequest(req, res) {
+  // 1. Authenticate via relayToken
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    res.writeHead(401, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Missing or invalid Authorization header. Expected: Bearer <relayToken>' }));
+    return;
+  }
+
+  const relayToken = authHeader.slice('Bearer '.length).trim();
+  const enrollment = enrolledDevices.get(relayToken);
+
+  if (!enrollment) {
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Invalid relay token' }));
+    return;
+  }
+
+  // 2. Check token expiry (same sliding window as WebSocket auth)
+  if (Date.now() > enrollment.expiresAt) {
+    enrolledDevices.delete(relayToken);
+    const familyTokens = familyDeviceTokens.get(enrollment.familyId);
+    if (familyTokens) familyTokens.delete(relayToken);
+    persistState();
+    res.writeHead(403, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Relay token has expired. Re-enroll to continue.' }));
+    return;
+  }
+
+  const deviceId = enrollment.deviceId;
+
+  // 3. Per-device rate limit check
+  if (!checkTokenRateLimit(deviceId)) {
+    res.writeHead(429, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      error: `Token rate limit exceeded. Max ${TOKEN_RATE_LIMIT} tokens per hour per device.`,
+    }));
+    return;
+  }
+
+  // 4. Parse body
+  let body = '';
+  req.on('data', (chunk) => { body += chunk; });
+  req.on('end', async () => {
+    // Enforce body size limit
+    if (body.length > 4096) {
+      res.writeHead(413, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Request body too large (max 4096 bytes)' }));
+      return;
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON' }));
+      return;
+    }
+
+    const { blindedMsg } = parsed;
+    if (!blindedMsg || typeof blindedMsg !== 'string') {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'blindedMsg field is required and must be a base64 string' }));
+      return;
+    }
+
+    // 5. Decode blinded message and blind-sign
+    try {
+      await ensureIssuerLoaded();
+
+      const blindMsgBytes = Buffer.from(blindedMsg, 'base64');
+      const blindSignature = await _blindRsaSuite.blindSign(_issuerPrivateKey, new Uint8Array(blindMsgBytes));
+
+      // 6. Return the blind signature (base64-encoded)
+      const blindSigBase64 = Buffer.from(blindSignature).toString('base64');
+
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ blindSignature: blindSigBase64 }));
+    } catch (err) {
+      console.warn('[token] Blind signing error:', err.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Failed to sign token' }));
+    }
+  });
+}
+
 // ─── Start ───────────────────────────────────────────────────────────────────
 
 // Load persisted state from disk (enrollments, invite signatures)
 loadStateFromDisk();
+
+// Load the used tokens store (non-blocking)
+usedTokensStore.loadOnStartup().catch((err) => {
+  console.warn(`[used-tokens] Startup error: ${err.message}`);
+});
+
+// Periodic cleanup of token rate limiters (every 2 hours)
+setInterval(cleanTokenRateLimiters, 2 * 60 * 60 * 1000);
 
 server.listen(RELAY_PORT, () => {
   const protocol = TLS_CERT_PATH && TLS_KEY_PATH ? 'wss' : 'ws';

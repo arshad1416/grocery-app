@@ -1,34 +1,33 @@
 /**
- * Contribution Tokens — Blind-Signed Token Protocol (v1, HMAC-based)
+ * Contribution Tokens — RFC 9474 Blind RSA Token System (v2)
  *
- * The client obtains blind-signed tokens from a separate token issuer endpoint.
- * Tokens are single-use, expire after 24 hours, and are cached in memory.
+ * Replaces the broken HMAC-based v1 scheme with proper Blind RSA signatures
+ * using @cloudflare/blindrsa-ts (RSABSSA-SHA384-PSS-Randomized).
  *
- * v1 APPROXIMATION:
- *   This uses HMAC-SHA256 for blind signing rather than formal Privacy Pass
- *   (VOPRF). The protocol provides practical unlinkability:
- *     - Issuer sees blinded = HMAC(nonce, "contribution-token-v1")
- *     - Issuer learns nothing about the nonce
- *     - Pool verifies signature but cannot link back to the issuer's view
- *   Upgrade to formal Privacy Pass / OHTTP in v2.
+ * Key differences from v1:
+ *   - Uses Blind RSA (RFC 9474) instead of HMAC
+ *   - Tokens come through the authenticated relay (not a separate issuer)
+ *   - Pool verifies with a PUBLIC key only
+ *   - Token format: "v2.<base64(signature + nonce)>"
  *
  * Flow:
- *   1. Generate random 32-byte nonce
- *   2. Blind: blinded = HMAC(nonce, "contribution-token-v1")
- *   3. Send to issuer: POST { blinded }
- *   4. Receive: { signedBlinded, expiresAt, expiryProof }
- *   5. Create wire token: "v1.<base64(blinded:expiresAt)>.<base64(expiryProof)>"
- *   6. Cache token
+ *   1. Fetch issuer public key from relay (GET /relay/public-key)
+ *   2. Generate random 32-byte nonce
+ *   3. Blind: blind(publicKey, nonce) → { blindedMsg, inv }
+ *   4. Send to authenticated relay: POST /relay/request-token { blindedMsg }
+ *   5. Receive: { blindSignature }
+ *   6. Finalize: finalize(publicKey, nonce, blindSignature, inv) → token
+ *   7. Wire format: "v2.<base64(token || nonce)>" (256-byte sig + 32-byte nonce)
  *
- * Wire format:
- *   v1.<base64(blinded + ":" + expiresAt)>.<base64(expiryProof)>
- *   where expiryProof = HMAC(issuerSecret, blinded + ":" + expiresAt)
- *   Pool verifies: HMAC(issuerSecret, blinded + ":" + expiresAt) == expiryProof
+ * NOTE: This module uses Node.js crypto for the BlindRSA operations (via dynamic
+ * import), but in React Native/Expo the @cloudflare/blindrsa-ts package uses
+ * the built-in SubtleCrypto API which is available on both platforms.
  */
 
 import { getSettings } from '../config/settings';
+import * as SecureStore from 'expo-secure-store';
 
-const TOKEN_VERSION = 'v1';
+const TOKEN_VERSION = 'v2';
 const TOKEN_SEPARATOR = '.';
 const REQUEST_TIMEOUT_MS = 10_000; // 10 seconds
 
@@ -36,194 +35,246 @@ const REQUEST_TIMEOUT_MS = 10_000; // 10 seconds
 
 interface CachedToken {
   token: string;      // Full wire token string
-  expiresAt: number;  // Epoch ms (from issuer)
   cachedAt: number;   // When we cached it
 }
 
 let tokenCache: CachedToken | null = null;
 
-/** Max cache age before forcing a refresh (22 hours, slightly less than 24h TTL). */
+/** Max cache age before forcing a refresh (22 hours). Tokens don't expire server-side. */
 const MAX_CACHE_AGE_MS = 79_200_000; // 22 hours
 
-// ─── Crypto Helpers ─────────────────────────────────────────────────────────
+/** SecureStore key for the relay token */
+const RELAY_TOKEN_KEY = 'groceryapp.relay_token';
+
+// ─── Public Key Cache ───────────────────────────────────────────────────────
+
+let _cachedPublicKey: CryptoKey | null = null;
+let _relayUrl: string | null = null;
 
 /**
- * Generate a random 32-byte nonce using Web Crypto API.
- * Falls back to Math.random-based approach if crypto is unavailable.
+ * Get the relay HTTP URL from settings.
  */
-function getRandomBytes(size: number): Uint8Array {
+function getRelayHttpUrl(): string | null {
+  const { relayUrl, relayPort, poolUrl } = getSettings();
+
+  // If poolUrl is set, the relay runs on the relay URL (pool is separate)
+  const baseUrl = relayUrl
+    .replace(/^ws:/, 'http:')
+    .replace(/^wss:/, 'https:');
+
   try {
-    const bytes = new Uint8Array(size);
-    crypto.getRandomValues(bytes);
-    return bytes;
-  } catch {
-    // Fallback for environments without crypto.getRandomValues
-    const bytes = new Uint8Array(size);
-    for (let i = 0; i < size; i++) {
-      bytes[i] = Math.floor(Math.random() * 256);
+    const parsed = new URL(baseUrl);
+    if (parsed.port) {
+      return baseUrl.replace(/\/+$/, '');
     }
-    return bytes;
+    return `${baseUrl.replace(/\/+$/, '')}:${relayPort}`;
+  } catch {
+    return `${baseUrl}:${relayPort}`;
   }
 }
 
 /**
- * Compute HMAC-SHA256 using Web Crypto API.
- * Falls back to a synchronous approximation if subtle is unavailable.
+ * Get the relay token from SecureStore (same auth as WebSocket).
+ * Returns null if not enrolled.
  */
-async function hmacSha256(key: Uint8Array, message: string): Promise<ArrayBuffer> {
-  // Copy key data to a plain ArrayBuffer to satisfy TypeScript's BufferSource type
-  const keyCopy = new ArrayBuffer(key.length);
-  const keyView = new Uint8Array(keyCopy);
-  keyView.set(key);
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyCopy,
-    { name: 'HMAC', hash: { name: 'SHA-256' } },
-    false,
-    ['sign'],
-  );
-  const msgBytes = new TextEncoder().encode(message);
-  return crypto.subtle.sign('HMAC', cryptoKey, msgBytes);
-}
-
-/**
- * Convert ArrayBuffer to base64 string.
- */
-function arrayBufferToBase64(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf);
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
-
-/**
- * Convert ArrayBuffer to hex string.
- */
-function arrayBufferToHex(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf);
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-// ─── Token Issuer URL ───────────────────────────────────────────────────────
-
-/**
- * Get the token issuer URL from settings.
- * Returns null if not configured (self-host mode).
- */
-function getTokenIssuerUrl(): string | null {
-  const { tokenIssuerUrl, poolUrl } = getSettings();
-
-  if (tokenIssuerUrl) {
-    return tokenIssuerUrl;
-  }
-
-  // Fallback: derive from poolUrl (pool server == token issuer in simple setups)
-  if (poolUrl) {
-    return poolUrl.replace(/\/+$/, '');
-  }
-
-  return null;
-}
-
-// ─── Token Protocol ─────────────────────────────────────────────────────────
-
-/**
- * Generate a blinded token request.
- *
- * blinded = HMAC-SHA256(nonce, "contribution-token-v1")
- * Returns base64-encoded blinded value and the raw nonce.
- */
-async function generateBlindedRequest(): Promise<{ blinded: string; nonce: Uint8Array }> {
-  const nonce = getRandomBytes(32);
-  const hmacResult = await hmacSha256(nonce, 'contribution-token-v1');
-  const blinded = arrayBufferToBase64(hmacResult);
-  return { blinded, nonce };
-}
-
-/**
- * Construct the wire token from issuer response data.
- *
- * Wire format: "v1.<base64(blinded:expiresAt)>.<base64(expiryProof)>"
- * The pool verifies: HMAC(issuerSecret, blinded + ":" + expiresAt) == expiryProof
- */
-function constructWireToken(blinded: string, expiresAt: number, expiryProof: string): string {
-  const payloadStr = blinded + ':' + expiresAt.toString();
-  const tokenPayload = btoa(payloadStr);
-  return TOKEN_VERSION + TOKEN_SEPARATOR + tokenPayload + TOKEN_SEPARATOR + expiryProof;
-}
-
-// ─── Public API ─────────────────────────────────────────────────────────────
-
-/**
- * Request a fresh contribution token from the issuer.
- *
- * Returns the full wire token string, or null if the issuer URL is not configured
- * (self-host mode).
- *
- * Rate-limited (10/min per IP) by the issuer server.
- */
-export async function requestContributionToken(): Promise<string | null> {
-  const issuerUrl = getTokenIssuerUrl();
-  if (!issuerUrl) {
-    // Self-host mode — no token needed
+async function getRelayToken(): Promise<string | null> {
+  try {
+    // The relay token is the device's relayToken from enrollment
+    // It's stored as part of the relay state by the relay connection module.
+    // For now, we use SecureStore to retrieve it.
+    const stored = await SecureStore.getItemAsync(RELAY_TOKEN_KEY);
+    return stored || null;
+  } catch {
     return null;
   }
+}
 
-  // Generate blinded request
-  const { blinded } = await generateBlindedRequest();
+// ─── Cryptography ───────────────────────────────────────────────────────────
 
-  // Send to issuer
-  const response = await fetch(issuerUrl + '/request-token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ blinded }),
+/**
+ * Dynamically import the BlindRSA library (ESM module).
+ */
+async function getBlindRSA(): Promise<any> {
+  // In Node.js test environment, use dynamic import
+  try {
+    const mod = await import('@cloudflare/blindrsa-ts');
+    return mod;
+  } catch {
+    // In React Native, require should work
+    // @ts-ignore
+    const mod = require('@cloudflare/blindrsa-ts');
+    return mod;
+  }
+}
+
+// ─── Public Key ─────────────────────────────────────────────────────────────
+
+/**
+ * Fetch the issuer's public key from the relay server.
+ * Caches in a module-level variable.
+ */
+async function fetchPublicKey(): Promise<CryptoKey> {
+  if (_cachedPublicKey) return _cachedPublicKey;
+
+  const relayUrl = getRelayHttpUrl();
+  if (!relayUrl) {
+    throw new Error('Relay URL not configured');
+  }
+
+  const response = await fetch(`${relayUrl}/relay/public-key`, {
+    method: 'GET',
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
 
   if (!response.ok) {
-    console.warn('[tokens] Failed to request token: ' + response.status);
+    throw new Error(`Failed to fetch public key: ${response.status}`);
+  }
+
+  const pemData = await response.text();
+
+  // Parse PEM to DER (raw binary)
+  const base64 = pemData
+    .replace(/-----BEGIN [\w ]+-----/g, '')
+    .replace(/-----END [\w ]+-----/g, '')
+    .replace(/\s/g, '');
+  const binaryStr = atob(base64);
+  const derBytes = new Uint8Array(binaryStr.length);
+  for (let i = 0; i < binaryStr.length; i++) {
+    derBytes[i] = binaryStr.charCodeAt(i);
+  }
+
+  // Import as CryptoKey for RSA-PSS verification
+  const publicKey = await crypto.subtle.importKey(
+    'spki',
+    derBytes.buffer,
+    { name: 'RSA-PSS', hash: 'SHA-384' },
+    true,
+    ['verify']
+  );
+
+  _cachedPublicKey = publicKey;
+  return publicKey;
+}
+
+/**
+ * Clear the cached public key (e.g. on relay URL change).
+ */
+export function clearPublicKeyCache(): void {
+  _cachedPublicKey = null;
+}
+
+// ─── Blind RSA Token Protocol ───────────────────────────────────────────────
+
+/**
+ * Request a fresh contribution token from the relay server.
+ *
+ * Flow:
+ *   1. Generate random 32-byte nonce
+ *   2. Blind the nonce: { blindedMsg, inv } = blind(publicKey, nonce)
+ *   3. POST to relay with Authorization: Bearer <relayToken>
+ *   4. Receive blind signature
+ *   5. Finalize: token = finalize(publicKey, nonce, blindSignature, inv)
+ *   6. Return "v2.<base64(signature + nonce)>"
+ *
+ * Returns the full wire token string, or null if the relay is not configured
+ * or authentication fails.
+ */
+export async function requestContributionToken(): Promise<string | null> {
+  const relayUrl = getRelayHttpUrl();
+  if (!relayUrl) {
+    console.warn('[tokens] Relay URL not configured, skipping token request');
     return null;
   }
 
-  const data = (await response.json()) as {
-    signedBlinded: string;
-    expiresAt: number;
-    expiryProof: string;
-  };
+  const relayToken = await getRelayToken();
+  if (!relayToken) {
+    console.warn('[tokens] No relay token available (not enrolled?)');
+    return null;
+  }
 
-  // Construct wire token
-  const token = constructWireToken(blinded, data.expiresAt, data.expiryProof);
+  try {
+    // 1. Fetch (or use cached) public key
+    const publicKey = await fetchPublicKey();
 
-  // Cache the token
-  tokenCache = {
-    token,
-    expiresAt: data.expiresAt,
-    cachedAt: Date.now(),
-  };
+    // 2. Import the BlindRSA module
+    const { BlindRSA, Params } = await getBlindRSA();
+    const suite = new BlindRSA(Params.RSABSSA_SHA384_PSS_Randomized);
 
-  return token;
+    // 3. Generate random 32-byte nonce
+    const nonce = new Uint8Array(32);
+    crypto.getRandomValues(nonce);
+
+    // 4. Blind the nonce
+    const { blindedMsg, inv } = await suite.blind(publicKey, nonce);
+
+    // 5. Send blinded message to relay
+    const blindedBase64 = arrayBufferToBase64(blindedMsg);
+    const response = await fetch(`${relayUrl}/relay/request-token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${relayToken}`,
+      },
+      body: JSON.stringify({ blindedMsg: blindedBase64 }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        // Token rejected — clear cached token and public key
+        console.warn('[tokens] Relay rejected token request:', response.status);
+        clearContributionTokenCache();
+        clearPublicKeyCache();
+        return null;
+      }
+      console.warn('[tokens] Failed to request token:', response.status);
+      return null;
+    }
+
+    const data = (await response.json()) as { blindSignature: string };
+
+    // 6. Decode the blind signature
+    const blindSignature = base64ToArrayBuffer(data.blindSignature);
+
+    // 7. Finalize: produce the final token
+    const finalTokenBytes = await suite.finalize(publicKey, nonce, blindSignature, inv);
+
+    // 8. Wire format: "v2.<base64(signature + nonce)>"
+    // The finalize output is the signature (256 bytes for 2048-bit RSA)
+    // We concatenate it with the 32-byte nonce for the pool to verify
+    const combined = new Uint8Array(finalTokenBytes.length + 32);
+    combined.set(finalTokenBytes, 0);
+    combined.set(nonce, finalTokenBytes.length);
+    const token = TOKEN_VERSION + TOKEN_SEPARATOR + arrayBufferToBase64(combined);
+
+    // Cache the token
+    tokenCache = {
+      token,
+      cachedAt: Date.now(),
+    };
+
+    return token;
+  } catch (err) {
+    console.warn('[tokens] Error requesting contribution token:', err);
+    return null;
+  }
 }
 
 /**
  * Get a cached contribution token, or request a new one.
  *
- * Returns the full wire token string, or null if the issuer URL is not configured
- * (self-host mode — no token needed).
+ * Returns the full wire token string, or null if the relay is not configured.
  */
 export async function getContributionToken(): Promise<string | null> {
-  const issuerUrl = getTokenIssuerUrl();
-  if (!issuerUrl) {
+  const relayUrl = getRelayHttpUrl();
+  if (!relayUrl) {
     return null;
   }
 
   // Check cache
   if (tokenCache) {
     const age = Date.now() - tokenCache.cachedAt;
-    if (age < MAX_CACHE_AGE_MS && Date.now() < tokenCache.expiresAt) {
+    if (age < MAX_CACHE_AGE_MS) {
       return tokenCache.token;
     }
     // Cache expired — clear it
@@ -240,9 +291,22 @@ export function clearContributionTokenCache(): void {
   tokenCache = null;
 }
 
-/**
- * Get the issuer URL from settings (for testing/monitoring).
- */
-export function getTokenIssuerUrlForTesting(): string | null {
-  return getTokenIssuerUrl();
+// ─── Utility Functions ─────────────────────────────────────────────────────
+
+function arrayBufferToBase64(buf: ArrayBuffer | Uint8Array): string {
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+function base64ToArrayBuffer(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
 }
