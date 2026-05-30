@@ -129,10 +129,19 @@ export async function verifySignature(
  * Retrieve the webhook shared secret.
  *
  * In production, this should come from environment variables or secure storage.
- * For Phase 2, we use a placeholder that the relay server also knows.
+ * For Phase 2, if no env var is set, returns an empty string (which will cause
+ * signature verification to fail — safe default).
  */
 async function getWebhookSecret(): Promise<string> {
-  // In production: return process.env.IFTTT_WEBHOOK_SECRET || '';
-  // Phase 2: placeholder — the relay server uses the same default
-  return 'groceryapp-ifttt-secret-phase2';
+  // Try environment variable first (expo-constants / process.env)
+  try {
+    const envSecret = process.env.IFTTT_WEBHOOK_SECRET;
+    if (envSecret && envSecret.length > 0) {
+      return envSecret;
+    }
+  } catch {
+    // process.env may not be available in all RN environments
+  }
+  // No default secret — force users to configure one explicitly
+  return '';
 }

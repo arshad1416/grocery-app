@@ -1,8 +1,8 @@
 /**
  * Deep linking configuration for GroceryApp.
  *
- * Handles `grocceryapp://invite?token=...` URLs for family invite flows,
- * and `https://groceryapp.app/invite?token=...` universal links.
+ * Handles `groceryapp://invite?token=...` URLs for family invite flows,
+ * and `https://groceryapp.app/invite?token=*** universal links.
  * Also supports standard navigation paths.
  *
  * Universal link setup:
@@ -29,7 +29,7 @@ export type RootStackParamList = {
 // ─── Deep Link Config ───────────────────────────────────────────────────────
 
 export const linkingConfig: LinkingOptions<RootStackParamList> = {
-  prefixes: ['grocceryapp://', 'https://groceryapp.app'],
+  prefixes: ['groceryapp://', 'https://groceryapp.app'],
   config: {
     screens: {
       Home: '',
@@ -42,8 +42,8 @@ export const linkingConfig: LinkingOptions<RootStackParamList> = {
   },
   /**
    * Custom URL parsing for invite tokens.
-   * Handles both `grocceryapp://invite?token=...` and
-   * `https://groceryapp.app/invite?token=...` formats.
+   * Handles both `groceryapp://invite?token=...` and
+   * `https://groceryapp.app/invite?token=*** formats.
    */
   getInitialURL: () => {
     // Default React Navigation behavior — let the linking subsystem
@@ -61,9 +61,9 @@ export const linkingConfig: LinkingOptions<RootStackParamList> = {
  * Parse an invite URL and extract the token.
  *
  * Supports:
- *   - grocceryapp://invite?token=<token>
- *   - https://groceryapp.app/invite?token=<token>
- *   - https://relay.example.com/invite?token=<token> (web redirect)
+ *   - groceryapp://invite?token=<token>
+ *   - https://groceryapp.app/invite?token=...
+ *   - https://relay.example.com/invite?token=*** (web redirect)
  *
  * @param url - The incoming URL to parse.
  * @returns An object with the extracted token, if any.
@@ -72,7 +72,7 @@ export function parseInviteUrl(url: string): { token?: string } {
   try {
     const parsed = new URL(url);
 
-    // Match paths: /invite or host === 'invite' (for scheme URLs like grocceryapp://invite)
+    // Match paths: /invite or host === 'invite' (for scheme URLs like groceryapp://invite)
     const isInvitePath =
       parsed.pathname === '/invite' ||
       parsed.pathname.startsWith('/invite/') ||
@@ -100,7 +100,7 @@ export function buildInviteUrl(token: string, useHttps?: boolean): string {
   if (useHttps) {
     return `https://groceryapp.app/invite?token=${encoded}`;
   }
-  return `grocceryapp://invite?token=${encoded}`;
+  return `groceryapp://invite?token=${encoded}`;
 }
 
 // ─── Navigation Prop Type ───────────────────────────────────────────────────

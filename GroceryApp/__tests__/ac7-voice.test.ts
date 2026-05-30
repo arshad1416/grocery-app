@@ -7,10 +7,15 @@
  * Run: npx jest __tests__/ac7-voice.test.ts
  */
 
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, beforeAll } from '@jest/globals';
 import { parseVoiceText } from '../src/voice/nlp';
 import { signRequest, verifySignature, buildWebhookUrl } from '../src/voice/ifttt';
 import type { ParsedItem } from '../src/voice/types';
+
+// Provide the IFTTT secret for tests (matches the pre-removal default)
+beforeAll(() => {
+  process.env.IFTTT_WEBHOOK_SECRET = 'groceryapp-ifttt-secret-phase2';
+});
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
 

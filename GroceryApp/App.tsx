@@ -81,17 +81,33 @@ export default function App() {
         // Verify database is accessible
         await db.get('grocery_lists').query().fetchCount();
         
-        // Step 3: Get master key and derive sync key
+        // Step 3: Get master key — may be null if no family set up yet
         const masterKey = await getMasterKey();
+
+        // Step 4: Get device ID, family ID, and settings
+        const deviceId = getDeviceId();
+        const familyId = await getFamilyId();
+        const settings = getSettings();
+
+        // If no family membership, skip sync initialization entirely
+        // (don't fall back to a shared 'default-family' room)
+        if (!familyId) {
+          console.log('[app] No family membership found — skipping sync init');
+          // Still initialise pricing subsystem
+          priceRegistry.registerAdapter(crowdsourcedAdapter);
+          priceRegistry.registerAdapter(scrapingAdapter);
+          if (settings.hostingTier === 'managed') {
+            priceRegistry.registerAdapter(instacartAdapter);
+          }
+          setIsReady(true);
+          return;
+        }
+
+        // Derive sync key from master key (must exist if family is set up)
         if (!masterKey) {
           throw new Error('Master encryption key not found. Family setup required before sync.');
         }
         const encryptionKey = await deriveSyncKey(masterKey, 0);
-
-        // Step 4: Get device ID and family ID
-        const deviceId = getDeviceId();
-        const familyId = (await getFamilyId()) ?? 'default-family';
-        const settings = getSettings();
 
         // Step 5: Load relay token and stored relay URL (from enrollment)
         const loadedRelayToken = await getRelayToken();

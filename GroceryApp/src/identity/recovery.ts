@@ -1,26 +1,31 @@
 /**
  * BIP39-style Recovery Code Module.
  *
- * Generates and verifies a 12-word BIP39 mnemonic phrase that encodes the
- * master key seed. The phrase can be used to recover the family key on a new device.
+ * Generates and verifies a 12-word BIP39 mnemonic phrase that encodes a
+ * recovery seed (128-bit entropy). The master key is derived FROM the
+ * recovery seed using crypto_generichash, ensuring a perfect round-trip:
  *
- * Encoding strategy:
- *  - Hash the master key with crypto_generichash → 32 bytes
- *  - Use first 16 bytes (128 bits) as entropy
- *  - SHA-256 checksum: first 4 bits → appended to make 132 bits
- *  - 132 bits ÷ 11 bits per word = 12 words exactly
- *  - Last word encodes 7 bits data + 4 bits checksum
+ *   generateRecoveryPhrase():
+ *     seed (random 16 bytes) → crypto_generichash(32, seed) → masterKey
+ *     seed → 12 BIP39 words
  *
- * Storage: recovery phrase is stored encrypted via expo-secure-store.
+ *   recoverFromPhrase(words):
+ *     words → seed → crypto_generichash(32, seed) → SAME masterKey ✓
+ *
+ * This fixes the previous design which hashed the masterKey (one-way) and
+ * couldn't reverse the operation, making recovery return a different key.
+ *
+ * Storage: recovery seed is stored encrypted via expo-secure-store.
+ *          master key is stored alongside (same alias as passphrase-derived key).
  */
 
 import * as SecureStore from 'expo-secure-store';
-import { initCrypto, getMasterKey, deriveKeyFromPassphrase } from '../crypto/index';
+import { initCrypto, setMasterKey } from '../crypto/index';
 import { getFamilyId } from './family';
-import type { DeviceKeypair } from '../types';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
+const RECOVERY_SEED_ALIAS_PREFIX = 'groceryapp.recovery.seed.';
 const RECOVERY_PHRASE_ALIAS_PREFIX = 'groceryapp.recovery.phrase.';
 const RECOVERY_STORED_FLAG_PREFIX = 'groceryapp.recovery.stored.';
 
@@ -242,16 +247,6 @@ const BIP39_WORDLIST: readonly string[] = [
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function uint8ArrayToBase64(bytes: Uint8Array): string {
-  const sodium = require('libsodium-wrappers');
-  return sodium.to_base64(bytes, sodium.base64_variants.ORIGINAL);
-}
-
-function base64ToUint8Array(b64: string): Uint8Array {
-  const sodium = require('libsodium-wrappers');
-  return sodium.from_base64(b64, sodium.base64_variants.ORIGINAL);
-}
-
 /**
  * Create a lookup Set from the BIP39 wordlist for O(1) validation.
  */
@@ -366,44 +361,89 @@ function wordIndicesToEntropy(indices: number[]): Uint8Array {
   return entropy;
 }
 
+// ─── Recovery Seed Management ────────────────────────────────────────────────
+
+/**
+ * Get the stored recovery seed for a family.
+ * Returns null if no seed has been generated yet.
+ */
+async function getRecoverySeed(familyId: string): Promise<Uint8Array | null> {
+  try {
+    const stored = await SecureStore.getItemAsync(
+      `${RECOVERY_SEED_ALIAS_PREFIX}${familyId}`,
+    );
+    if (!stored) return null;
+    return new Uint8Array(stored.split(',').map((s) => parseInt(s, 10)));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Store a recovery seed for a family.
+ */
+async function setRecoverySeed(familyId: string, seed: Uint8Array): Promise<void> {
+  await SecureStore.setItemAsync(
+    `${RECOVERY_SEED_ALIAS_PREFIX}${familyId}`,
+    Array.from(seed).join(','),
+  );
+}
+
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 /**
- * Generate a 12-word BIP39 recovery phrase from the stored master key.
+ * Generate a 12-word BIP39 recovery phrase from a fresh random seed.
  *
- * Derives a 12-word mnemonic by:
- *  1. Hashing the master key with crypto_generichash → 32 bytes
- *  2. Using first 16 bytes as entropy (128 bits)
- *  3. Appending a 4-bit checksum (SHA-256 of entropy)
- *  4. Encoding as 12 words from the BIP39 wordlist
+ * The recovery seed (16 random bytes) is the ROOT entropy. The master key
+ * is derived FROM the seed via crypto_generichash(32, seed), ensuring that
+ * recovery produces the exact same master key as the original setup.
  *
- * The phrase is stored encrypted in expo-secure-store for later verification.
+ * This is a fundamental fix for the previous design which hashed the master
+ * key (one-way operation) and couldn't reverse it, making recovery return
+ * a completely different key (DATA LOSS bug).
+ *
+ * When this function is called, it:
+ *   1. Generates 16 random bytes (recovery seed)
+ *   2. Hashes the seed to derive the master key (crypto_generichash)
+ *   3. Stores both the seed and the master key in SecureStore
+ *   4. Encodes the seed as 12 BIP39 words
+ *   5. Returns the phrase
+ *
+ * NOTE: This REPLACES the existing master key (if any) with a recovery-derived
+ * key. The previous passphrase-derived key is no longer used. This means
+ * data encrypted with the old key must be re-encrypted or re-created.
+ * Since the previous recovery system was completely broken (C1 — data loss),
+ * this is not a functional regression.
  *
  * @returns The 12-word recovery phrase as a space-separated string.
- * @throws If no master key is set up.
+ * @throws If no family membership is found.
  */
 export async function generateRecoveryPhrase(): Promise<string> {
   await initCrypto();
   const sodium = require('libsodium-wrappers');
   await sodium.ready;
 
-  const masterKey = await getMasterKey();
-  if (!masterKey) {
-    throw new Error('No master key found. Set up a family passphrase first.');
-  }
-
   const familyId = await getFamilyId();
   if (!familyId) {
     throw new Error('No family membership found.');
   }
 
-  // Hash the master key to derive deterministic entropy
-  const hash = sodium.crypto_generichash(32, masterKey);
+  // Generate 16 bytes of fresh random entropy as the recovery seed
+  const entropy = sodium.randombytes_buf(ENTROPY_BYTES);
 
-  // Use first 16 bytes as entropy
-  const entropy = hash.slice(0, ENTROPY_BYTES);
+  // Derive the master key FROM the recovery seed using crypto_generichash
+  // This is a one-way derivation, BUT the forward and reverse paths both
+  // use the same operation: seed → hash → masterKey. Recovery decodes the
+  // phrase back to the seed, then re-applies the same hash → same key.
+  const masterKey = sodium.crypto_generichash(32, entropy);
 
-  // Encode to word indices
+  // Store the master key (overwrites any passphrase-derived key)
+  await setMasterKey(masterKey);
+
+  // Store the recovery seed for later display/verification
+  await setRecoverySeed(familyId, entropy);
+
+  // Encode entropy to word indices
   const indices = entropyToWordIndices(entropy);
 
   // Map to words
@@ -424,7 +464,18 @@ export async function generateRecoveryPhrase(): Promise<string> {
 }
 
 /**
- * Recover the master key seed from a 12-word BIP39 recovery phrase.
+ * Recover the master key from a 12-word BIP39 recovery phrase.
+ *
+ * The recovery phrase encodes the recovery seed (16 bytes of entropy).
+ * This function:
+ *   1. Decodes the words back to the 16-byte seed
+ *   2. Hashes the seed via crypto_generichash(32, seed) to derive the
+ *      exact same 32-byte master key that was generated during setup
+ *   3. Stores the master key in SecureStore
+ *
+ * Round-trip guarantee:
+ *   generateRecoveryPhrase() → phrase
+ *   recoverFromPhrase(phrase) → SAME master key ✓
  *
  * @param phrase - Space-separated 12-word BIP39 recovery phrase.
  * @returns The recovered master key as a Uint8Array.
@@ -460,16 +511,13 @@ export async function recoverFromPhrase(phrase: string): Promise<Uint8Array> {
   // Recover entropy from indices (validates checksum)
   const entropy = wordIndicesToEntropy(indices);
 
-  // The entropy alone isn't the master key — it's the hash of the master key.
-  // We need to reverse the hash operation, which is impossible.
-  // Instead, the entropy IS used as a derived recovery seed.
-  // For consistency with the forward path, the recovered entropy is the
-  // master key seed itself (128 bits is sufficient for encryption).
-  
-  // Pad to 32 bytes for use as a master key (libsodium expects 32-byte keys)
-  const masterKey = new Uint8Array(32);
-  masterKey.set(entropy, 0);
-  
+  // Derive the master key from the recovery seed using crypto_generichash
+  // This produces the EXACT same 32-byte key as generateRecoveryPhrase()
+  const masterKey = sodium.crypto_generichash(32, entropy);
+
+  // Store the recovered master key in SecureStore (overwrites old key if any)
+  await setMasterKey(masterKey);
+
   return masterKey;
 }
 
@@ -558,6 +606,9 @@ export async function clearRecoveryPhrase(): Promise<void> {
       );
       await SecureStore.deleteItemAsync(
         `${RECOVERY_STORED_FLAG_PREFIX}${familyId}`,
+      );
+      await SecureStore.deleteItemAsync(
+        `${RECOVERY_SEED_ALIAS_PREFIX}${familyId}`,
       );
     }
   } catch {

@@ -36,6 +36,93 @@ const TOKEN_TTL_MS = parseInt(process.env.TOKEN_TTL_MS || '2592000000', 10); // 
 const TLS_CERT_PATH = process.env.TLS_CERT;
 const TLS_KEY_PATH = process.env.TLS_KEY;
 
+// ─── State Persistence ──────────────────────────────────────────────────────────
+
+/** File path for persisting relay state across restarts. */
+const STATE_FILE = process.env.RELAY_STATE_FILE || './relay-state.json';
+
+/**
+ * Serialize relay state to a plain object (JSON-compatible).
+ */
+function serializeState() {
+  const enrolled = {};
+  for (const [token, enrollment] of enrolledDevices) {
+    enrolled[token] = enrollment;
+  }
+
+  const families = {};
+  for (const [familyId, tokens] of familyDeviceTokens) {
+    families[familyId] = Array.from(tokens);
+  }
+
+  return {
+    enrolledDevices: enrolled,
+    familyDeviceTokens: families,
+    usedInviteSignatures: Array.from(usedInviteSignatures),
+  };
+}
+
+/**
+ * Deserialize and restore relay state from a plain object.
+ */
+function deserializeState(saved) {
+  if (!saved) return;
+
+  if (saved.enrolledDevices) {
+    for (const [token, enrollment] of Object.entries(saved.enrolledDevices)) {
+      // Only load non-expired tokens
+      if (Date.now() <= enrollment.expiresAt) {
+        enrolledDevices.set(token, enrollment);
+        // Rebuild family device tracking
+        if (!familyDeviceTokens.has(enrollment.familyId)) {
+          familyDeviceTokens.set(enrollment.familyId, new Set());
+        }
+        familyDeviceTokens.get(enrollment.familyId).add(token);
+      }
+    }
+  }
+
+  if (saved.usedInviteSignatures) {
+    for (const sig of saved.usedInviteSignatures) {
+      usedInviteSignatures.add(sig);
+    }
+  }
+}
+
+let _saveTimeout = null;
+
+/**
+ * Debounced save of relay state to disk.
+ * Writes at most once per 500ms to avoid hammering the filesystem.
+ */
+function persistState() {
+  if (_saveTimeout) clearTimeout(_saveTimeout);
+  _saveTimeout = setTimeout(() => {
+    try {
+      const data = serializeState();
+      fs.writeFileSync(STATE_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    } catch (err) {
+      console.warn(`[persist] Failed to save state: ${err.message}`);
+    }
+  }, 500);
+}
+
+/**
+ * Load relay state from disk on startup.
+ */
+function loadStateFromDisk() {
+  try {
+    if (fs.existsSync(STATE_FILE)) {
+      const raw = fs.readFileSync(STATE_FILE, 'utf-8');
+      const saved = JSON.parse(raw);
+      deserializeState(saved);
+      console.log(`[persist] Loaded state: ${enrolledDevices.size} enrollments, ${usedInviteSignatures.size} used invites`);
+    }
+  } catch (err) {
+    console.warn(`[persist] Failed to load state: ${err.message}. Starting fresh.`);
+  }
+}
+
 // ─── State ───────────────────────────────────────────────────────────────────
 
 /**
@@ -338,6 +425,8 @@ const server = createServer((req, res) => {
         }
         familyDeviceTokens.get(familyId).add(relayToken);
 
+        persistState();
+
         console.log(`[enroll] Device "${deviceToken.slice(0, 12)}..." enrolled in family "${familyId}"`);
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -481,6 +570,7 @@ function handleMessage(sender, message) {
         // Also clean up from family device tracking
         const familyTokens = familyDeviceTokens.get(enrollment.familyId);
         if (familyTokens) familyTokens.delete(relayToken);
+        persistState();
         sendTo(sender, {
           type: 'error',
           message: 'Relay token has expired. Re-enroll to continue.',
@@ -491,6 +581,7 @@ function handleMessage(sender, message) {
 
       // Sliding-window TTL: refresh expiry on successful auth
       enrollment.expiresAt = Date.now() + TOKEN_TTL_MS;
+      persistState();
 
       sender._relayToken = relayToken;
       sender._enrollment = enrollment;
@@ -697,6 +788,9 @@ function sendTo(ws, data) {
 
 // ─── Start ───────────────────────────────────────────────────────────────────
 
+// Load persisted state from disk (enrollments, invite signatures)
+loadStateFromDisk();
+
 server.listen(RELAY_PORT, () => {
   const protocol = TLS_CERT_PATH && TLS_KEY_PATH ? 'wss' : 'ws';
   const httpProtocol = TLS_CERT_PATH && TLS_KEY_PATH ? 'https' : 'http';
@@ -732,8 +826,24 @@ server.listen(RELAY_PORT, () => {
           cleaned++;
         }
       }
-      if (cleaned > 0) {
-        console.log(`[cleanup] Removed ${cleaned} expired relay token(s)`);
+      // Prune expired invite signatures (parse JSON to check expiresAt)
+      let prunedInvites = 0;
+      for (const inviteStr of usedInviteSignatures) {
+        try {
+          const parsed = JSON.parse(inviteStr);
+          if (parsed.expiresAt && now > parsed.expiresAt) {
+            usedInviteSignatures.delete(inviteStr);
+            prunedInvites++;
+          }
+        } catch {
+          // Malformed entry — remove it
+          usedInviteSignatures.delete(inviteStr);
+          prunedInvites++;
+        }
+      }
+      if (cleaned > 0 || prunedInvites > 0) {
+        console.log(`[cleanup] Removed ${cleaned} expired token(s) and ${prunedInvites} expired invite(s)`);
+        persistState();
       }
     }, 60 * 60 * 1000);
 });

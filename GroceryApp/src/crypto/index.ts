@@ -298,6 +298,20 @@ export async function deriveSyncKey(
 }
 
 /**
+ * Store a new master key directly (e.g. from recovery phrase).
+ * Overwrites any existing master key.
+ */
+export async function setMasterKey(key: Uint8Array): Promise<void> {
+  await ensureReady();
+  const keyBase64 = uint8ArrayToBase64(key);
+  const saltBase64 = uint8ArrayToBase64(new Uint8Array(16));
+  await SecureStore.setItemAsync(
+    SECURE_STORE_KEY_ALIAS,
+    JSON.stringify({ key: keyBase64, salt: saltBase64 }),
+  );
+}
+
+/**
  * Clear the master key from secure storage (e.g. on family reset).
  */
 export async function clearMasterKey(): Promise<void> {
