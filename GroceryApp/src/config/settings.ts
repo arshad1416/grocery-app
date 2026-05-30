@@ -42,6 +42,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   contributeStoreGranularity: 'region',
   contributeConsentShown: false,
   poolUrl: '',
+  tokenIssuerUrl: '',  // empty = self-host, skip token system
 };
 
 // ─── Cache ───────────────────────────────────────────────────────────────────

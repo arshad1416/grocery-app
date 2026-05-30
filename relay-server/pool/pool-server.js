@@ -5,63 +5,23 @@
  *  - POST /api/pool/contribute — accepts JSON body, validates, stores via aggregator
  *  - GET /api/pool/prices?storeId=X — returns currently-valid pooled prices for store
  *
+ * Token-gated: when ISSUER_SECRET is set, contributions require a valid
+ * blind-signed token via Authorization: Bearer header.
+ * When ISSUER_SECRET is not set, the pool operates in open mode (no token required).
+ *
  * All responses include CORS headers. Returns proper HTTP status codes.
  */
 
 const { aggregatePriceReports } = require('./aggregator');
+const { verifyToken } = require('../tokens/token-verifier');
 
-// ─── Rate Limiting ─────────────────────────────────────────────────────────────
-
-/**
- * Per-IP rate limiter for pool endpoints.
- * Map<ip, { count: number, windowStart: number }>
- */
-const ipRateLimiters = new Map();
-
-/** Max requests per IP per minute. */
-const IP_RATE_LIMIT = 60;
-
-/** Rate limit window in milliseconds. */
-const IP_RATE_WINDOW_MS = 60_000;
+// ─── Token Configuration ────────────────────────────────────────────────────
 
 /**
- * Check if an IP has exceeded the rate limit.
- * @param {string} ip
- * @returns {boolean} true if request is allowed
+ * ISSUER_SECRET from environment.
+ * If not set, the pool operates in open mode (no token required for contributions).
  */
-function checkIpRateLimit(ip) {
-  const now = Date.now();
-  let limiter = ipRateLimiters.get(ip);
-
-  if (!limiter || now - limiter.windowStart > IP_RATE_WINDOW_MS) {
-    // Start a new window
-    limiter = { count: 1, windowStart: now };
-    ipRateLimiters.set(ip, limiter);
-    return true;
-  }
-
-  limiter.count++;
-  if (limiter.count > IP_RATE_LIMIT) {
-    return false; // Rate limited
-  }
-
-  return true;
-}
-
-/**
- * Clean expired rate limit entries to prevent memory leaks.
- */
-function cleanIpRateLimiters() {
-  const now = Date.now();
-  for (const [ip, limiter] of ipRateLimiters) {
-    if (now - limiter.windowStart > IP_RATE_WINDOW_MS * 2) {
-      ipRateLimiters.delete(ip);
-    }
-  }
-}
-
-// Clean rate limiters every 5 minutes
-setInterval(cleanIpRateLimiters, 5 * 60_000);
+const ISSUER_SECRET = process.env.ISSUER_SECRET || null;
 
 // ─── Validation Helpers ──────────────────────────────────────────────────────
 
@@ -127,19 +87,32 @@ function handlePoolRequest(req, res, store) {
     return;
   }
 
-  // Per-IP rate limiting (last resort before anonymous tokens)
-  // Use X-Forwarded-For if behind proxy, otherwise use remote address
-  const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'unknown';
-  if (!checkIpRateLimit(clientIp)) {
-    res.writeHead(429, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Rate limit exceeded. Try again later.' }));
-    return;
-  }
-
   const url = new URL(req.url, 'http://localhost');
 
   // POST /api/pool/contribute
   if (url.pathname === '/api/pool/contribute' && req.method === 'POST') {
+    // ── Token Verification ──────────────────────────────────────────────
+    // If ISSUER_SECRET is set, require a valid blind-signed token.
+    // The token system provides abuse control (rate limiting moved to issuer)
+    // and IP isolation (pool never reads client IP).
+    if (ISSUER_SECRET) {
+      const authHeader = req.headers['authorization'];
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Missing or invalid Authorization header. Expected: Bearer <token>' }));
+        return;
+      }
+
+      const token = authHeader.slice('Bearer '.length).trim();
+      const verification = verifyToken(token, ISSUER_SECRET);
+
+      if (!verification.valid) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: verification.error || 'Invalid contribution token' }));
+        return;
+      }
+    }
+    // If ISSUER_SECRET is not set, open mode: no token required (self-host/users on own LAN)
     let body = '';
     req.on('data', (chunk) => { body += chunk; });
     req.on('end', () => {

@@ -5,10 +5,14 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test": "jest --forceExit"
   },
   "dependencies": {
     "tweetnacl": "^1.0.3",
     "ws": "^8.18.1"
+  },
+  "devDependencies": {
+    "jest": "^30.4.2"
   }
 }

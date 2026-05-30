@@ -15,6 +15,7 @@
 
 import type { ScannedFlyerPrice, ContributedFlyerPrice } from './flyer-types';
 import { getSettings } from '../config/settings';
+import { getContributionToken, clearContributionTokenCache } from './tokens';
 
 // ─── Settings Key ────────────────────────────────────────────────────────────
 
@@ -198,6 +199,9 @@ export function getLastBatchTime(): number {
 /**
  * Submit a single contributed price to the server.
  *
+ * Attaches a blind-signed contribution token via Authorization header.
+ * Retries once with a fresh token on 401/403 response.
+ *
  * Server expects a single-object POST to /api/pool/contribute.
  */
 async function sendContribution(
@@ -206,15 +210,38 @@ async function sendContribution(
   const baseUrl = getHttpRelayUrl();
   const url = `${baseUrl}/api/pool/contribute`;
 
-  try {
-    const response = await fetch(url, {
+  // Obtain a contribution token (null = self-host mode, no token needed)
+  const token = await getContributionToken();
+
+  async function doPost(authToken: string | null): Promise<Response> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+    return fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify(price),
       signal: AbortSignal.timeout(10_000),
     });
+  }
+
+  try {
+    const response = await doPost(token);
+
+    // If token was rejected, try once with a fresh token
+    if ((response.status === 401 || response.status === 403) && token) {
+      clearContributionTokenCache();
+      const newToken = await getContributionToken();
+      if (newToken) {
+        const retryResponse = await doPost(newToken);
+        return retryResponse.ok;
+      }
+      return false;
+    }
+
     return response.ok;
   } catch {
     return false;
