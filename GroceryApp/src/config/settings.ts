@@ -37,6 +37,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   voiceInputEnabled: false,
   barcodeScanningEnabled: false,
   flyerScanEnabled: false,
+  cloudFlyerEnabled: false,
 };
 
 // ─── Cache ───────────────────────────────────────────────────────────────────

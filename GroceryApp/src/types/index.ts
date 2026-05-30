@@ -167,6 +167,8 @@ export interface AppSettings {
   scrapingEnabled?: boolean;
   // Flyer scan opt-in
   flyerScanEnabled?: boolean;
+  // Cloud flyer pool opt-in
+  cloudFlyerEnabled?: boolean;
 }
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';

@@ -41,6 +41,15 @@ const TLS_KEY_PATH = process.env.TLS_KEY;
 /** File path for persisting relay state across restarts. */
 const STATE_FILE = process.env.RELAY_STATE_FILE || './relay-state.json';
 
+// ─── Pool Server ────────────────────────────────────────────────────────────────
+
+const { PoolStore } = require('./pool/store');
+const { handlePoolRequest } = require('./pool/pool-server');
+const { seedTestData } = require('./seed-pool');
+const poolStore = new PoolStore();
+// Seed test data on startup
+seedTestData(poolStore);
+
 /**
  * Serialize relay state to a plain object (JSON-compatible).
  */
@@ -474,6 +483,11 @@ const server = createServer((req, res) => {
       },
     }));
     return;
+  }
+
+  // Pool endpoints (unauthenticated, identity-free)
+  if (req.url.startsWith('/api/pool/')) {
+    return handlePoolRequest(req, res, poolStore);
   }
 
   // Default 404
