@@ -19,10 +19,20 @@ import { getSettings } from '../config/settings';
 // ─── Settings Key ────────────────────────────────────────────────────────────
 
 /**
- * Derive the HTTP relay URL from the WebSocket relay URL in settings.
+ * Derive the HTTP relay URL from settings.
+ *
+ * If `poolUrl` is set (community/managed pool), use it directly.
+ * Otherwise, derive from the WebSocket relay URL (self-hosted mode).
  */
 function getHttpRelayUrl(): string {
-  const { relayUrl, relayPort } = getSettings();
+  const { relayUrl, relayPort, poolUrl } = getSettings();
+
+  // Pool URL explicitly configured — use it directly (transport isolation)
+  if (poolUrl) {
+    return poolUrl;
+  }
+
+  // Fallback: derive from the WebSocket relay URL
   const httpUrl = relayUrl
     .replace(/^ws:/, 'http:')
     .replace(/^wss:/, 'https:');

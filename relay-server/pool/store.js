@@ -16,7 +16,7 @@ const { aggregatePriceReports } = require('./aggregator');
 
 class PoolStore {
   constructor() {
-    /** @type {Map<string, { prices: number[], validTo: number }>} */
+    /** @type {Map<string, { reports: Array<{ price: number, addedAt: number }>, validTo: number }>} */
     this._store = new Map();
   }
 
@@ -41,17 +41,17 @@ class PoolStore {
    */
   addReport(key, price, validTo) {
     if (!this._store.has(key)) {
-      this._store.set(key, { prices: [], validTo });
+      this._store.set(key, { reports: [], validTo });
     }
     const entry = this._store.get(key);
-    // Purge expired prices from this entry before appending
+    // Purge reports older than 90 days from this entry before appending
     const expiredThreshold = Date.now() - 90 * 24 * 60 * 60 * 1000; // 90-day window
-    entry.prices = entry.prices.filter(p => p > expiredThreshold);
-    // Cap at 500 prices per key (prevents unbounded growth)
-    if (entry.prices.length >= 500) {
-      entry.prices.shift(); // drop oldest
+    entry.reports = entry.reports.filter(r => r.addedAt > expiredThreshold);
+    // Cap at 500 reports per key (prevents unbounded growth)
+    if (entry.reports.length >= 500) {
+      entry.reports.shift(); // drop oldest
     }
-    entry.prices.push(price);
+    entry.reports.push({ price, addedAt: Date.now() });
     // Use the latest validTo
     if (validTo > entry.validTo) {
       entry.validTo = validTo;
@@ -77,7 +77,7 @@ class PoolStore {
 
       const normalizedName = parts[1];
       const flyerWeek = parts[2];
-      const agg = aggregatePriceReports(entry.prices);
+      const agg = aggregatePriceReports(entry.reports.map(r => r.price));
 
       results.push({
         itemName: normalizedName,
@@ -124,7 +124,7 @@ class PoolStore {
   getAll() {
     const entries = [];
     for (const [key, entry] of this._store) {
-      entries.push({ key, prices: [...entry.prices], validTo: entry.validTo });
+      entries.push({ key, prices: entry.reports.map(r => r.price), validTo: entry.validTo });
     }
     return entries;
   }

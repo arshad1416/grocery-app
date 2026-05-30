@@ -41,6 +41,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   contributeEnabled: false,
   contributeStoreGranularity: 'region',
   contributeConsentShown: false,
+  poolUrl: '',
 };
 
 // ─── Cache ───────────────────────────────────────────────────────────────────

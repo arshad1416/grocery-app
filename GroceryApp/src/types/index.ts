@@ -176,6 +176,8 @@ export interface AppSettings {
   contributeStoreGranularity?: 'region' | 'branch';
   /** Whether the consent modal has been shown to the user */
   contributeConsentShown?: boolean;
+  /** Separate pool server URL for contribution transport isolation */
+  poolUrl?: string;
 }
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';

@@ -20,7 +20,7 @@
  */
 
 import * as SecureStore from 'expo-secure-store';
-import { initCrypto, setMasterKey } from '../crypto/index';
+import { initCrypto, setMasterKey, hasMasterKey } from '../crypto/index';
 import { getFamilyId } from './family';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -406,6 +406,16 @@ export async function generateRecoveryPhrase(): Promise<string> {
   const familyId = await getFamilyId();
   if (!familyId) {
     throw new Error('No family membership found.');
+  }
+
+  // Guard: prevent overwriting an existing master key
+  // The two-key-root issue (recovery key vs passphrase-derived key) is not
+  // yet reconciled. Overwriting would orphan all encrypted data.
+  if (await hasMasterKey()) {
+    throw new Error(
+      'Cannot generate recovery phrase after data has been encrypted. ' +
+      'Recovery phrase must be created during family setup.',
+    );
   }
 
   // Generate 16 bytes of fresh random entropy as the recovery seed

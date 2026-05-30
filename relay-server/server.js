@@ -22,6 +22,7 @@ const crypto = require('crypto');
 // ─── Configuration ───────────────────────────────────────────────────────────
 
 const RELAY_PORT = parseInt(process.env.RELAY_PORT || process.env.PORT || '8080', 10);
+const POOL_PORT = parseInt(process.env.POOL_PORT || RELAY_PORT.toString(), 10);
 const API_PORT = parseInt(process.env.API_PORT || process.env.PORT || '8080', 10);
 const WS_PORT = parseInt(process.env.WS_PORT || process.env.PORT || '8080', 10);
 const MAX_CLIENTS_PER_FAMILY = parseInt(process.env.MAX_CLIENTS_PER_FAMILY || '50', 10);
@@ -485,8 +486,8 @@ const server = createServer((req, res) => {
     return;
   }
 
-  // Pool endpoints (unauthenticated, identity-free)
-  if (req.url.startsWith('/api/pool/')) {
+  // Pool endpoints (unauthenticated, identity-free) — only when sharing port
+  if (POOL_PORT === RELAY_PORT && req.url.startsWith('/api/pool/')) {
     return handlePoolRequest(req, res, poolStore);
   }
 
@@ -494,6 +495,17 @@ const server = createServer((req, res) => {
   res.writeHead(404);
   res.end('Not Found');
 });
+
+// ─── Pool HTTP Server (separate port for transport isolation) ──────────────
+// When POOL_PORT differs from RELAY_PORT, bind a dedicated HTTP server for
+// pool endpoints. This keeps contributions isolated from authenticated relay traffic.
+
+let poolServer = null;
+if (POOL_PORT !== RELAY_PORT) {
+  poolServer = createServer((req, res) => {
+    handlePoolRequest(req, res, poolStore);
+  });
+}
 
 // ─── WebSocket Server ────────────────────────────────────────────────────────
 
@@ -861,3 +873,13 @@ server.listen(RELAY_PORT, () => {
       }
     }, 60 * 60 * 1000);
 });
+
+// Start the pool HTTP server on a separate port
+if (POOL_PORT !== RELAY_PORT) {
+  poolServer.listen(POOL_PORT, () => {
+    console.log(`  Pool API:  http://localhost:${POOL_PORT}/api/pool/contribute`);
+  });
+} else {
+  // When ports are the same, pool is served on the main server (no isolation needed)
+  console.log(`  Pool API:  same server (POOL_PORT=${POOL_PORT})`);
+}

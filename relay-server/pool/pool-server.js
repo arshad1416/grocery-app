@@ -10,6 +10,59 @@
 
 const { aggregatePriceReports } = require('./aggregator');
 
+// ─── Rate Limiting ─────────────────────────────────────────────────────────────
+
+/**
+ * Per-IP rate limiter for pool endpoints.
+ * Map<ip, { count: number, windowStart: number }>
+ */
+const ipRateLimiters = new Map();
+
+/** Max requests per IP per minute. */
+const IP_RATE_LIMIT = 60;
+
+/** Rate limit window in milliseconds. */
+const IP_RATE_WINDOW_MS = 60_000;
+
+/**
+ * Check if an IP has exceeded the rate limit.
+ * @param {string} ip
+ * @returns {boolean} true if request is allowed
+ */
+function checkIpRateLimit(ip) {
+  const now = Date.now();
+  let limiter = ipRateLimiters.get(ip);
+
+  if (!limiter || now - limiter.windowStart > IP_RATE_WINDOW_MS) {
+    // Start a new window
+    limiter = { count: 1, windowStart: now };
+    ipRateLimiters.set(ip, limiter);
+    return true;
+  }
+
+  limiter.count++;
+  if (limiter.count > IP_RATE_LIMIT) {
+    return false; // Rate limited
+  }
+
+  return true;
+}
+
+/**
+ * Clean expired rate limit entries to prevent memory leaks.
+ */
+function cleanIpRateLimiters() {
+  const now = Date.now();
+  for (const [ip, limiter] of ipRateLimiters) {
+    if (now - limiter.windowStart > IP_RATE_WINDOW_MS * 2) {
+      ipRateLimiters.delete(ip);
+    }
+  }
+}
+
+// Clean rate limiters every 5 minutes
+setInterval(cleanIpRateLimiters, 5 * 60_000);
+
 // ─── Validation Helpers ──────────────────────────────────────────────────────
 
 const FLYER_WEEK_REGEX = /^\d{4}-W\d{2}$/;
@@ -71,6 +124,15 @@ function handlePoolRequest(req, res, store) {
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
     res.end();
+    return;
+  }
+
+  // Per-IP rate limiting (last resort before anonymous tokens)
+  // Use X-Forwarded-For if behind proxy, otherwise use remote address
+  const clientIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'unknown';
+  if (!checkIpRateLimit(clientIp)) {
+    res.writeHead(429, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Rate limit exceeded. Try again later.' }));
     return;
   }
 
