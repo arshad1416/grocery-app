@@ -98,6 +98,11 @@ export async function getRelayUrl(): Promise<string | null> {
  * Clear stored relay credentials (e.g. on family leave or key rotation).
  */
 export async function clearRelayCredentials(): Promise<void> {
-  await SecureStore.deleteItemAsync(RELAY_TOKEN_ALIAS);
-  await SecureStore.deleteItemAsync(RELAY_URL_ALIAS);
+  try {
+    await SecureStore.deleteItemAsync(RELAY_TOKEN_ALIAS);
+    await SecureStore.deleteItemAsync(RELAY_URL_ALIAS);
+  } catch {
+    // Best-effort cleanup — swallow errors since this is called during family leave
+    // and the device may already be in a degraded state.
+  }
 }

@@ -83,9 +83,10 @@ export default function App() {
         
         // Step 3: Get master key and derive sync key
         const masterKey = await getMasterKey();
-        const encryptionKey = masterKey
-          ? await deriveSyncKey(masterKey, 0)
-          : new Uint8Array(32); // fallback for testing
+        if (!masterKey) {
+          throw new Error('Master encryption key not found. Family setup required before sync.');
+        }
+        const encryptionKey = await deriveSyncKey(masterKey, 0);
 
         // Step 4: Get device ID and family ID
         const deviceId = getDeviceId();

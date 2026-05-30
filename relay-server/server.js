@@ -70,6 +70,13 @@ const rateLimiters = new Map();
  */
 const familyDeviceTokens = new Map();
 
+/**
+ * Set<string> — used invite tokens (signature-based replay protection).
+ * Prevents a leaked invite token from being replayed multiple times.
+ * Entries are never evicted; invites have a finite TTL so memory is bounded.
+ */
+const usedInviteSignatures = new Set();
+
 // ─── Ed25519 Signature Verification ──────────────────────────────────────────
 
 /**
@@ -285,6 +292,15 @@ const server = createServer((req, res) => {
           return;
         }
 
+        // Replay protection: reject invite tokens that have already been used.
+        // Since invites have finite TTL and signatures are unique per invite,
+        // tracking by the full familyInviteToken string is precise.
+        if (usedInviteSignatures.has(familyInviteToken)) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invite token has already been used' }));
+          return;
+        }
+
         // Check family limits
         const totalFamilies = familyRooms.size;
         if (totalFamilies >= MAX_FAMILIES) {
@@ -300,6 +316,9 @@ const server = createServer((req, res) => {
           res.end(JSON.stringify({ error: 'Family at maximum device capacity' }));
           return;
         }
+
+        // Mark invite as used (replay protection)
+        usedInviteSignatures.add(familyInviteToken);
 
         // Generate a relay token (opaque routing token)
         const relayToken = crypto.randomBytes(32).toString('hex');
