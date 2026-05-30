@@ -87,6 +87,7 @@ export async function buildWebhookUrl(
   params.set('name', item.name);
   params.set('quantity', String(item.quantity));
   params.set('unit', item.unit);
+  params.set('timestamp', String(payload.timestamp));
   params.set('sig', sig);
   if (item.notes) params.set('notes', item.notes);
 

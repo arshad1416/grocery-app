@@ -484,6 +484,7 @@ describe('IFTTT Webhook Bridge', () => {
       expect(url).toContain('api/webhook/ifttt');
       expect(url).toContain('name=Milk');
       expect(url).toContain('quantity=2');
+      expect(url).toContain('timestamp=');
       expect(url).toContain('sig=');
       // Signature should be 64 hex chars
       const sigMatch = url.match(/sig=([a-f0-9]{64})/);

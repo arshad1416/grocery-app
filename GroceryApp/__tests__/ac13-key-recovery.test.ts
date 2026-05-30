@@ -11,7 +11,7 @@
  * Run: npx jest __tests__/ac13-key-recovery.test.ts
  */
 
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, beforeAll } from '@jest/globals';
 import type { FamilyInviteToken, DeviceKeypair } from '../src/types';
 
 // ─── BIP39 Wordlist Validation ──────────────────────────────────────────────
@@ -28,6 +28,133 @@ const BIP39_WORDLIST_SUBSET = new Set([
   'advice', 'aerobic', 'affair', 'afford', 'afraid', 'again', 'age', 'agent',
   'zone', 'zoo',
 ]);
+
+// ─── Round-trip: recover(generate(k)) === k ─────────────────────────────────
+
+/**
+ * Test the BIP39 bit-packing round-trip using the actual entropyToWordIndices
+ * and wordIndicesToEntropy functions. This validates that the homegrown
+ * bit-packing (L3) is correct:
+ *
+ *   wordIndicesToEntropy(entropyToWordIndices(entropy)) === entropy
+ *
+ * Uses deterministic entropy values (no randomness) to prove the
+ * encode/decode cycle is lossless and checksum-verified.
+ */
+import { entropyToWordIndices, wordIndicesToEntropy } from '../src/identity/recovery';
+
+describe('L7: BIP39 Round-trip — recover(generate(k)) === k', () => {
+  beforeAll(async () => {
+    // libsodium-wrappers needs the WASM module to be ready before use
+    const sodium = require('libsodium-wrappers');
+    await sodium.ready;
+  });
+
+  it('round-trips a zero-filled entropy buffer', () => {
+    const entropy = new Uint8Array(16).fill(0);
+    const indices = entropyToWordIndices(entropy);
+    expect(indices.length).toBe(12);
+    const recovered = wordIndicesToEntropy(indices);
+    expect(recovered).toEqual(entropy);
+  });
+
+  it('round-trips all-0xFF entropy', () => {
+    const entropy = new Uint8Array(16).fill(0xFF);
+    const indices = entropyToWordIndices(entropy);
+    expect(indices.length).toBe(12);
+    const recovered = wordIndicesToEntropy(indices);
+    expect(recovered).toEqual(entropy);
+  });
+
+  it('round-trips alternating 0xAA pattern', () => {
+    const entropy = new Uint8Array(16);
+    for (let i = 0; i < 16; i++) {
+      entropy[i] = (i % 2 === 0) ? 0xAA : 0x55;
+    }
+    const indices = entropyToWordIndices(entropy);
+    const recovered = wordIndicesToEntropy(indices);
+    expect(recovered).toEqual(entropy);
+  });
+
+  it('round-trips incremental byte values (0,1,2,...,15)', () => {
+    const entropy = new Uint8Array(16);
+    for (let i = 0; i < 16; i++) entropy[i] = i;
+    const indices = entropyToWordIndices(entropy);
+    const recovered = wordIndicesToEntropy(indices);
+    expect(recovered).toEqual(entropy);
+  });
+
+  it('round-trips a single-bit entropy (only bit 0 set)', () => {
+    const entropy = new Uint8Array(16);
+    entropy[0] = 0x01; // lowest bit of first byte
+    const indices = entropyToWordIndices(entropy);
+    const recovered = wordIndicesToEntropy(indices);
+    expect(recovered).toEqual(entropy);
+  });
+
+  it('round-trips a high-bit entropy (only bit 127 set)', () => {
+    const entropy = new Uint8Array(16);
+    entropy[15] = 0x80; // highest bit of last byte (bit 127)
+    const indices = entropyToWordIndices(entropy);
+    const recovered = wordIndicesToEntropy(indices);
+    expect(recovered).toEqual(entropy);
+  });
+
+  it('round-trips deterministically across 100 pseudo-random seeds', () => {
+    // Simple LCG for deterministic pseudo-random bytes
+    let state = 42;
+    for (let trial = 0; trial < 100; trial++) {
+      const entropy = new Uint8Array(16);
+      for (let i = 0; i < 16; i++) {
+        state = (state * 1664525 + 1013904223) & 0xFFFFFFFF;
+        entropy[i] = (state >> 24) & 0xFF;
+      }
+      const indices = entropyToWordIndices(entropy);
+      expect(indices.length).toBe(12);
+      expect(indices.every((idx) => idx >= 0 && idx < 2048)).toBe(true);
+      const recovered = wordIndicesToEntropy(indices);
+      expect(recovered).toEqual(entropy);
+    }
+  });
+
+  it('throws on checksum mismatch (tampered indices)', () => {
+    const entropy = new Uint8Array(16).fill(0x42);
+    const indices = entropyToWordIndices(entropy);
+    // Tamper with one index
+    indices[0] = (indices[0] + 1) % 2048;
+    expect(() => wordIndicesToEntropy(indices)).toThrow('checksum');
+  });
+
+  it('throws on wrong word count', () => {
+    expect(() => wordIndicesToEntropy([])).toThrow('Expected');
+    expect(() => wordIndicesToEntropy(new Array(11).fill(0))).toThrow('Expected');
+    expect(() => wordIndicesToEntropy(new Array(13).fill(0))).toThrow('Expected');
+  });
+
+  it('throws on out-of-range word index', () => {
+    expect(() => wordIndicesToEntropy(new Array(12).fill(2048))).toThrow('out of range');
+    expect(() => wordIndicesToEntropy(new Array(12).fill(-1))).toThrow('out of range');
+  });
+
+  it('produces valid BIP39 word indices (0-2047) for all entropy values', () => {
+    const entropy = new Uint8Array(16);
+    // Test boundary conditions near the 11-bit word index limits
+    const testPatterns = [
+      [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+      [0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+      [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01],
+      [0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
+      [0x1F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+    ];
+    for (const pattern of testPatterns) {
+      entropy.set(pattern);
+      const indices = entropyToWordIndices(entropy);
+      expect(indices.every((idx) => idx >= 0 && idx < 2048)).toBe(true);
+      const recovered = wordIndicesToEntropy(indices);
+      expect(recovered).toEqual(entropy);
+    }
+  });
+});
 
 // ─── validateRecoveryPhrase — Simulated ─────────────────────────────────────
 

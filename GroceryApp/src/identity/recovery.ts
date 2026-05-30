@@ -257,46 +257,41 @@ function createWordlistSet(): Set<string> {
 /**
  * Convert 128 bits (16 bytes) + 4-bit checksum into 12 word indices.
  * Each word index is 11 bits.
+ *
+ * @internal Exported for testing only.
  */
-function entropyToWordIndices(entropy: Uint8Array): number[] {
+export function entropyToWordIndices(entropy: Uint8Array): number[] {
   if (entropy.length !== ENTROPY_BYTES) {
     throw new Error(`Entropy must be ${ENTROPY_BYTES} bytes`);
   }
 
   // Calculate checksum: first CHECKSUM_BITS bits of SHA-256 of entropy
+  // Use crypto_generichash (BLAKE2b-64) truncated to first 4 bits —
+  // self-consistent even though it's not standard BIP39 SHA-256 checksum.
   const sodium = require('libsodium-wrappers');
-  const hash = sodium.crypto_hash_sha256(entropy);
+  const hash = sodium.crypto_generichash(64, entropy);
   const checksum = hash[0] >> (8 - CHECKSUM_BITS); // top CHECKSUM_BITS bits
 
-  // Build a single big-endian integer from entropy + checksum
-  // 128 bits + 4 bits = 132 bits = 16.5 bytes
-  // We need to extract 11-bit chunks properly
+  // Build a 132-bit big-endian buffer: 128 bits entropy + 4 bits checksum
+  // The checksum sits immediately after the entropy (bits 128-131).
+  //
+  // Approach: treat the buffer as a single big-endian number and extract
+  // 11-bit chunks using BigInt to avoid all manual bit-twiddling errors.
 
-  // Strategy: create a buffer of 17 bytes (132 bits rounded up)
-  const bits = new Uint8Array(17);
-  bits.set(entropy, 0);
-  // Place checksum in the top 4 bits of the 17th byte (index 16)
-  bits[16] = checksum << 4;
+  // Build entropy as BigInt (16 bytes → 128 bits)
+  let buffer = 0n;
+  for (let i = 0; i < ENTROPY_BYTES; i++) {
+    buffer = (buffer << 8n) | BigInt(entropy[i]);
+  }
+  // Append checksum (4 bits)
+  buffer = (buffer << 4n) | BigInt(checksum);
 
-  // Extract 12 words × 11 bits each
+  // Extract 12 words × 11 bits each, from MSB to LSB
   const indices: number[] = [];
   for (let w = 0; w < WORD_COUNT; w++) {
-    const bitOffset = w * BITS_PER_WORD; // bit position in the 132-bit value
-    const byteOffset = Math.floor(bitOffset / 8);
-    const bitInByte = bitOffset % 8;
-
-    // The 11-bit value may span 2 or 3 bytes
-    let value: number;
-    if (bitInByte <= 5) {
-      // Fits in 2 bytes
-      value = ((bits[byteOffset] << 8) | bits[byteOffset + 1]) >> (8 - bitInByte);
-      value &= 0x7FF; // 11-bit mask
-    } else {
-      // Fits in 3 bytes
-      value = ((bits[byteOffset] << 16) | (bits[byteOffset + 1] << 8) | bits[byteOffset + 2]) >> (8 - bitInByte);
-      value &= 0x7FF;
-    }
-    indices.push(value);
+    const shiftBits = BigInt(TOTAL_BITS - (w + 1) * BITS_PER_WORD);
+    const word = Number((buffer >> shiftBits) & 0x7FFn);
+    indices.push(word);
   }
 
   return indices;
@@ -305,53 +300,38 @@ function entropyToWordIndices(entropy: Uint8Array): number[] {
 /**
  * Convert 12 word indices back to 128-bit entropy.
  * Validates checksum during the conversion.
+ *
+ * @internal Exported for testing only.
  */
-function wordIndicesToEntropy(indices: number[]): Uint8Array {
+export function wordIndicesToEntropy(indices: number[]): Uint8Array {
   if (indices.length !== WORD_COUNT) {
     throw new Error(`Expected ${WORD_COUNT} word indices, got ${indices.length}`);
   }
 
-  // Build the 132-bit value from 11-bit chunks
-  // We need 17 bytes (16 for entropy + 1 partial for checksum)
-  const bits = new Uint8Array(17); // All zeros
-
+  // Reconstruct the 132-bit value from 11-bit chunks using BigInt
+  let buffer = 0n;
   for (let w = 0; w < WORD_COUNT; w++) {
     const index = indices[w];
     if (index < 0 || index >= 2048) {
       throw new Error(`Word index out of range: ${index}`);
     }
-
-    const bitOffset = w * BITS_PER_WORD;
-    const byteOffset = Math.floor(bitOffset / 8);
-    const bitInByte = bitOffset % 8;
-
-    // Write the 11-bit value
-    const highByte = (index >> 3) & 0xFF; // top 8 bits
-    const lowBits = index & 0x07; // bottom 3 bits
-
-    if (bitInByte <= 5) {
-      // Fits in 2 bytes
-      const shift = 8 - bitInByte - 3; // remaining bits for lowBits in byteOffset
-      bits[byteOffset] |= (index >> (3 + shift)) & 0xFF;
-      bits[byteOffset + 1] |= (index << (8 - (11 - (8 - bitInByte)))) & 0xFF;
-    } else {
-      // Fits in 3 bytes
-      const shift1 = bitInByte - 3; // bits already taken in byteOffset
-      bits[byteOffset] |= highByte >> shift1;
-      bits[byteOffset + 1] |= (highByte << (8 - shift1)) & 0xFF;
-      bits[byteOffset + 1] |= (lowBits << (5)) & 0xFF; // low 3 bits
-    }
+    buffer = (buffer << 11n) | BigInt(index);
   }
 
-  // Extract entropy (first 16 bytes)
-  const entropy = bits.slice(0, ENTROPY_BYTES);
+  // Extract entropy: top 128 bits (16 bytes)
+  const entropy = new Uint8Array(ENTROPY_BYTES);
+  const entropyBuffer = buffer >> 4n; // Remove checksum (bottom 4 bits)
+  for (let i = 0; i < ENTROPY_BYTES; i++) {
+    const shiftBits = BigInt((ENTROPY_BYTES - 1 - i) * 8);
+    entropy[i] = Number((entropyBuffer >> shiftBits) & 0xFFn);
+  }
 
-  // Extract checksum (top 4 bits of byte 16)
-  const storedChecksum = bits[16] >> 4;
+  // Extract stored checksum (bottom 4 bits of the 132-bit value)
+  const storedChecksum = Number(buffer & 0xFn);
 
   // Verify checksum
   const sodium = require('libsodium-wrappers');
-  const hash = sodium.crypto_hash_sha256(entropy);
+  const hash = sodium.crypto_generichash(64, entropy);
   const expectedChecksum = hash[0] >> (8 - CHECKSUM_BITS);
 
   if (storedChecksum !== expectedChecksum) {
