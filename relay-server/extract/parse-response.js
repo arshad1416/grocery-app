@@ -56,13 +56,16 @@ function recoverJson(raw) {
 function validatePriceEntry(entry) {
   if (!entry || typeof entry !== 'object') return null;
 
-  // itemName: required, non-empty string
-  const itemName = entry.itemName || entry.originalName || '';
-  if (typeof itemName !== 'string' || itemName.trim().length === 0) return null;
+  // itemName: required, non-empty string, max 100 chars, no control chars
+  const itemName = (entry.itemName || entry.originalName || '')
+    .replace(/[\x00-\x1f\x7f-\x9f]/g, '') // strip control characters
+    .trim()
+    .slice(0, 100);
+  if (itemName.length === 0) return null;
 
-  // price: required, must be a positive number
+  // price: required, positive number, plausibility cap ($0.01 - $9,999.99)
   const price = Number(entry.price);
-  if (isNaN(price) || price <= 0) return null;
+  if (isNaN(price) || price <= 0 || price > 9999.99) return null;
 
   // unit: optional, default to 'each'
   const unit = (typeof entry.unit === 'string' && entry.unit.trim().length > 0)

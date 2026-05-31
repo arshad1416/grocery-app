@@ -45,3 +45,10 @@ Output: {"prices":[{"itemName":"red apples","originalName":"Manzanas Rojas","pri
 Remember: pure JSON only. No markdown. No extra text.`;
 
 module.exports = { SYSTEM_PROMPT };
+
+/**
+ * NOTE: The model output is untrusted. All returned prices are validated
+ * by parse-response.js before reaching the user. Prompt injection via
+ * adversarial flyer text is bounded — worst case is bad price data,
+ * which is type/range-validated and absorbed by pool median aggregation.
+ */
