@@ -20,6 +20,9 @@ export const BUILT_IN_CATEGORIES = [
 
 export type BuiltInCategory = (typeof BUILT_IN_CATEGORIES)[number];
 
+/** Category order for store-plan sorting (same order as BUILT_IN_CATEGORIES). */
+export const STORE_PLAN_CATEGORY_ORDER = BUILT_IN_CATEGORIES;
+
 /**
  * Grocery category — accepts built-in or user-defined category strings.
  * This allows extensibility without modifying types.

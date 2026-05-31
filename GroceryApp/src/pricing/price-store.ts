@@ -25,6 +25,8 @@ import { getSettings } from '../config/settings';
 export interface PriceState {
   /** Prices keyed by itemId */
   prices: Record<string, PriceResult>;
+  /** Per-store prices: storeId → itemId → PriceResult */
+  perStorePrices: Record<string, Record<string, PriceResult>>;
   /** Loading flag for batch loads */
   isLoading: boolean;
   /** Per-item loading states */
@@ -38,13 +40,19 @@ export interface PriceState {
     storeId?: string,
   ) => Promise<void>;
   loadSinglePrice: (itemId: string, itemName: string, storeId: string) => Promise<void>;
+  loadPricesForAllStores: (
+    items: { id: string; name: string }[],
+    storeIds: string[],
+  ) => Promise<void>;
   submitCrowdPrice: (
     price: Omit<SubmittedPrice, 'id' | 'timestamp'>,
     refreshItemId?: string,
     refreshItemName?: string,
   ) => Promise<void>;
   getItemPrice: (itemId: string) => PriceResult | null;
+  getStoreIdsWithPrices: () => string[];
   clearPrices: () => void;
+  clearPerStorePrices: () => void;
   clearError: () => void;
 }
 
@@ -52,6 +60,7 @@ export interface PriceState {
 
 export const usePriceStore = create<PriceState>((set, get) => ({
   prices: {},
+  perStorePrices: {},
   isLoading: false,
   itemLoading: {},
   error: null,
@@ -134,6 +143,43 @@ export const usePriceStore = create<PriceState>((set, get) => ({
     }
   },
 
+  loadPricesForAllStores: async (items, storeIds) => {
+    const settings = getSettings();
+    if (!settings.pricingOptedIn) {
+      return;
+    }
+
+    try {
+      const results: Record<string, Record<string, PriceResult>> = {};
+
+      await Promise.all(
+        storeIds.map(async (storeId) => {
+          const itemNames = items.map((i) => i.name);
+          const priceMap = await priceRegistry.getAllPrices(itemNames, storeId);
+          const storeResult: Record<string, PriceResult> = {};
+          for (const item of items) {
+            const result = priceMap.get(item.name);
+            if (result) {
+              storeResult[item.id] = result;
+            }
+          }
+          if (Object.keys(storeResult).length > 0) {
+            results[storeId] = storeResult;
+          }
+        }),
+      );
+
+      set((state) => ({
+        prices: { ...state.prices, ...Object.values(results).reduce((acc, storePrices) => ({ ...acc, ...storePrices }), {}) },
+        perStorePrices: { ...state.perStorePrices, ...results },
+      }));
+    } catch (err) {
+      set({
+        error: err instanceof Error ? err.message : 'Failed to load prices for all stores',
+      });
+    }
+  },
+
   submitCrowdPrice: async (
     price: Omit<SubmittedPrice, 'id' | 'timestamp'>,
     refreshItemId?: string,
@@ -158,8 +204,16 @@ export const usePriceStore = create<PriceState>((set, get) => ({
     return get().prices[itemId] ?? null;
   },
 
+  getStoreIdsWithPrices: () => {
+    return Object.keys(get().perStorePrices);
+  },
+
   clearPrices: () => {
     set({ prices: {}, error: null });
+  },
+
+  clearPerStorePrices: () => {
+    set({ perStorePrices: {} });
   },
 
   clearError: () => {

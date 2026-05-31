@@ -24,10 +24,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { GroceryItem, SyncState, GroceryCategory } from '../types';
 import type { PriceResult } from '../pricing/types';
-import { BUILT_IN_CATEGORIES } from '../types';
+import { BUILT_IN_CATEGORIES, STORE_PLAN_CATEGORY_ORDER } from '../types';
 import { useGroceryStore } from '../state/useGroceryStore';
 import { useSyncStore } from '../state/useSyncStore';
-import { useListStore } from '../state/useListStore';
 import { getListMeta } from '../sync/yjs-adapter';
 import type { RootStackParamList } from '../navigation/deepLinks';
 import AddItemSheet from './AddItemSheet';
@@ -330,7 +329,92 @@ function GotItHeader({ count, isExpanded, onToggle }: GotItHeaderProps) {
   );
 }
 
+// ─── Store Total Bar ────────────────────────────────────────────────────────────
+
+interface StoreTotal {
+  storeId: string;
+  storeName: string;
+  total: number;
+}
+
+interface StoreTotalBarProps {
+  storeTotals: StoreTotal[];
+  selectedStoreId: string | null;
+  onSelectStore: (storeId: string | null) => void;
+}
+
+function StoreTotalBar({ storeTotals, selectedStoreId, onSelectStore }: StoreTotalBarProps) {
+  if (storeTotals.length === 0) return null;
+
+  const cheapestId = storeTotals[0]?.storeId;
+
+  return (
+    <View style={styles.storeTotalBarContainer}>
+      <View style={styles.storeTotalBarScroll}>
+        <TouchableOpacity
+          style={[
+            styles.storeTotalPill,
+            selectedStoreId === null && styles.storeTotalPillSelected,
+          ]}
+          onPress={() => onSelectStore(null)}
+        >
+          <Text style={[
+            styles.storeTotalPillText,
+            selectedStoreId === null && styles.storeTotalPillTextSelected,
+          ]}>All Categories</Text>
+        </TouchableOpacity>
+        {storeTotals.map((st) => {
+          const isSelected = selectedStoreId === st.storeId;
+          const isCheapest = st.storeId === cheapestId && selectedStoreId === null;
+          return (
+            <TouchableOpacity
+              key={st.storeId}
+              style={[
+                styles.storeTotalPill,
+                isSelected && styles.storeTotalPillSelected,
+                isCheapest && styles.storeTotalPillCheapest,
+              ]}
+              onPress={() => onSelectStore(isSelected ? null : st.storeId)}
+            >
+              <Text style={[
+                styles.storeTotalPillText,
+                isSelected && styles.storeTotalPillTextSelected,
+              ]}>
+                {st.storeName}
+              </Text>
+              <View style={[
+                styles.storeTotalBadge,
+                isSelected && styles.storeTotalBadgeSelected,
+                isCheapest && styles.storeTotalBadgeCheapest,
+              ]}>
+                <Text style={[
+                  styles.storeTotalBadgeText,
+                  isSelected && styles.storeTotalBadgeTextSelected,
+                ]}>
+                  ${st.total.toFixed(2)}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 // ─── Main Screen ─────────────────────────────────────────────────────────────
+
+// Known store IDs to load prices from
+const ALL_STORE_IDS = ['no-frills', 'loblaws', 'freshco', 'metro', 'walmart', 'food-basics'] as const;
+
+const STORE_NAME_MAP: Record<string, string> = {
+  'no-frills': 'No Frills',
+  'loblaws': 'Loblaws',
+  'freshco': 'FreshCo',
+  'metro': 'Metro',
+  'walmart': 'Walmart',
+  'food-basics': 'Food Basics',
+};
 
 export default function GroceryListScreen({ route, navigation }: Props) {
   const { listId } = route.params;
@@ -351,7 +435,9 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   const prices = usePriceStore((s) => s.prices);
   const priceLoading = usePriceStore((s) => s.isLoading);
   const itemLoading = usePriceStore((s) => s.itemLoading);
-  const loadPrices = usePriceStore((s) => s.loadPrices);
+  const loadPricesForAllStores = usePriceStore((s) => s.loadPricesForAllStores);
+  const perStorePrices = usePriceStore((s) => s.perStorePrices);
+  const getStoreIdsWithPrices = usePriceStore((s) => s.getStoreIdsWithPrices);
 
   // Local state
   const [searchQuery, setSearchQuery] = useState('');
@@ -363,6 +449,17 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     message: string;
     itemId: string;
   } | null>(null);
+  const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
+  // Get the best price for an item: per-store price if a store is selected, otherwise flat price
+  const getItemPrice = useCallback(
+    (itemId: string) => {
+      if (selectedStoreId && perStorePrices[selectedStoreId]?.[itemId]) {
+        return perStorePrices[selectedStoreId][itemId] ?? null;
+      }
+      return prices[itemId] ?? null;
+    },
+    [selectedStoreId, perStorePrices, prices],
+  );
   // Re-render timer for claim-an-item expiry checks (tick every 30s)
   const [, forceRender] = useState(0);
   useEffect(() => {
@@ -390,20 +487,19 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     }
   }, [listId, loadItems]);
 
-  // Load prices for visible items after items are loaded
-  const listPref = useListStore((s) => s.lists[listId]?.storePreference);
-  const storeId = listPref ?? 'default';
+  // Load prices for visible items across all common stores
+  const ALL_STORE_IDS = ['no-frills', 'loblaws', 'freshco', 'metro', 'walmart', 'food-basics'];
   useEffect(() => {
     const visibleItems = Object.values(items).filter(
       (item) => !item.isDeleted && item.listId === listId,
     );
     if (visibleItems.length > 0) {
-      loadPrices(
+      loadPricesForAllStores(
         visibleItems.map((item) => ({ id: item.id, name: item.name })),
-        storeId,
+        ALL_STORE_IDS,
       ).catch(() => {});
     }
-  }, [Object.keys(items).length, listId, storeId, loadPrices]);
+  }, [Object.keys(items).length, listId, loadPricesForAllStores]);
 
   // Filtered and grouped items — unchecked stay in categories, checked go to "Got It"
   const groupedSections = useMemo(() => {
@@ -459,6 +555,101 @@ export default function GroceryListScreen({ route, navigation }: Props) {
 
     return sections;
   }, [items, listId, searchQuery, gotItExpanded]);
+
+  // ─── Store totals — weighted total per store ───────────────────────────────
+  const STORE_NAME_MAP: Record<string, string> = {
+    'no-frills': 'No Frills',
+    'loblaws': 'Loblaws',
+    'freshco': 'FreshCo',
+    'metro': 'Metro',
+    'walmart': 'Walmart',
+    'food-basics': 'Food Basics',
+  };
+
+  const storeTotals = useMemo(() => {
+    const allItems = Object.values(items).filter(
+      (item) => !item.isDeleted && item.listId === listId && !item.isChecked,
+    );
+    const storeIds = getStoreIdsWithPrices();
+    const totals: StoreTotal[] = [];
+
+    for (const storeId of storeIds) {
+      const storePrices = perStorePrices[storeId];
+      if (!storePrices) continue;
+
+      let total = 0;
+      let hasPrice = false;
+      for (const item of allItems) {
+        const priceResult = storePrices[item.id];
+        if (priceResult) {
+          total += priceResult.price * item.quantity;
+          hasPrice = true;
+        }
+      }
+      if (hasPrice) {
+        totals.push({
+          storeId,
+          storeName: STORE_NAME_MAP[storeId] ?? storeId,
+          total,
+        });
+      }
+    }
+
+    totals.sort((a, b) => a.total - b.total);
+    return totals;
+  }, [items, listId, perStorePrices, getStoreIdsWithPrices]);
+
+  // ─── Store-plan sections — grouped by category for selected store ──────────
+  const storePlanSections = useMemo(() => {
+    if (!selectedStoreId) return null;
+
+    const allItems = Object.values(items).filter(
+      (item) => !item.isDeleted && item.listId === listId,
+    );
+
+    const filtered = searchQuery.trim()
+      ? allItems.filter((item) =>
+          item.name.toLowerCase().includes(searchQuery.toLowerCase()),
+        )
+      : allItems;
+
+    filtered.sort((a, b) => a.sortOrder - b.sortOrder);
+
+    const unchecked = filtered.filter((item) => !item.isChecked);
+    const checked = filtered.filter((item) => item.isChecked);
+
+    // Group unchecked by category, using STORE_PLAN_CATEGORY_ORDER
+    const groups: Record<string, GroceryItem[]> = {};
+    for (const item of unchecked) {
+      const cat = item.category || 'other';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(item);
+    }
+
+    const sections: { title: string; data: GroceryItem[] }[] = [];
+
+    for (const cat of STORE_PLAN_CATEGORY_ORDER) {
+      if (groups[cat]) {
+        sections.push({ title: cat, data: groups[cat] });
+        delete groups[cat];
+      }
+    }
+
+    // Remaining custom categories
+    for (const cat of Object.keys(groups).sort()) {
+      sections.push({ title: cat, data: groups[cat] });
+    }
+
+    // Add "Got It" section at the bottom if there are checked items
+    if (checked.length > 0) {
+      sections.push({
+        title: '__got_it__',
+        data: gotItExpanded ? checked : [],
+      });
+    }
+
+    return sections;
+  }, [items, listId, searchQuery, gotItExpanded, selectedStoreId]);
 
   // Item press → navigate to edit
   const handleItemPress = useCallback(
@@ -664,33 +855,71 @@ export default function GroceryListScreen({ route, navigation }: Props) {
           : `${totalItems} items`}
       </Text>
 
+      {/* Store total bar */}
+      <StoreTotalBar
+        storeTotals={storeTotals}
+        selectedStoreId={selectedStoreId}
+        onSelectStore={setSelectedStoreId}
+      />
+
       {/* Sectioned list */}
-      {groupedSections.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>
-            {searchQuery ? 'No results' : 'List is empty'}
-          </Text>
-          <Text style={styles.emptySubtitle}>
-            {searchQuery
-              ? 'Try a different search term'
-              : 'Tap + to add your first item'}
-          </Text>
-        </View>
-      ) : (
-        <SectionList
-          sections={groupedSections}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item, index, section }) => {
-            if (section.title === '__got_it__') {
+      {(() => {
+        const activeSections = selectedStoreId && storePlanSections
+          ? storePlanSections
+          : groupedSections;
+        const isStorePlan = selectedStoreId !== null;
+
+        if (activeSections.length === 0) {
+          return (
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyTitle}>
+                {searchQuery ? 'No results' : 'List is empty'}
+              </Text>
+              <Text style={styles.emptySubtitle}>
+                {searchQuery
+                  ? 'Try a different search term'
+                  : 'Tap + to add your first item'}
+              </Text>
+            </View>
+          );
+        }
+        return (
+          <SectionList
+            sections={activeSections}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item, index, section }) => {
+              if (section.title === '__got_it__') {
+                return (
+                  <ItemRow
+                    item={item}
+                    onToggle={handleToggle}
+                    onPress={handleItemPress}
+                    onDelete={handleDelete}
+                    isFirst={index === 0}
+                    isLast={index === section.data.length - 1}
+                    price={getItemPrice(item.id)}
+                    priceLoading={itemLoading[item.id] ?? false}
+                    onClaim={handleClaim}
+                    onUnclaim={handleUnclaim}
+                    claimExpired={
+                      item.claimedAt
+                        ? Date.now() - item.claimedAt >= CLAIM_EXPIRY_MS
+                        : false
+                    }
+                  />
+                );
+              }
               return (
                 <ItemRow
                   item={item}
                   onToggle={handleToggle}
                   onPress={handleItemPress}
                   onDelete={handleDelete}
+                  onMoveUp={isStorePlan ? undefined : handleMoveUp}
+                  onMoveDown={isStorePlan ? undefined : handleMoveDown}
                   isFirst={index === 0}
                   isLast={index === section.data.length - 1}
-                  price={prices[item.id] ?? null}
+                  price={getItemPrice(item.id)}
                   priceLoading={itemLoading[item.id] ?? false}
                   onClaim={handleClaim}
                   onUnclaim={handleUnclaim}
@@ -701,51 +930,30 @@ export default function GroceryListScreen({ route, navigation }: Props) {
                   }
                 />
               );
-            }
-            return (
-              <ItemRow
-                item={item}
-                onToggle={handleToggle}
-                onPress={handleItemPress}
-                onDelete={handleDelete}
-                onMoveUp={handleMoveUp}
-                onMoveDown={handleMoveDown}
-                isFirst={index === 0}
-                isLast={index === section.data.length - 1}
-                price={prices[item.id] ?? null}
-                priceLoading={itemLoading[item.id] ?? false}
-                onClaim={handleClaim}
-                onUnclaim={handleUnclaim}
-                claimExpired={
-                  item.claimedAt
-                    ? Date.now() - item.claimedAt >= CLAIM_EXPIRY_MS
-                    : false
-                }
-              />
-            );
-          }}
-          renderSectionHeader={({ section }) => {
-            if (section.title === '__got_it__') {
+            }}
+            renderSectionHeader={({ section }) => {
+              if (section.title === '__got_it__') {
+                return (
+                  <GotItHeader
+                    count={checkedItemsCount}
+                    isExpanded={gotItExpanded}
+                    onToggle={() => setGotItExpanded((prev) => !prev)}
+                  />
+                );
+              }
               return (
-                <GotItHeader
-                  count={checkedItemsCount}
-                  isExpanded={gotItExpanded}
-                  onToggle={() => setGotItExpanded((prev) => !prev)}
+                <CategoryHeader
+                  category={section.title}
+                  count={section.data.length}
                 />
               );
-            }
-            return (
-              <CategoryHeader
-                category={section.title}
-                count={section.data.length}
-              />
-            );
-          }}
-          contentContainerStyle={styles.listContent}
-          stickySectionHeadersEnabled={false}
-          showsVerticalScrollIndicator={false}
-        />
-      )}
+            }}
+            contentContainerStyle={styles.listContent}
+            stickySectionHeadersEnabled={false}
+            showsVerticalScrollIndicator={false}
+          />
+        );
+      })()}
 
       {/* Undo Toast */}
       {toastState?.visible && (
@@ -1141,5 +1349,63 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#2E7D32',
     fontWeight: '600',
+  },
+
+  // ─── Store Total Bar styles ────────────────────────────────
+  storeTotalBarContainer: {
+    paddingHorizontal: 12,
+    marginBottom: 4,
+  },
+  storeTotalBarScroll: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  storeTotalPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    gap: 4,
+  },
+  storeTotalPillSelected: {
+    backgroundColor: '#4CAF50',
+    borderColor: '#4CAF50',
+  },
+  storeTotalPillCheapest: {
+    borderColor: '#4CAF50',
+    backgroundColor: '#E8F5E9',
+  },
+  storeTotalPillText: {
+    fontSize: 12,
+    color: '#555',
+    fontWeight: '600',
+  },
+  storeTotalPillTextSelected: {
+    color: '#fff',
+  },
+  storeTotalBadge: {
+    backgroundColor: '#f0f0f0',
+    borderRadius: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  storeTotalBadgeSelected: {
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  storeTotalBadgeCheapest: {
+    backgroundColor: '#4CAF50',
+  },
+  storeTotalBadgeText: {
+    fontSize: 11,
+    color: '#333',
+    fontWeight: '700',
+  },
+  storeTotalBadgeTextSelected: {
+    color: '#fff',
   },
 });
