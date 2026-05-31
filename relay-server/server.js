@@ -636,6 +636,12 @@ const server = createServer((req, res) => {
     return handlePoolRequest(req, res, poolStore);
   }
 
+  // POST /api/extract/flyer — authenticated flyer price extraction
+  if (req.url === '/api/extract/flyer' && req.method === 'POST') {
+    const { handleExtractRequest } = require('./extract/extract-server');
+    return handleExtractRequest(req, res, enrolledDevices);
+  }
+
   // Default 404
   res.writeHead(404);
   res.end('Not Found');
