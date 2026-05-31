@@ -57,11 +57,12 @@ function validatePriceEntry(entry) {
   if (!entry || typeof entry !== 'object') return null;
 
   // itemName: required, non-empty string, max 100 chars, no control chars
-  const itemName = (entry.itemName || entry.originalName || '')
-    .replace(/[\x00-\x1f\x7f-\x9f]/g, '') // strip control characters
+  const rawName = entry.itemName || entry.originalName || '';
+  if (typeof rawName !== 'string' || rawName.trim().length === 0) return null;
+  const itemName = rawName
+    .replace(/[\x00-\x1f\x7f-\x9f]/g, '')
     .trim()
     .slice(0, 100);
-  if (itemName.length === 0) return null;
 
   // price: required, positive number, plausibility cap ($0.01 - $9,999.99)
   const price = Number(entry.price);
