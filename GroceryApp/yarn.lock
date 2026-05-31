@@ -2609,6 +2609,18 @@ expo-font@^56.0.5, expo-font@~56.0.5:
   dependencies:
     fontfaceobserver "^2.1.0"
 
+expo-image-loader@~56.0.3:
+  version "56.0.3"
+  resolved "https://registry.npmjs.org/expo-image-loader/-/expo-image-loader-56.0.3.tgz"
+  integrity sha512-JgUo4fUeU1ZC+z8iBFj8v7yoGQnZrLbOVPyNE+DWVrld55F2F6R1ck+rmdm/8TNWLz1LhNQfD7c3XYP1ZikxXA==
+
+expo-image-manipulator@~56.0.16:
+  version "56.0.16"
+  resolved "https://registry.npmjs.org/expo-image-manipulator/-/expo-image-manipulator-56.0.16.tgz"
+  integrity sha512-uI4UzJNT1+KX7MCnoKlMaO3FhWksUzqoCDQOKQDdp7SWXBMPXodieDlzql66GVVdjYQd327NeIc/I6MZG08dVg==
+  dependencies:
+    expo-image-loader "~56.0.3"
+
 expo-keep-awake@~56.0.3:
   version "56.0.3"
   resolved "https://registry.npmjs.org/expo-keep-awake/-/expo-keep-awake-56.0.3.tgz"
