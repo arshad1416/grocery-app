@@ -44,6 +44,34 @@ import { scrapingAdapter } from '../pricing/scraping';
 import QRCode from '../components/QRCode';
 import ContributeConsentModal from '../components/ContributeConsentModal';
 import { useShareInvite } from '../hooks/useShareInvite';
+import { useThemeStore, useActiveTheme } from '../state/useThemeStore';
+
+// ─── Theme Colors ────────────────────────────────────────────────────────────
+
+const themeColors = {
+  light: {
+    bg: '#F8FAFC',
+    cardBg: '#FFFFFF',
+    text: '#0F172A',
+    secondaryText: '#64748B',
+    border: '#E2E8F0',
+    primary: '#10B981',
+    headerBg: '#FFFFFF',
+    segmentedBg: '#F1F5F9',
+    segmentActiveBg: '#10B981',
+  },
+  dark: {
+    bg: '#0B0F19',
+    cardBg: '#1E293B',
+    text: '#F8FAFC',
+    secondaryText: '#94A3B8',
+    border: '#334155',
+    primary: '#10B981',
+    headerBg: '#1E293B',
+    segmentedBg: '#0B0F19',
+    segmentActiveBg: '#10B981',
+  },
+};
 
 // ─── Segmented Control ───────────────────────────────────────────────────────
 
@@ -51,30 +79,35 @@ interface SegmentedControlProps {
   options: { label: string; value: string }[];
   selected: string;
   onSelect: (value: string) => void;
+  theme: typeof themeColors.light;
 }
 
-function SegmentedControl({ options, selected, onSelect }: SegmentedControlProps) {
+function SegmentedControl({ options, selected, onSelect, theme }: SegmentedControlProps) {
   return (
-    <View style={styles.segmentedControl}>
-      {options.map((opt) => (
-        <TouchableOpacity
-          key={opt.value}
-          style={[
-            styles.segmentButton,
-            selected === opt.value && styles.segmentButtonActive,
-          ]}
-          onPress={() => onSelect(opt.value)}
-        >
-          <Text
+    <View style={[styles.segmentedControl, { backgroundColor: theme.segmentedBg }]}>
+      {options.map((opt) => {
+        const isActive = selected === opt.value;
+        return (
+          <TouchableOpacity
+            key={opt.value}
             style={[
-              styles.segmentText,
-              selected === opt.value && styles.segmentTextActive,
+              styles.segmentButton,
+              isActive && { backgroundColor: theme.segmentActiveBg },
             ]}
+            onPress={() => onSelect(opt.value)}
           >
-            {opt.label}
-          </Text>
-        </TouchableOpacity>
-      ))}
+            <Text
+              style={[
+                styles.segmentText,
+                { color: isActive ? '#fff' : theme.secondaryText },
+                isActive && styles.segmentTextActive,
+              ]}
+            >
+              {opt.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -88,6 +121,8 @@ interface SettingsRowProps {
   placeholder?: string;
   secureTextEntry?: boolean;
   keyboardType?: 'default' | 'url' | 'numeric';
+  theme: typeof themeColors.light;
+  isDark: boolean;
 }
 
 function SettingsRow({
@@ -97,24 +132,33 @@ function SettingsRow({
   placeholder,
   secureTextEntry,
   keyboardType,
+  theme,
+  isDark,
 }: SettingsRowProps) {
   return (
     <View style={styles.settingsRow}>
-      <Text style={styles.settingsLabel}>{label}</Text>
+      <Text style={[styles.settingsLabel, { color: theme.secondaryText }]}>{label}</Text>
       {onChangeText ? (
         <TextInput
-          style={styles.settingsInput}
+          style={[
+            styles.settingsInput,
+            {
+              backgroundColor: isDark ? '#0B0F19' : '#FAFAFA',
+              color: theme.text,
+              borderColor: theme.border,
+            },
+          ]}
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor="#999"
+          placeholderTextColor={isDark ? '#475569' : '#999'}
           secureTextEntry={secureTextEntry}
           keyboardType={keyboardType ?? 'default'}
           autoCapitalize="none"
           autoCorrect={false}
         />
       ) : (
-        <Text style={styles.settingsValue} selectable>
+        <Text style={[styles.settingsValue, { color: theme.text }]} selectable>
           {value ?? '-'}
         </Text>
       )}
@@ -129,19 +173,20 @@ interface ToggleRowProps {
   value: boolean;
   onValueChange: (value: boolean) => void;
   disabled?: boolean;
+  theme: typeof themeColors.light;
 }
 
-function ToggleRow({ label, value, onValueChange, disabled }: ToggleRowProps) {
+function ToggleRow({ label, value, onValueChange, disabled, theme }: ToggleRowProps) {
   return (
     <View style={styles.toggleRow}>
-      <Text style={[styles.toggleLabel, disabled && styles.disabled]}>
+      <Text style={[styles.toggleLabel, { color: theme.text }, disabled && styles.disabled]}>
         {label}
       </Text>
       <Switch
         value={value}
         onValueChange={onValueChange}
         disabled={disabled}
-        trackColor={{ false: '#ddd', true: '#4CAF50' }}
+        trackColor={{ false: theme.border, true: '#10B981' }}
         thumbColor={value ? '#fff' : '#f4f3f4'}
       />
     </View>
@@ -172,6 +217,13 @@ export default function SettingsScreen({ navigation }: Props) {
   const [showContributeConsent, setShowContributeConsent] = useState(false);
 
   const { shareInvite } = useShareInvite();
+
+  // Theme support
+  const themeMode = useThemeStore((s) => s.themeMode);
+  const setThemeMode = useThemeStore((s) => s.setThemeMode);
+  const activeTheme = useActiveTheme();
+  const isDark = activeTheme === 'dark';
+  const theme = isDark ? themeColors.dark : themeColors.light;
 
   // Load settings on mount
   useEffect(() => {
@@ -226,9 +278,9 @@ export default function SettingsScreen({ navigation }: Props) {
 
   if (!loaded || !settings) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4CAF50" />
-        <Text style={styles.loadingText}>Loading settings...</Text>
+      <View style={[styles.loadingContainer, { backgroundColor: theme.bg }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
+        <Text style={[styles.loadingText, { color: theme.secondaryText }]}>Loading settings...</Text>
       </View>
     );
   }
@@ -237,17 +289,17 @@ export default function SettingsScreen({ navigation }: Props) {
   const isSelfHosted = settings.hostingTier === 'self_hosted';
 
   return (
-    <ScrollView style={styles.container}>
+    <ScrollView style={[styles.container, { backgroundColor: theme.bg }]}>
       <View style={styles.headerBar}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back</Text>
+          <Text style={[styles.backText, { color: theme.primary }]}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>Settings</Text>
+        <Text style={[styles.title, { color: theme.text }]}>Settings</Text>
       </View>
 
       {/* ── Tier Selector ─────────────────────────────────────────────── */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Hosting Tier</Text>
+      <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Hosting Tier</Text>
         <SegmentedControl
           options={[
             { label: 'Self-Hosted', value: 'self_hosted' },
@@ -255,18 +307,34 @@ export default function SettingsScreen({ navigation }: Props) {
           ]}
           selected={settings.hostingTier}
           onSelect={handleTierChange}
+          theme={theme}
+        />
+      </View>
+
+      {/* ── Appearance Selector ─────────────────────────────────────────── */}
+      <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Appearance</Text>
+        <SegmentedControl
+          options={[
+            { label: 'System Default', value: 'system' },
+            { label: 'Light Mode', value: 'light' },
+            { label: 'Dark Mode', value: 'dark' },
+          ]}
+          selected={themeMode}
+          onSelect={(v) => setThemeMode(v as any)}
+          theme={theme}
         />
       </View>
 
       {/* ── Device Info ──────────────────────────────────────────────── */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Device</Text>
-        <SettingsRow label="Device ID" value={deviceId} />
+      <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Device</Text>
+        <SettingsRow label="Device ID" value={deviceId} theme={theme} isDark={isDark} />
       </View>
 
       {/* ── Relay Configuration ──────────────────────────────────────── */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Relay Server</Text>
+      <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Relay Server</Text>
 
         <SettingsRow
           label="WebSocket URL"
@@ -274,6 +342,8 @@ export default function SettingsScreen({ navigation }: Props) {
           onChangeText={(v) => handleUpdate({ relayUrl: v })}
           placeholder="ws://localhost"
           keyboardType="url"
+          theme={theme}
+          isDark={isDark}
         />
 
         <SettingsRow
@@ -284,6 +354,8 @@ export default function SettingsScreen({ navigation }: Props) {
           }
           placeholder="8080"
           keyboardType="numeric"
+          theme={theme}
+          isDark={isDark}
         />
 
         <TouchableOpacity
@@ -312,17 +384,17 @@ export default function SettingsScreen({ navigation }: Props) {
 
       {/* ── Self-Hosted: Pairing Code ────────────────────────────────── */}
       {isSelfHosted && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Pairing Code</Text>
-          <Text style={styles.sectionDescription}>
+        <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Pairing Code</Text>
+          <Text style={[styles.sectionDescription, { color: theme.secondaryText }]}>
             Share this code with other family members to pair with your
             self-hosted relay.
           </Text>
-          <Text style={styles.pairingCodeBox}>
+          <Text style={[styles.pairingCodeBox, { backgroundColor: isDark ? '#0B0F19' : '#f0f0f0', color: theme.text }]}>
             {settings.pairingCode || 'Generate pairing code from setup screen'}
           </Text>
           <TouchableOpacity
-            style={styles.generateQrBtn}
+            style={[styles.generateQrBtn, { backgroundColor: theme.primary }]}
             onPress={async () => {
               try {
                 const code = await generatePairingCode(
@@ -344,13 +416,13 @@ export default function SettingsScreen({ navigation }: Props) {
           </TouchableOpacity>
           {settings.pairingCode && (
             <View style={styles.qrCodeContainer}>
-              <Text style={styles.qrCodeLabel}>Scan to join your family list</Text>
+              <Text style={[styles.qrCodeLabel, { color: theme.secondaryText }]}>Scan to join your family list</Text>
               <QRCode
                 data={`grocceryapp://invite?token=${encodeURIComponent(settings.pairingCode)}`}
                 size={180}
                 testID="pairing-qr-code"
               />
-              <Text style={styles.qrCodeData} selectable numberOfLines={3}>
+              <Text style={[styles.qrCodeData, { color: theme.secondaryText }]} selectable numberOfLines={3}>
                 {settings.pairingCode}
               </Text>
               <TouchableOpacity
@@ -370,19 +442,21 @@ export default function SettingsScreen({ navigation }: Props) {
 
       {/* ── Managed Tier: Subscription ───────────────────────────────── */}
       {!isSelfHosted && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Managed Subscription</Text>
+        <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Managed Subscription</Text>
           <SettingsRow
             label="Subscription Key"
             value={settings.managedSubscriptionKey}
             onChangeText={(v) => handleUpdate({ managedSubscriptionKey: v })}
             placeholder="Enter your subscription key"
             secureTextEntry
+            theme={theme}
+            isDark={isDark}
           />
-          <Text style={styles.planInfo}>
+          <Text style={[styles.planInfo, { color: theme.secondaryText }]}>
             Plan: Managed Relay + Encrypted Sync
           </Text>
-          <Text style={styles.tierDescription}>
+          <Text style={[styles.tierDescription, { color: theme.secondaryText }]}>
             Managed: Price queries are anonymized through our relay. Item names are hashed.
           </Text>
         </View>
@@ -390,26 +464,29 @@ export default function SettingsScreen({ navigation }: Props) {
 
       {/* ── Local AI Endpoint (Self-Hosted Only) ─────────────────────── */}
       {isSelfHosted && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>AI Endpoint</Text>
+        <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>AI Endpoint</Text>
           <SettingsRow
             label="Local AI URL"
             value={settings.localAiEndpoint}
             onChangeText={(v) => handleUpdate({ localAiEndpoint: v })}
             placeholder="http://localhost:1234"
             keyboardType="url"
+            theme={theme}
+            isDark={isDark}
           />
         </View>
       )}
 
       {/* ── Opt-In Features ──────────────────────────────────────────── */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Features</Text>
+      <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Features</Text>
 
         <ToggleRow
           label="Price Service"
           value={settings.priceServiceEnabled}
           onValueChange={(v) => handleUpdate({ priceServiceEnabled: v })}
+          theme={theme}
         />
 
         {/* Pricing Opt-In Toggle with Privacy Disclosure */}
@@ -418,7 +495,6 @@ export default function SettingsScreen({ navigation }: Props) {
           value={pricingOptedIn}
           onValueChange={async (v) => {
             if (v && !pricingDisclosureShown) {
-              // Show privacy disclosure dialog on first enable
               setPricingDisclosureShown(true);
               Alert.alert(
                 'Privacy Disclosure',
@@ -442,9 +518,10 @@ export default function SettingsScreen({ navigation }: Props) {
               await handleUpdate({ pricingOptedIn: v } as any);
             }
           }}
+          theme={theme}
         />
         {pricingOptedIn && (
-          <Text style={styles.privacyNote}>
+          <Text style={[styles.privacyNote, { color: theme.secondaryText }]}>
             Item names are normalized and hashed before being sent to price sources.
           </Text>
         )}
@@ -453,24 +530,26 @@ export default function SettingsScreen({ navigation }: Props) {
           label="Voice Input"
           value={settings.voiceInputEnabled}
           onValueChange={(v) => handleUpdate({ voiceInputEnabled: v })}
+          theme={theme}
         />
 
         <ToggleRow
           label="Barcode Scanning"
           value={settings.barcodeScanningEnabled}
           onValueChange={(v) => handleUpdate({ barcodeScanningEnabled: v })}
+          theme={theme}
         />
       </View>
 
       {/* ── Security ────────────────────────────────────────────────── */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Security</Text>
-        <Text style={styles.sectionDescription}>
+      <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Security</Text>
+        <Text style={[styles.sectionDescription, { color: theme.secondaryText }]}>
           Manage your recovery phrase and key backup options.
         </Text>
 
         <TouchableOpacity
-          style={styles.securityButton}
+          style={[styles.securityButton, { backgroundColor: theme.primary }]}
           onPress={() => {
             Alert.alert(
               'View Recovery Phrase',
@@ -503,11 +582,11 @@ export default function SettingsScreen({ navigation }: Props) {
       </View>
 
       {/* ── Pricing Subsystem ──────────────────────────────────────────── */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Pricing</Text>
+      <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Pricing</Text>
 
         {isSelfHosted && (
-          <Text style={styles.pricingNote}>
+          <Text style={[styles.pricingNote, { color: theme.primary }]}>
             Self-host: All price lookups stay local. No data leaves your network.
           </Text>
         )}
@@ -516,9 +595,10 @@ export default function SettingsScreen({ navigation }: Props) {
           label="Use community flyer prices"
           value={settings.cloudFlyerEnabled ?? false}
           onValueChange={(v) => handleUpdate({ cloudFlyerEnabled: v })}
+          theme={theme}
         />
         {settings.cloudFlyerEnabled && (
-          <Text style={styles.privacyNote}>
+          <Text style={[styles.privacyNote, { color: theme.secondaryText }]}>
             Prices from the community flyer pool — anonymized and aggregated.
           </Text>
         )}
@@ -528,42 +608,42 @@ export default function SettingsScreen({ navigation }: Props) {
           value={contributeEnabled}
           onValueChange={async (v) => {
             if (v && !contributeConsentShown) {
-              // Show consent modal on first enable
               setShowContributeConsent(true);
             } else {
               setContributeEnabled(v);
               await handleUpdate({ contributeEnabled: v } as any);
             }
           }}
+          theme={theme}
         />
         {contributeEnabled && (
-          <Text style={styles.privacyNote}>
+          <Text style={[styles.privacyNote, { color: theme.secondaryText }]}>
             Anonymized scan prices are shared to help others. Your identity is never included.
           </Text>
         )}
 
         <View style={styles.toggleRow}>
-          <Text style={styles.toggleLabel}>Crowd-Sourced</Text>
+          <Text style={[styles.toggleLabel, { color: theme.text }]}>Crowd-Sourced</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={{ fontSize: 11, color: '#4CAF50' }}>● Active</Text>
+            <Text style={{ fontSize: 11, color: '#10B981' }}>● Active</Text>
             <Switch
               value={crowdEnabled}
               onValueChange={async (v) => {
                 setCrowdEnabled(v);
                 await priceRegistry.setAdapterEnabled('crowdsourced', v);
               }}
-              trackColor={{ false: '#ddd', true: '#4CAF50' }}
+              trackColor={{ false: theme.border, true: '#10B981' }}
               thumbColor={crowdEnabled ? '#fff' : '#f4f3f4'}
             />
           </View>
         </View>
 
         <View style={styles.toggleRow}>
-          <Text style={styles.toggleLabel}>Instacart</Text>
+          <Text style={[styles.toggleLabel, { color: theme.text }]}>Instacart</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <Text style={{
               fontSize: 11,
-              color: instacartAdapter.isAvailable() ? '#4CAF50' : '#999',
+              color: instacartAdapter.isAvailable() ? '#10B981' : theme.secondaryText,
             }}>
               {instacartAdapter.isAvailable() ? '● Connected' : '○ Not configured'}
             </Text>
@@ -573,18 +653,18 @@ export default function SettingsScreen({ navigation }: Props) {
                 setInstacartEnabled(v);
                 await priceRegistry.setAdapterEnabled('instacart', v);
               }}
-              trackColor={{ false: '#ddd', true: '#4CAF50' }}
+              trackColor={{ false: theme.border, true: '#10B981' }}
               thumbColor={instacartEnabled ? '#fff' : '#f4f3f4'}
             />
           </View>
         </View>
 
         <View style={styles.toggleRow}>
-          <Text style={[styles.toggleLabel, !isSelfHosted && styles.disabled]}>
+          <Text style={[styles.toggleLabel, { color: theme.text }, !isSelfHosted && styles.disabled]}>
             Scraping (Self-Host Only)
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-            <Text style={{ fontSize: 11, color: '#999' }}>
+            <Text style={{ fontSize: 11, color: theme.secondaryText }}>
               {scrapingEnabled ? '● On' : '○ Off'}
             </Text>
             <Switch
@@ -602,7 +682,7 @@ export default function SettingsScreen({ navigation }: Props) {
                 await handleUpdate({ scrapingEnabled: v } as any);
               }}
               disabled={!isSelfHosted}
-              trackColor={{ false: '#ddd', true: '#FF9800' }}
+              trackColor={{ false: theme.border, true: '#FF9800' }}
               thumbColor={scrapingEnabled && isSelfHosted ? '#fff' : '#f4f3f4'}
             />
           </View>
@@ -610,7 +690,7 @@ export default function SettingsScreen({ navigation }: Props) {
 
         {/* Clear local price database */}
         <TouchableOpacity
-          style={styles.clearPricesBtn}
+          style={[styles.clearPricesBtn, { borderColor: '#f44336' }]}
           onPress={() => {
             Alert.alert(
               'Clear Price Data',

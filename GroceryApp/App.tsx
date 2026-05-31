@@ -21,6 +21,7 @@ import { initCrypto, deriveSyncKey, getMasterKey } from './src/crypto';
 import { initDeviceIdentity, getDeviceId } from './src/identity/device';
 import { getRelayToken, getRelayUrl } from './src/identity/enroll';
 import { initSettings, getSettings } from './src/config/settings';
+import { useThemeStore } from './src/state/useThemeStore';
 import { database } from './src/storage/database';
 import { syncManager } from './src/sync/sync-manager';
 import { useSyncStore } from './src/state/useSyncStore';
@@ -75,6 +76,7 @@ export default function App() {
         await initCrypto();
         await initDeviceIdentity();
         await initSettings();
+        useThemeStore.getState().hydrateTheme();
         
         // Step 2: Initialise WatermelonDB database (touch it to ensure adapter is ready)
         // The database is already created as a module-level singleton; accessing it

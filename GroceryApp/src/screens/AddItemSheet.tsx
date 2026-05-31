@@ -8,7 +8,7 @@
  *  - Parsed voice text pre-fills the name/quantity/unit fields
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -27,6 +27,7 @@ import { useGroceryStore } from '../state/useGroceryStore';
 import { useFamilyStore } from '../state/useFamilyStore';
 import { parseVoiceText } from '../voice/nlp';
 import type { ParsedItem } from '../voice/types';
+import { useActiveTheme } from '../state/useThemeStore';
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -110,6 +111,45 @@ const QUICK_ITEMS: Record<string, QuickItem[]> = {
 
 const CATEGORY_TABS = [...BUILT_IN_CATEGORIES];
 
+// ─── Theme Colors ────────────────────────────────────────────────────────────
+
+const themeColors = {
+  light: {
+    bg: '#F8FAFC',
+    cardBg: '#FFFFFF',
+    text: '#0F172A',
+    secondaryText: '#64748B',
+    border: '#E2E8F0',
+    primary: '#10B981',
+    inputBg: '#F1F5F9',
+    headerBg: '#FFFFFF',
+    btnText: '#FFFFFF',
+    tabActiveBg: '#10B981',
+    tabInactiveBg: '#F1F5F9',
+    tabActiveText: '#FFFFFF',
+    tabInactiveText: '#64748B',
+    modalOverlay: 'rgba(15, 23, 42, 0.4)',
+    voiceBtnBg: '#3B82F6',
+  },
+  dark: {
+    bg: '#0B0F19',
+    cardBg: '#1E293B',
+    text: '#F8FAFC',
+    secondaryText: '#94A3B8',
+    border: '#334155',
+    primary: '#10B981',
+    inputBg: '#0B0F19',
+    headerBg: '#1E293B',
+    btnText: '#FFFFFF',
+    tabActiveBg: '#10B981',
+    tabInactiveBg: '#0B0F19',
+    tabActiveText: '#FFFFFF',
+    tabInactiveText: '#94A3B8',
+    modalOverlay: 'rgba(0, 0, 0, 0.7)',
+    voiceBtnBg: '#3B82F6',
+  },
+};
+
 // ─── Main Component ─────────────────────────────────────────────────────────
 
 export default function AddItemSheet({
@@ -123,6 +163,9 @@ export default function AddItemSheet({
   const items = useGroceryStore((s) => s.items);
   const activeMemberId = useFamilyStore((s) => s.activeMemberId);
   const familyMembers = useFamilyStore((s) => s.members);
+
+  const activeTheme = useActiveTheme();
+  const theme = themeColors[activeTheme];
 
   // Local state
   const [activeTab, setActiveTab] = useState('produce');
@@ -210,13 +253,41 @@ export default function AddItemSheet({
   // ── Voice Input Handlers ───────────────────────────────────────────────
 
   /**
+   * Process raw voice text through the NLP parser and pre-fill the form.
+   */
+  const processVoiceText = useCallback(
+    (rawText: string) => {
+      setVoiceProcessing(true);
+      try {
+        const parsed = parseVoiceText(rawText);
+        setVoiceParsed(parsed);
+
+        if (parsed.name) {
+          setCustomName(parsed.name);
+          setCustomQty(String(parsed.quantity));
+          setCustomUnit(parsed.unit);
+        }
+
+        setVoiceModalVisible(false);
+      } catch (err) {
+        Alert.alert(
+          'Could not parse',
+          'Please try typing the item name directly.',
+        );
+      } finally {
+        setVoiceProcessing(false);
+      }
+    },
+    [],
+  );
+
+  /**
    * Open voice input — platform-appropriate method.
    * On iOS: uses Alert.prompt (native dictation via keyboard).
    * On Android: shows a text input modal for pasting voice text.
    */
   const openVoiceInput = useCallback(() => {
     if (Platform.OS === 'ios') {
-      // iOS: use Alert.prompt with dictation-supporting text field
       Alert.prompt(
         'Voice Input',
         'Tap the microphone on your keyboard and speak, or type what you want to add.',
@@ -236,42 +307,11 @@ export default function AddItemSheet({
         'default',
       );
     } else {
-      // Android: show inline voice text modal
       setVoiceText('');
       setVoiceParsed(null);
       setVoiceModalVisible(true);
     }
-  }, []);
-
-  /**
-   * Process raw voice text through the NLP parser and pre-fill the form.
-   */
-  const processVoiceText = useCallback(
-    (rawText: string) => {
-      setVoiceProcessing(true);
-      try {
-        const parsed = parseVoiceText(rawText);
-        setVoiceParsed(parsed);
-
-        if (parsed.name) {
-          setCustomName(parsed.name);
-          setCustomQty(String(parsed.quantity));
-          setCustomUnit(parsed.unit);
-        }
-
-        // Auto-dismiss voice modals
-        setVoiceModalVisible(false);
-      } catch (err) {
-        Alert.alert(
-          'Could not parse',
-          'Please try typing the item name directly.',
-        );
-      } finally {
-        setVoiceProcessing(false);
-      }
-    },
-    [],
-  );
+  }, [processVoiceText]);
 
   /**
    * Confirm voice-parsed item from Android modal.
@@ -299,14 +339,14 @@ export default function AddItemSheet({
       onRequestClose={handleClose}
     >
       <KeyboardAvoidingView
-        style={styles.container}
+        style={[styles.container, { backgroundColor: theme.bg }]}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         {/* Header */}
-        <View style={styles.header}>
-          <Text style={styles.title}>Add Item</Text>
+        <View style={[styles.header, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
+          <Text style={[styles.title, { color: theme.text }]}>Add Item</Text>
           <TouchableOpacity onPress={handleClose} disabled={adding}>
-            <Text style={styles.closeText}>Done</Text>
+            <Text style={[styles.closeText, { color: theme.primary }]}>Done</Text>
           </TouchableOpacity>
         </View>
 
@@ -316,55 +356,86 @@ export default function AddItemSheet({
           keyboardShouldPersistTaps="handled"
         >
           {/* ── Custom Item Input ─────────────────────────────────────── */}
-          <View style={styles.customSection}>
-            <Text style={styles.sectionLabel}>Custom Item</Text>
-            <View style={styles.customRow}>
-              <TextInput
-                style={styles.customNameInput}
-                value={customName}
-                onChangeText={setCustomName}
-                placeholder="Type item name..."
-                placeholderTextColor="#bbb"
-                autoCapitalize="sentences"
-                autoFocus
-              />
-              <TextInput
-                style={styles.customQtyInput}
-                value={customQty}
-                onChangeText={setCustomQty}
-                keyboardType="numeric"
-                placeholder="Qty"
-                placeholderTextColor="#bbb"
-              />
+          <View style={[styles.customSection, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+            <Text style={[styles.inputLabel, { color: theme.secondaryText }]}>ITEM NAME</Text>
+            <TextInput
+              style={[styles.customNameInput, { backgroundColor: theme.inputBg, color: theme.text, borderColor: theme.border }]}
+              value={customName}
+              onChangeText={setCustomName}
+              placeholder="Type item name..."
+              placeholderTextColor={activeTheme === 'dark' ? '#64748B' : '#94A3B8'}
+              autoCapitalize="sentences"
+              autoFocus
+            />
+
+            <View style={styles.metaInputRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.inputLabel, { color: theme.secondaryText }]}>QUANTITY</Text>
+                <View style={[styles.qtySelector, { backgroundColor: theme.inputBg, borderColor: theme.border }]}>
+                  <TouchableOpacity
+                    style={styles.qtyBtn}
+                    onPress={() => {
+                      const currentVal = parseInt(customQty, 10) || 1;
+                      if (currentVal > 1) {
+                        setCustomQty(String(currentVal - 1));
+                      }
+                    }}
+                    activeOpacity={0.6}
+                  >
+                    <Text style={[styles.qtyBtnText, { color: theme.text }]}>-</Text>
+                  </TouchableOpacity>
+                  <TextInput
+                    style={[styles.customQtyInputText, { color: theme.text }]}
+                    value={customQty}
+                    onChangeText={setCustomQty}
+                    keyboardType="numeric"
+                    textAlign="center"
+                  />
+                  <TouchableOpacity
+                    style={styles.qtyBtn}
+                    onPress={() => {
+                      const currentVal = parseInt(customQty, 10) || 1;
+                      setCustomQty(String(currentVal + 1));
+                    }}
+                    activeOpacity={0.6}
+                  >
+                    <Text style={[styles.qtyBtnText, { color: theme.text }]}>+</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={{ width: 100 }}>
+                <Text style={[styles.inputLabel, { color: theme.secondaryText }]}>UNIT</Text>
+                <TextInput
+                  style={[styles.customUnitInput, { backgroundColor: theme.inputBg, color: theme.text, borderColor: theme.border }]}
+                  value={customUnit}
+                  onChangeText={setCustomUnit}
+                  placeholder="Unit"
+                  placeholderTextColor={activeTheme === 'dark' ? '#64748B' : '#94A3B8'}
+                  autoCapitalize="none"
+                />
+              </View>
             </View>
-            <View style={styles.customActions}>
-              <TextInput
-                style={styles.customUnitInput}
-                value={customUnit}
-                onChangeText={setCustomUnit}
-                placeholder="Unit"
-                placeholderTextColor="#bbb"
-                autoCapitalize="none"
-              />
-              <TouchableOpacity
-                style={[
-                  styles.addBtn,
-                  (!customName.trim() || adding) && styles.addBtnDisabled,
-                ]}
-                onPress={handleAddCustom}
-                disabled={!customName.trim() || adding}
-              >
-                {adding ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={styles.addBtnText}>Add</Text>
-                )}
-              </TouchableOpacity>
-            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.addBtn,
+                { backgroundColor: theme.primary },
+                (!customName.trim() || adding) && styles.addBtnDisabled,
+              ]}
+              onPress={handleAddCustom}
+              disabled={!customName.trim() || adding}
+            >
+              {adding ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={[styles.addBtnText, { color: theme.btnText }]}>Add to List</Text>
+              )}
+            </TouchableOpacity>
           </View>
 
           {/* ── Quick-Add Section ─────────────────────────────────────── */}
-          <Text style={styles.sectionLabel}>Quick Add</Text>
+          <Text style={[styles.sectionLabel, { color: theme.secondaryText }]}>Quick Add</Text>
 
           {/* Category tabs */}
           <ScrollView
@@ -378,14 +449,20 @@ export default function AddItemSheet({
                 key={cat}
                 style={[
                   styles.tab,
-                  activeTab === cat && styles.tabActive,
+                  {
+                    backgroundColor: activeTab === cat ? theme.tabActiveBg : theme.tabInactiveBg,
+                    borderColor: activeTab === cat ? theme.tabActiveBg : theme.border,
+                  },
                 ]}
                 onPress={() => setActiveTab(cat)}
               >
                 <Text
                   style={[
                     styles.tabText,
-                    activeTab === cat && styles.tabTextActive,
+                    {
+                      color: activeTab === cat ? theme.tabActiveText : theme.tabInactiveText,
+                      fontWeight: activeTab === cat ? '600' : '500',
+                    },
                   ]}
                 >
                   {cat.charAt(0).toUpperCase() + cat.slice(1)}
@@ -399,7 +476,13 @@ export default function AddItemSheet({
             {(QUICK_ITEMS[activeTab] ?? []).map((quick) => (
               <TouchableOpacity
                 key={quick.name}
-                style={styles.quickChip}
+                style={[
+                  styles.quickChip,
+                  {
+                    backgroundColor: theme.cardBg,
+                    borderColor: theme.border,
+                  },
+                ]}
                 onPress={() =>
                   handleAddItem(
                     quick.name,
@@ -410,8 +493,8 @@ export default function AddItemSheet({
                 }
                 disabled={adding}
               >
-                <Text style={styles.quickName}>{quick.name}</Text>
-                <Text style={styles.quickMeta}>
+                <Text style={[styles.quickName, { color: theme.text }]}>{quick.name}</Text>
+                <Text style={[styles.quickMeta, { color: theme.secondaryText }]}>
                   {quick.quantity} {quick.unit}
                 </Text>
               </TouchableOpacity>
@@ -421,7 +504,7 @@ export default function AddItemSheet({
           {/* ── Voice Input Section ───────────────────────────────────── */}
           <View style={styles.voiceSection}>
             <TouchableOpacity
-              style={styles.voiceBtn}
+              style={[styles.voiceBtn, { backgroundColor: theme.voiceBtnBg }]}
               onPress={openVoiceInput}
               disabled={adding || voiceProcessing}
               activeOpacity={0.7}
@@ -432,17 +515,17 @@ export default function AddItemSheet({
                 <Text style={styles.voiceBtnText}>🎤 Voice Input</Text>
               )}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.voiceBtnDisabled}>
-              <Text style={styles.voiceBtnText}>📷 Barcode Scan</Text>
-              <Text style={styles.voiceBadge}>Phase 3</Text>
+            <TouchableOpacity style={[styles.voiceBtnDisabled, { backgroundColor: theme.tabInactiveBg, borderColor: theme.border }]}>
+              <Text style={[styles.voiceBtnText, { color: theme.secondaryText }]}>Barcode Scan</Text>
+              <Text style={[styles.voiceBadge, { color: theme.secondaryText }]}>Phase 3</Text>
             </TouchableOpacity>
           </View>
 
           {/* Voice parse result indicator */}
           {voiceParsed && (
-            <View style={styles.voiceResult}>
-              <Text style={styles.voiceResultText}>
-                Voice: {voiceParsed.name} ({voiceParsed.quantity} {voiceParsed.unit})
+            <View style={[styles.voiceResult, { backgroundColor: theme.primary + '15' }]}>
+              <Text style={[styles.voiceResultText, { color: theme.primary }]}>
+                Voice Added: {voiceParsed.name} ({voiceParsed.quantity} {voiceParsed.unit})
               </Text>
             </View>
           )}
@@ -457,33 +540,34 @@ export default function AddItemSheet({
           transparent
           onRequestClose={handleVoiceDismiss}
         >
-          <View style={styles.voiceOverlay}>
-            <View style={styles.voiceDialog}>
-              <Text style={styles.voiceDialogTitle}>Voice Input</Text>
-              <Text style={styles.voiceDialogHint}>
+          <View style={[styles.voiceOverlay, { backgroundColor: theme.modalOverlay }]}>
+            <View style={[styles.voiceDialog, { backgroundColor: theme.cardBg }]}>
+              <Text style={[styles.voiceDialogTitle, { color: theme.text }]}>Voice Input</Text>
+              <Text style={[styles.voiceDialogHint, { color: theme.secondaryText }]}>
                 Type or paste what you want to add, or use your keyboard's
                 microphone for dictation.
               </Text>
               <TextInput
-                style={styles.voiceDialogInput}
+                style={[styles.voiceDialogInput, { backgroundColor: theme.inputBg, color: theme.text, borderColor: theme.border }]}
                 value={voiceText}
                 onChangeText={setVoiceText}
                 placeholder='e.g. "2% milk x2" or "half a kilo of chicken"'
-                placeholderTextColor="#bbb"
+                placeholderTextColor={activeTheme === 'dark' ? '#64748B' : '#94A3B8'}
                 autoCapitalize="sentences"
                 autoFocus
                 multiline
               />
               <View style={styles.voiceDialogActions}>
                 <TouchableOpacity
-                  style={styles.voiceDialogCancel}
+                  style={[styles.voiceDialogCancel, { backgroundColor: theme.tabInactiveBg }]}
                   onPress={handleVoiceDismiss}
                 >
-                  <Text style={styles.voiceDialogCancelText}>Cancel</Text>
+                  <Text style={[styles.voiceDialogCancelText, { color: theme.tabInactiveText }]}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[
                     styles.voiceDialogParse,
+                    { backgroundColor: theme.voiceBtnBg },
                     !voiceText.trim() && styles.voiceDialogParseDisabled,
                   ]}
                   onPress={handleVoiceParse}
@@ -505,7 +589,6 @@ export default function AddItemSheet({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
   },
   header: {
     flexDirection: 'row',
@@ -513,19 +596,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 14,
-    backgroundColor: '#fff',
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
   },
   title: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#333',
   },
   closeText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#4CAF50',
   },
   scroll: {
     flex: 1,
@@ -534,17 +613,16 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   sectionLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#999',
+    fontSize: 11,
+    fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 8,
-    marginTop: 8,
+    marginTop: 16,
   },
   customSection: {
-    backgroundColor: '#fff',
     borderRadius: 12,
+    borderWidth: 1,
     padding: 14,
     marginBottom: 4,
     shadowColor: '#000',
@@ -553,58 +631,67 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 1,
   },
-  customRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
-  },
   customNameInput: {
-    flex: 1,
     borderWidth: 1,
-    borderColor: '#ddd',
     borderRadius: 8,
     padding: 10,
     fontSize: 15,
-    color: '#333',
-    backgroundColor: '#fafafa',
+    height: 44,
   },
-  customQtyInput: {
-    width: 60,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 10,
-    fontSize: 15,
-    textAlign: 'center',
-    color: '#333',
-    backgroundColor: '#fafafa',
-  },
-  customActions: {
+  metaInputRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 12,
+    marginTop: 12,
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+  },
+  qtySelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    height: 44,
+    overflow: 'hidden',
+  },
+  qtyBtn: {
+    width: 40,
+    height: '100%',
+    justifyContent: 'center',
     alignItems: 'center',
   },
-  customUnitInput: {
+  qtyBtnText: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  customQtyInputText: {
     flex: 1,
+    height: '100%',
+    fontSize: 15,
+    fontWeight: '600',
+    padding: 0,
+  },
+  customUnitInput: {
     borderWidth: 1,
-    borderColor: '#ddd',
     borderRadius: 8,
-    padding: 10,
-    fontSize: 14,
-    color: '#333',
-    backgroundColor: '#fafafa',
+    paddingHorizontal: 12,
+    height: 44,
+    fontSize: 15,
   },
   addBtn: {
-    backgroundColor: '#4CAF50',
     borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 24,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   addBtnDisabled: {
     opacity: 0.5,
   },
   addBtnText: {
-    color: '#fff',
     fontSize: 14,
     fontWeight: '600',
   },
@@ -619,22 +706,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: '#f0f0f0',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
-  },
-  tabActive: {
-    backgroundColor: '#4CAF50',
-    borderColor: '#4CAF50',
   },
   tabText: {
     fontSize: 13,
-    color: '#555',
-    fontWeight: '500',
-  },
-  tabTextActive: {
-    color: '#fff',
-    fontWeight: '600',
   },
   quickGrid: {
     flexDirection: 'row',
@@ -643,12 +718,11 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   quickChip: {
-    backgroundColor: '#fff',
     borderRadius: 10,
     padding: 10,
     borderWidth: 1,
-    borderColor: '#eee',
     minWidth: 100,
+    flex: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
@@ -658,25 +732,21 @@ const styles = StyleSheet.create({
   quickName: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 2,
   },
   quickMeta: {
     fontSize: 11,
-    color: '#999',
   },
-  // ── Voice Input Styles ────────────────────────────────────────────────
   voiceSection: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 8,
+    marginTop: 16,
   },
   voiceBtn: {
     flex: 1,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#4A90D9',
     borderRadius: 10,
     padding: 14,
     gap: 6,
@@ -686,11 +756,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#f0f0f0',
     borderRadius: 10,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
     opacity: 0.6,
   },
   voiceBtnText: {
@@ -700,31 +768,26 @@ const styles = StyleSheet.create({
   },
   voiceBadge: {
     fontSize: 10,
-    color: '#bbb',
     fontWeight: '600',
     textTransform: 'uppercase',
   },
   voiceResult: {
-    backgroundColor: '#E8F5E9',
     borderRadius: 8,
     padding: 10,
-    marginTop: 8,
+    marginTop: 12,
   },
   voiceResultText: {
     fontSize: 13,
-    color: '#2E7D32',
     fontWeight: '500',
   },
   // ── Voice Modal (Android) ─────────────────────────────────────────────
   voiceOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
   },
   voiceDialog: {
-    backgroundColor: '#fff',
     borderRadius: 16,
     padding: 20,
     width: '100%',
@@ -738,12 +801,10 @@ const styles = StyleSheet.create({
   voiceDialogTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#333',
     marginBottom: 8,
   },
   voiceDialogHint: {
     fontSize: 13,
-    color: '#777',
     marginBottom: 12,
     lineHeight: 18,
   },
@@ -753,8 +814,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     fontSize: 15,
-    color: '#333',
-    backgroundColor: '#fafafa',
     minHeight: 80,
     textAlignVertical: 'top',
     marginBottom: 12,
@@ -768,18 +827,15 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 20,
     borderRadius: 8,
-    backgroundColor: '#f0f0f0',
   },
   voiceDialogCancelText: {
     fontSize: 14,
-    color: '#555',
     fontWeight: '600',
   },
   voiceDialogParse: {
     paddingVertical: 10,
     paddingHorizontal: 24,
     borderRadius: 8,
-    backgroundColor: '#4A90D9',
   },
   voiceDialogParseDisabled: {
     opacity: 0.5,

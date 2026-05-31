@@ -19,6 +19,7 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -35,6 +36,44 @@ import StopOptimizer from '../components/StopOptimizer';
 import UndoToast from '../components/UndoToast';
 import { usePriceStore } from '../pricing/price-store';
 import { CLAIM_EXPIRY_MS } from '../sync/yjs-adapter';
+import { useThemeStore, useActiveTheme } from '../state/useThemeStore';
+import { computeStopProposals } from '../pricing/stop-optimizer';
+// ─── Theme Colors ────────────────────────────────────────────────────────────
+
+const themeColors = {
+  light: {
+    bg: '#F8FAFC',
+    cardBg: '#FFFFFF',
+    text: '#0F172A',
+    secondaryText: '#64748B',
+    border: '#E2E8F0',
+    primary: '#10B981',
+    headerBg: '#FFFFFF',
+    inputBg: '#F1F5F9',
+    divider: '#E2E8F0',
+    pillUnselectedBg: '#FFFFFF',
+    pillUnselectedBorder: '#E2E8F0',
+    pillSelectedBg: '#10B981',
+    pillCheapestBg: '#DEF7EC',
+    pillCheapestBorder: '#10B981',
+  },
+  dark: {
+    bg: '#0B0F19',
+    cardBg: '#1E293B',
+    text: '#F8FAFC',
+    secondaryText: '#94A3B8',
+    border: '#334155',
+    primary: '#10B981',
+    headerBg: '#1E293B',
+    inputBg: '#1E293B',
+    divider: '#334155',
+    pillUnselectedBg: '#1E293B',
+    pillUnselectedBorder: '#334155',
+    pillSelectedBg: '#10B981',
+    pillCheapestBg: '#0B2518',
+    pillCheapestBorder: '#10B981',
+  },
+};
 
 // Enable LayoutAnimation on Android
 if (
@@ -53,6 +92,8 @@ type Props = NativeStackScreenProps<RootStackParamList, 'GroceryList'>;
 function SyncIndicator() {
   const syncState: SyncState = useSyncStore((s) => s.syncState);
   const lastSyncedAt: number | null = useSyncStore((s) => s.lastSyncedAt);
+  const activeTheme = useActiveTheme();
+  const theme = activeTheme === 'dark' ? themeColors.dark : themeColors.light;
 
   const color =
     syncState === 'syncing'
@@ -61,7 +102,7 @@ function SyncIndicator() {
         ? '#f44336'
         : syncState === 'offline'
           ? '#999'
-          : '#4CAF50';
+          : '#10B981';
 
   const label =
     syncState === 'syncing'
@@ -79,7 +120,7 @@ function SyncIndicator() {
   return (
     <View style={styles.syncIndicator}>
       <View style={[styles.syncDot, { backgroundColor: color }]} />
-      <Text style={styles.syncText}>
+      <Text style={[styles.syncText, { color: theme.secondaryText }]}>
         {label}
         {timeLabel ? ` · ${timeLabel}` : ''}
       </Text>
@@ -101,6 +142,9 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 function getCategoryColor(category: string): string {
+  if (category.toLowerCase().startsWith('stop ')) {
+    return '#10B981';
+  }
   return CATEGORY_COLORS[category] ?? '#607D8B';
 }
 
@@ -125,7 +169,11 @@ interface ItemRowProps {
   claimExpired?: boolean;
 }
 
-function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFirst, isLast, price, priceLoading, onClaim, onUnclaim, claimerName, claimExpired }: ItemRowProps) {
+function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFirst, isLast, price, priceLoading }: ItemRowProps) {
+  const activeTheme = useActiveTheme();
+  const theme = activeTheme === 'dark' ? themeColors.dark : themeColors.light;
+  const isDark = activeTheme === 'dark';
+
   // Scale animation for checkbox
   const scaleAnim = useRef(new Animated.Value(1)).current;
   // Strikethrough width animation (0 → 1 over the text)
@@ -184,14 +232,14 @@ function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFi
             onPress={() => onMoveUp(item.id)}
             disabled={isFirst}
           >
-            <Text style={[styles.reorderBtnText, isFirst && styles.reorderBtnTextDisabled]}>▲</Text>
+            <Text style={[styles.reorderBtnText, { color: theme.secondaryText }, isFirst && styles.reorderBtnTextDisabled]}>▲</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.reorderBtn, isLast && styles.reorderBtnDisabled]}
             onPress={() => onMoveDown(item.id)}
             disabled={isLast}
           >
-            <Text style={[styles.reorderBtnText, isLast && styles.reorderBtnTextDisabled]}>▼</Text>
+            <Text style={[styles.reorderBtnText, { color: theme.secondaryText }, isLast && styles.reorderBtnTextDisabled]}>▼</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -199,7 +247,11 @@ function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFi
       )}
       {/* Main item row */}
       <TouchableOpacity
-        style={[styles.itemRow, item.isChecked && styles.itemRowChecked]}
+        style={[
+          styles.itemRow,
+          item.isChecked && styles.itemRowChecked,
+          { backgroundColor: theme.cardBg, borderBottomColor: theme.border },
+        ]}
         onPress={() => onPress(item)}
         onLongPress={() => onDelete(item.id, item.name)}
         activeOpacity={0.7}
@@ -209,6 +261,10 @@ function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFi
           style={[
             styles.checkbox,
             item.isChecked && styles.checkboxChecked,
+            {
+              borderColor: item.isChecked ? theme.primary : theme.border,
+              backgroundColor: item.isChecked ? theme.primary : 'transparent',
+            },
           ]}
           onPress={handleCheckToggle}
         >
@@ -224,6 +280,7 @@ function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFi
               style={[
                 styles.itemName,
                 item.isChecked && styles.itemNameChecked,
+                { color: theme.text },
               ]}
               numberOfLines={1}
             >
@@ -233,14 +290,14 @@ function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFi
               <Animated.View
                 style={[
                   styles.strikethrough,
-                  { width: strikeWidth },
+                  { width: strikeWidth, backgroundColor: theme.secondaryText },
                 ]}
                 pointerEvents="none"
               />
             )}
           </View>
           {item.notes ? (
-            <Text style={styles.itemNotes} numberOfLines={1}>
+            <Text style={[styles.itemNotes, { color: theme.secondaryText }]} numberOfLines={1}>
               {item.notes}
             </Text>
           ) : null}
@@ -250,33 +307,11 @@ function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFi
         <PriceBadge price={price ?? null} isLoading={priceLoading} />
 
         {/* Quantity + Unit */}
-        <View style={styles.quantityBadge}>
-          <Text style={styles.quantityText}>
+        <View style={[styles.quantityBadge, { backgroundColor: isDark ? '#334155' : '#f0f0f0' }]}>
+          <Text style={[styles.quantityText, { color: theme.secondaryText }]}>
             {item.quantity} {item.unit}
           </Text>
         </View>
-
-        {/* Claim-an-item lock */}
-        {item.claimedBy ? (
-          <TouchableOpacity
-            style={[
-              styles.claimBadge,
-              claimExpired && styles.claimBadgeExpired,
-            ]}
-            onPress={() => onUnclaim?.(item.id)}
-          >
-            <Text style={styles.claimText}>
-              {claimExpired ? '⚠ Claim expired' : `🛒 ${claimerName ?? item.claimedBy}`}
-            </Text>
-          </TouchableOpacity>
-        ) : onClaim ? (
-          <TouchableOpacity
-            style={styles.claimButton}
-            onPress={() => onClaim(item.id)}
-          >
-            <Text style={styles.claimButtonText}>Claim</Text>
-          </TouchableOpacity>
-        ) : null}
       </TouchableOpacity>
     </View>
   );
@@ -287,16 +322,27 @@ function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFi
 interface CategoryHeaderProps {
   category: string;
   count: number;
+  subtotal?: number;
 }
 
-function CategoryHeader({ category, count }: CategoryHeaderProps) {
+function CategoryHeader({ category, count, subtotal }: CategoryHeaderProps) {
+  const activeTheme = useActiveTheme();
+  const theme = activeTheme === 'dark' ? themeColors.dark : themeColors.light;
   const color = getCategoryColor(category);
+
   return (
-    <View style={[styles.categoryHeader, { borderLeftColor: color }]}>
+    <View style={[styles.categoryHeader, { borderLeftColor: color, backgroundColor: theme.cardBg }]}>
       <Text style={[styles.categoryTitle, { color }]}>
         {category.charAt(0).toUpperCase() + category.slice(1)}
       </Text>
-      <Text style={styles.categoryCount}>{count}</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        {subtotal !== undefined && (
+          <Text style={{ fontSize: 13, fontWeight: '600', color: theme.primary, marginRight: 10 }}>
+            Subtotal: ${subtotal.toFixed(2)}
+          </Text>
+        )}
+        <Text style={[styles.categoryCount, { color: theme.secondaryText }]}>{count}</Text>
+      </View>
     </View>
   );
 }
@@ -310,21 +356,31 @@ interface GotItHeaderProps {
 }
 
 function GotItHeader({ count, isExpanded, onToggle }: GotItHeaderProps) {
+  const activeTheme = useActiveTheme();
+  const isDark = activeTheme === 'dark';
+  const theme = isDark ? themeColors.dark : themeColors.light;
+
   return (
     <TouchableOpacity
-      style={styles.gotItHeader}
+      style={[
+        styles.gotItHeader,
+        {
+          backgroundColor: isDark ? '#0B2518' : '#E8F5E9',
+          borderLeftColor: '#10B981',
+        },
+      ]}
       onPress={onToggle}
       activeOpacity={0.7}
     >
       <View style={styles.gotItHeaderLeft}>
         <Text style={styles.gotItIcon}>✓</Text>
-        <Text style={styles.gotItTitle}>Got It</Text>
+        <Text style={[styles.gotItTitle, { color: isDark ? '#34D399' : '#2E7D32' }]}>Got It</Text>
       </View>
       <View style={styles.gotItHeaderRight}>
-        <Text style={styles.gotItCount}>
+        <Text style={[styles.gotItCount, { color: isDark ? '#a7f3d0' : '#558B2F' }]}>
           {count} {count === 1 ? 'item' : 'items'}
         </Text>
-        <Text style={styles.gotItChevron}>{isExpanded ? '▼' : '▶'}</Text>
+        <Text style={[styles.gotItChevron, { color: isDark ? '#a7f3d0' : '#558B2F' }]}>{isExpanded ? '▼' : '▶'}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -347,21 +403,32 @@ interface StoreTotalBarProps {
 function StoreTotalBar({ storeTotals, selectedStoreId, onSelectStore }: StoreTotalBarProps) {
   if (storeTotals.length === 0) return null;
 
+  const activeTheme = useActiveTheme();
+  const theme = activeTheme === 'dark' ? themeColors.dark : themeColors.light;
+  const isDark = activeTheme === 'dark';
+
   const cheapestId = storeTotals[0]?.storeId;
 
   return (
     <View style={styles.storeTotalBarContainer}>
-      <View style={styles.storeTotalBarScroll}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.storeTotalBarScroll}
+      >
         <TouchableOpacity
           style={[
             styles.storeTotalPill,
-            selectedStoreId === null && styles.storeTotalPillSelected,
+            {
+              backgroundColor: selectedStoreId === null ? theme.primary : theme.cardBg,
+              borderColor: selectedStoreId === null ? theme.primary : theme.border,
+            },
           ]}
           onPress={() => onSelectStore(null)}
         >
           <Text style={[
             styles.storeTotalPillText,
-            selectedStoreId === null && styles.storeTotalPillTextSelected,
+            { color: selectedStoreId === null ? '#fff' : theme.text },
           ]}>All Categories</Text>
         </TouchableOpacity>
         {storeTotals.map((st) => {
@@ -372,25 +439,42 @@ function StoreTotalBar({ storeTotals, selectedStoreId, onSelectStore }: StoreTot
               key={st.storeId}
               style={[
                 styles.storeTotalPill,
-                isSelected && styles.storeTotalPillSelected,
-                isCheapest && styles.storeTotalPillCheapest,
+                {
+                  backgroundColor: isSelected
+                    ? theme.primary
+                    : isCheapest
+                      ? theme.pillCheapestBg
+                      : theme.pillUnselectedBg,
+                  borderColor: isSelected
+                    ? theme.primary
+                    : isCheapest
+                      ? theme.pillCheapestBorder
+                      : theme.pillUnselectedBorder,
+                },
               ]}
               onPress={() => onSelectStore(isSelected ? null : st.storeId)}
             >
               <Text style={[
                 styles.storeTotalPillText,
-                isSelected && styles.storeTotalPillTextSelected,
+                { color: isSelected ? '#fff' : theme.text },
               ]}>
                 {st.storeName}
               </Text>
               <View style={[
                 styles.storeTotalBadge,
-                isSelected && styles.storeTotalBadgeSelected,
-                isCheapest && styles.storeTotalBadgeCheapest,
+                {
+                  backgroundColor: isSelected
+                    ? 'rgba(255,255,255,0.3)'
+                    : isCheapest
+                      ? '#10B981'
+                      : isDark
+                        ? '#334155'
+                        : '#f0f0f0',
+                },
               ]}>
                 <Text style={[
                   styles.storeTotalBadgeText,
-                  isSelected && styles.storeTotalBadgeTextSelected,
+                  { color: isSelected || isCheapest ? '#fff' : theme.text },
                 ]}>
                   ${st.total.toFixed(2)}
                 </Text>
@@ -398,7 +482,7 @@ function StoreTotalBar({ storeTotals, selectedStoreId, onSelectStore }: StoreTot
             </TouchableOpacity>
           );
         })}
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -420,6 +504,11 @@ const STORE_NAME_MAP: Record<string, string> = {
 export default function GroceryListScreen({ route, navigation }: Props) {
   const { listId } = route.params;
   const insets = useSafeAreaInsets();
+
+  const themeMode = useThemeStore((s) => s.themeMode);
+  const activeTheme = useActiveTheme();
+  const isDark = activeTheme === 'dark';
+  const theme = isDark ? themeColors.dark : themeColors.light;
 
   // Stores
   const items = useGroceryStore((s) => s.items);
@@ -451,15 +540,47 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     itemId: string;
   } | null>(null);
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
-  // Get the best price for an item: per-store price if a store is selected, otherwise flat price
+  const [selectedRouteNumStops, setSelectedRouteNumStops] = useState<number | null>(null);
+
+  // Filtered unchecked items for stop optimizer
+  const filteredUncheckedItems = useMemo(() => {
+    return Object.values(items)
+      .filter(
+        (i) => !i.isDeleted && i.listId === listId && !i.isChecked,
+      )
+      .filter(
+        (i) =>
+          !searchQuery.trim() ||
+          i.name.toLowerCase().includes(searchQuery.toLowerCase()),
+      );
+  }, [items, listId, searchQuery]);
+
+  // Get the best price for an item: per-store price if a store is selected,
+  // or cheapest among stores in the selected route if a route is selected, otherwise flat price
   const getItemPrice = useCallback(
     (itemId: string) => {
       if (selectedStoreId && perStorePrices[selectedStoreId]?.[itemId]) {
         return perStorePrices[selectedStoreId][itemId] ?? null;
       }
+      if (selectedRouteNumStops) {
+        const proposals = computeStopProposals(filteredUncheckedItems, perStorePrices, STORE_NAME_MAP);
+        const proposal = proposals.find(p => p.numStops === selectedRouteNumStops);
+        if (proposal) {
+          let bestPriceResult: PriceResult | null = null;
+          let cheapestPrice = Infinity;
+          for (const s of proposal.stores) {
+            const pr = perStorePrices[s.storeId]?.[itemId];
+            if (pr && pr.price < cheapestPrice) {
+              cheapestPrice = pr.price;
+              bestPriceResult = pr;
+            }
+          }
+          if (bestPriceResult) return bestPriceResult;
+        }
+      }
       return prices[itemId] ?? null;
     },
-    [selectedStoreId, perStorePrices, prices],
+    [selectedStoreId, selectedRouteNumStops, perStorePrices, prices, filteredUncheckedItems],
   );
   // Re-render timer for claim-an-item expiry checks (tick every 30s)
   const [, forceRender] = useState(0);
@@ -558,15 +679,6 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   }, [items, listId, searchQuery, gotItExpanded]);
 
   // ─── Store totals — weighted total per store ───────────────────────────────
-  const STORE_NAME_MAP: Record<string, string> = {
-    'no-frills': 'No Frills',
-    'loblaws': 'Loblaws',
-    'freshco': 'FreshCo',
-    'metro': 'Metro',
-    'walmart': 'Walmart',
-    'food-basics': 'Food Basics',
-  };
-
   const storeTotals = useMemo(() => {
     const allItems = Object.values(items).filter(
       (item) => !item.isDeleted && item.listId === listId && !item.isChecked,
@@ -651,6 +763,95 @@ export default function GroceryListScreen({ route, navigation }: Props) {
 
     return sections;
   }, [items, listId, searchQuery, gotItExpanded, selectedStoreId]);
+
+  // ─── Route-plan sections — grouped by store stop for selected route ──────────
+  const routePlanSections = useMemo(() => {
+    if (!selectedRouteNumStops) return null;
+
+    // Get the proposal for this number of stops
+    const proposals = computeStopProposals(filteredUncheckedItems, perStorePrices, STORE_NAME_MAP);
+    const proposal = proposals.find(p => p.numStops === selectedRouteNumStops);
+    if (!proposal) return null;
+
+    // The stores in the proposal
+    const routeStores = proposal.stores;
+    const storeIds = routeStores.map(s => s.storeId);
+
+    // Filter items
+    const allItems = Object.values(items).filter(
+      (item) => !item.isDeleted && item.listId === listId,
+    );
+
+    const filtered = searchQuery.trim()
+      ? allItems.filter((item) =>
+          item.name.toLowerCase().includes(searchQuery.toLowerCase()),
+        )
+      : allItems;
+
+    const unchecked = filtered.filter((item) => !item.isChecked);
+    const checked = filtered.filter((item) => item.isChecked);
+
+    // Map each item to the cheapest store amongst the stores in the route
+    const storeGroups: Record<string, GroceryItem[]> = {};
+    const storeSubtotals: Record<string, number> = {};
+
+    for (const storeId of storeIds) {
+      storeGroups[storeId] = [];
+      storeSubtotals[storeId] = 0;
+    }
+    const fallbackGroup: GroceryItem[] = [];
+
+    for (const item of unchecked) {
+      let bestStoreId: string | null = null;
+      let cheapestPrice = Infinity;
+
+      for (const storeId of storeIds) {
+        const pr = perStorePrices[storeId]?.[item.id];
+        if (pr && pr.price < cheapestPrice) {
+          cheapestPrice = pr.price;
+          bestStoreId = storeId;
+        }
+      }
+
+      if (bestStoreId) {
+        storeGroups[bestStoreId].push(item);
+        storeSubtotals[bestStoreId] += cheapestPrice * item.quantity;
+      } else {
+        fallbackGroup.push(item);
+      }
+    }
+
+    const sections: { title: string; data: GroceryItem[]; subtotal?: number }[] = [];
+
+    // Create sections in the order of the stops in the route
+    routeStores.forEach((store, idx) => {
+      const data = storeGroups[store.storeId];
+      if (data && data.length > 0) {
+        sections.push({
+          title: `Stop ${idx + 1}: ${store.storeName}`,
+          data,
+          subtotal: storeSubtotals[store.storeId],
+        });
+      }
+    });
+
+    if (fallbackGroup.length > 0) {
+      sections.push({
+        title: 'Other Items (No Prices)',
+        data: fallbackGroup,
+      });
+    }
+
+    // Add "Got It" section at the bottom if there are checked items
+    if (checked.length > 0) {
+      sections.push({
+        title: '__got_it__',
+        data: gotItExpanded ? checked : [],
+      });
+    }
+
+    return sections;
+  }, [items, listId, searchQuery, gotItExpanded, selectedRouteNumStops, filteredUncheckedItems, perStorePrices]);
 
   // Item press → navigate to edit
   const handleItemPress = useCallback(
@@ -775,19 +976,19 @@ export default function GroceryListScreen({ route, navigation }: Props) {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4CAF50" />
-        <Text style={styles.loadingText}>Loading items...</Text>
+      <View style={[styles.loadingContainer, { backgroundColor: theme.bg }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
+        <Text style={[styles.loadingText, { color: theme.secondaryText }]}>Loading items...</Text>
       </View>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { backgroundColor: theme.bg }]}>
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity
-          style={styles.retryButton}
+          style={[styles.retryButton, { backgroundColor: theme.primary }]}
           onPress={() => loadItems(listId)}
         >
           <Text style={styles.retryText}>Retry</Text>
@@ -811,43 +1012,30 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     },
   ).length;
 
-  // Filtered unchecked items for stop optimizer
-  const filteredUncheckedItems = useMemo(() => {
-    return Object.values(items)
-      .filter(
-        (i) => !i.isDeleted && i.listId === listId && !i.isChecked,
-      )
-      .filter(
-        (i) =>
-          !searchQuery.trim() ||
-          i.name.toLowerCase().includes(searchQuery.toLowerCase()),
-      );
-  }, [items, listId, searchQuery]);
-
   const storeIdsWithPrices = getStoreIdsWithPrices();
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.bg }]}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={styles.backText}>← Back</Text>
+          <Text style={[styles.backText, { color: theme.primary }]}>← Back</Text>
         </TouchableOpacity>
-        <Text style={styles.title}>{listName}</Text>
+        <Text style={[styles.title, { color: theme.text }]}>{listName}</Text>
         <View style={styles.headerRight}>
           <SyncIndicator />
           <TouchableOpacity onPress={handleSettings} style={styles.settingsBtn}>
-            <Text style={styles.settingsIcon}>⚙</Text>
+            <Text style={[styles.settingsIcon, { color: theme.text }]}>⚙</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Search bar */}
-      <View style={styles.searchContainer}>
+      <View style={[styles.searchContainer, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
         <TextInput
-          style={styles.searchInput}
+          style={[styles.searchInput, { color: theme.text, backgroundColor: theme.cardBg }]}
           placeholder="Search items..."
-          placeholderTextColor="#999"
+          placeholderTextColor={isDark ? '#475569' : '#999'}
           value={searchQuery}
           onChangeText={setSearchQuery}
           autoCapitalize="none"
@@ -865,7 +1053,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       </View>
 
       {/* Item count */}
-      <Text style={styles.countText}>
+      <Text style={[styles.countText, { color: theme.secondaryText }]}>
         {searchQuery
           ? `${groupedSections.reduce((s, sec) => s + sec.data.length, 0)} results`
           : `${totalItems} items`}
@@ -875,7 +1063,10 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       <StoreTotalBar
         storeTotals={storeTotals}
         selectedStoreId={selectedStoreId}
-        onSelectStore={setSelectedStoreId}
+        onSelectStore={(storeId) => {
+          setSelectedStoreId(storeId);
+          setSelectedRouteNumStops(null);
+        }}
       />
 
       {/* Stop optimizer */}
@@ -884,22 +1075,29 @@ export default function GroceryListScreen({ route, navigation }: Props) {
         perStorePrices={perStorePrices}
         storeNameMap={STORE_NAME_MAP}
         storeIds={storeIdsWithPrices}
+        selectedRouteNumStops={selectedRouteNumStops}
+        onSelectRouteNumStops={(numStops) => {
+          setSelectedRouteNumStops(numStops);
+          setSelectedStoreId(null);
+        }}
       />
 
       {/* Sectioned list */}
       {(() => {
         const activeSections = selectedStoreId && storePlanSections
           ? storePlanSections
+          : selectedRouteNumStops && routePlanSections
+          ? routePlanSections
           : groupedSections;
-        const isStorePlan = selectedStoreId !== null;
+        const isStorePlan = selectedStoreId !== null || selectedRouteNumStops !== null;
 
         if (activeSections.length === 0) {
           return (
             <View style={styles.emptyContainer}>
-              <Text style={styles.emptyTitle}>
+              <Text style={[styles.emptyTitle, { color: theme.secondaryText }]}>
                 {searchQuery ? 'No results' : 'List is empty'}
               </Text>
-              <Text style={styles.emptySubtitle}>
+              <Text style={[styles.emptySubtitle, { color: theme.secondaryText }]}>
                 {searchQuery
                   ? 'Try a different search term'
                   : 'Tap + to add your first item'}
@@ -923,13 +1121,6 @@ export default function GroceryListScreen({ route, navigation }: Props) {
                     isLast={index === section.data.length - 1}
                     price={getItemPrice(item.id)}
                     priceLoading={itemLoading[item.id] ?? false}
-                    onClaim={handleClaim}
-                    onUnclaim={handleUnclaim}
-                    claimExpired={
-                      item.claimedAt
-                        ? Date.now() - item.claimedAt >= CLAIM_EXPIRY_MS
-                        : false
-                    }
                   />
                 );
               }
@@ -945,13 +1136,6 @@ export default function GroceryListScreen({ route, navigation }: Props) {
                   isLast={index === section.data.length - 1}
                   price={getItemPrice(item.id)}
                   priceLoading={itemLoading[item.id] ?? false}
-                  onClaim={handleClaim}
-                  onUnclaim={handleUnclaim}
-                  claimExpired={
-                    item.claimedAt
-                      ? Date.now() - item.claimedAt >= CLAIM_EXPIRY_MS
-                      : false
-                  }
                 />
               );
             }}
@@ -969,6 +1153,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
                 <CategoryHeader
                   category={section.title}
                   count={section.data.length}
+                  subtotal={(section as any).subtotal}
                 />
               );
             }}
@@ -991,7 +1176,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
 
       {/* FAB Add button */}
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { backgroundColor: theme.primary }]}
         onPress={() => setShowAddSheet(true)}
         activeOpacity={0.8}
       >

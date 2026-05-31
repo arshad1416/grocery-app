@@ -23,6 +23,34 @@ import { useSyncStore } from '../state/useSyncStore';
 import type { GroceryList } from '../types';
 import type { RootStackParamList } from '../navigation/deepLinks';
 import { useShareInvite } from '../hooks/useShareInvite';
+import { useThemeStore, useActiveTheme } from '../state/useThemeStore';
+
+// ─── Theme Colors ────────────────────────────────────────────────────────────
+
+const themeColors = {
+  light: {
+    bg: '#F8FAFC',
+    cardBg: '#FFFFFF',
+    text: '#0F172A',
+    secondaryText: '#64748B',
+    border: '#E2E8F0',
+    primary: '#10B981',
+    headerBg: '#FFFFFF',
+    btnBg: '#F1F5F9',
+    btnText: '#475569',
+  },
+  dark: {
+    bg: '#0B0F19',
+    cardBg: '#1E293B',
+    text: '#F8FAFC',
+    secondaryText: '#94A3B8',
+    border: '#334155',
+    primary: '#10B981',
+    headerBg: '#1E293B',
+    btnBg: '#334155',
+    btnText: '#F8FAFC',
+  },
+};
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -32,6 +60,11 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 export default function HomeScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
+
+  const themeMode = useThemeStore((s) => s.themeMode);
+  const activeTheme = useActiveTheme();
+  const isDark = activeTheme === 'dark';
+  const theme = isDark ? themeColors.dark : themeColors.light;
 
   const lists = useListStore((s) => s.lists);
   const isLoading = useListStore((s) => s.isLoading);
@@ -83,28 +116,28 @@ export default function HomeScreen({ navigation }: Props) {
   );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.bg }]}>
       {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>GroceryApp</Text>
+      <View style={[styles.header, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
+        <Text style={[styles.title, { color: theme.text }]}>GroceryApp</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity
             onPress={() => navigation.navigate('Pairing')}
-            style={styles.headerBtn}
+            style={[styles.headerBtn, { backgroundColor: theme.btnBg }]}
           >
-            <Text style={styles.headerBtnText}>Pair</Text>
+            <Text style={[styles.headerBtnText, { color: theme.btnText }]}>Pair</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => navigation.navigate('Settings')}
-            style={styles.headerBtn}
+            style={[styles.headerBtn, { backgroundColor: theme.btnBg }]}
           >
-            <Text style={styles.headerBtnText}>Settings</Text>
+            <Text style={[styles.headerBtnText, { color: theme.btnText }]}>Settings</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Sync indicator */}
-      <View style={styles.syncBar}>
+      <View style={[styles.syncBar, { backgroundColor: isDark ? '#1E293B' : '#FAFAFA' }]}>
         <View
           style={[
             styles.syncDot,
@@ -116,11 +149,11 @@ export default function HomeScreen({ navigation }: Props) {
                     ? '#f44336'
                     : syncState === 'offline'
                       ? '#999'
-                      : '#4CAF50',
+                      : '#10B981',
             },
           ]}
         />
-        <Text style={styles.syncText}>
+        <Text style={[styles.syncText, { color: theme.secondaryText }]}>
           {syncState === 'syncing'
             ? 'Syncing...'
             : syncState === 'error'
@@ -134,16 +167,16 @@ export default function HomeScreen({ navigation }: Props) {
       {/* Body */}
       {!loaded || isLoading ? (
         <View style={styles.loadingRow}>
-          <ActivityIndicator size="small" color="#4CAF50" />
-          <Text style={styles.loadingText}>Loading lists...</Text>
+          <ActivityIndicator size="small" color={theme.primary} />
+          <Text style={[styles.loadingText, { color: theme.secondaryText }]}>Loading lists...</Text>
         </View>
       ) : activeLists.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyTitle}>No grocery lists yet</Text>
-          <Text style={styles.emptySubtitle}>
+          <Text style={[styles.emptyTitle, { color: theme.secondaryText }]}>No grocery lists yet</Text>
+          <Text style={[styles.emptySubtitle, { color: theme.secondaryText }]}>
             Create your first list to get started
           </Text>
-          <TouchableOpacity style={styles.createBtn} onPress={handleCreateList}>
+          <TouchableOpacity style={[styles.createBtn, { backgroundColor: theme.primary }]} onPress={handleCreateList}>
             <Text style={styles.createBtnText}>Create List</Text>
           </TouchableOpacity>
         </View>
@@ -155,25 +188,25 @@ export default function HomeScreen({ navigation }: Props) {
           {activeLists.map((list) => (
             <TouchableOpacity
               key={list.id}
-              style={styles.listCard}
+              style={[styles.listCard, { backgroundColor: theme.cardBg }]}
               onPress={() => handleListPress(list)}
             >
               <View style={styles.listCardInfo}>
-                <Text style={styles.listCardName}>{list.name}</Text>
+                <Text style={[styles.listCardName, { color: theme.text }]}>{list.name}</Text>
                 {list.description ? (
-                  <Text style={styles.listCardDesc} numberOfLines={1}>
+                  <Text style={[styles.listCardDesc, { color: theme.secondaryText }]} numberOfLines={1}>
                     {list.description}
                   </Text>
                 ) : null}
                 {list.storePreference ? (
-                  <Text style={styles.listCardStore}>
+                  <Text style={[styles.listCardStore, { color: theme.secondaryText }]}>
                     🏪 {list.storePreference}
                   </Text>
                 ) : null}
               </View>
               <View style={styles.listCardActions}>
                 <TouchableOpacity
-                  style={styles.shareListBtn}
+                  style={[styles.shareListBtn, { backgroundColor: theme.primary }]}
                   onPress={() =>
                     shareInvite(
                       `grocceryapp://invite?token=${encodeURIComponent(
@@ -198,7 +231,7 @@ export default function HomeScreen({ navigation }: Props) {
       {/* FAB for new list */}
       {activeLists.length > 0 && (
         <TouchableOpacity
-          style={styles.fab}
+          style={[styles.fab, { backgroundColor: theme.primary }]}
           onPress={handleCreateList}
           activeOpacity={0.8}
         >

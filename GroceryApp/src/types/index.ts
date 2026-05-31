@@ -162,6 +162,7 @@ export interface AppSettings {
   pricingOptedIn: boolean;
   voiceInputEnabled: boolean;
   barcodeScanningEnabled: boolean;
+  theme?: 'system' | 'light' | 'dark';
   // Price subsystem adapter enable states
   adapterEnabled?: Record<string, boolean>;
   // Instacart API key (encrypted in secure store)

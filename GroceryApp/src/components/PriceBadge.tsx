@@ -15,6 +15,7 @@ import React from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import type { PriceResult } from '../pricing/types';
 import { formatUnitPrice } from '../pricing/normalizer';
+import { useActiveTheme } from '../state/useThemeStore';
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -35,10 +36,11 @@ const SOURCE_COLORS: Record<string, string> = {
 // ─── Shimmer / Skeleton ────────────────────────────────────────────────────
 
 function ShimmerBadge() {
+  const isDark = useActiveTheme() === 'dark';
   return (
     <View style={styles.badgeContainer}>
-      <View style={styles.skeletonLine} />
-      <View style={[styles.skeletonLine, { width: 40, marginTop: 3 }]} />
+      <View style={[styles.skeletonLine, { backgroundColor: isDark ? '#334155' : '#e0e0e0' }]} />
+      <View style={[styles.skeletonLine, { width: 40, marginTop: 3, backgroundColor: isDark ? '#334155' : '#e0e0e0' }]} />
     </View>
   );
 }
@@ -46,6 +48,8 @@ function ShimmerBadge() {
 // ─── PriceBadge Component ──────────────────────────────────────────────────
 
 export default function PriceBadge({ price, isLoading }: PriceBadgeProps) {
+  const isDark = useActiveTheme() === 'dark';
+
   if (isLoading) {
     return <ShimmerBadge />;
   }
@@ -85,20 +89,22 @@ export default function PriceBadge({ price, isLoading }: PriceBadgeProps) {
       <View style={styles.priceRow}>
         {isGenuineSale && saleInfo ? (
           <View style={styles.saleRow}>
-            <Text style={styles.regularPrice}>
+            <Text style={[styles.regularPrice, { color: isDark ? '#94A3B8' : '#666' }]}>
               ~~{formatPrice(saleInfo.regularPrice)}~~
             </Text>
-            <Text style={styles.salePrice}> {formatPrice(price.price)}</Text>
+            <Text style={[styles.salePrice, { color: isDark ? '#34D399' : '#2E7D32' }]}>
+              {' '}{formatPrice(price.price)}
+            </Text>
             {saleInfo.savingsPercent > 0 && (
-              <View style={styles.savingsBadge}>
-                <Text style={styles.savingsText}>
+              <View style={[styles.savingsBadge, { backgroundColor: isDark ? 'rgba(16,185,129,0.2)' : '#C8E6C9' }]}>
+                <Text style={[styles.savingsText, { color: isDark ? '#34D399' : '#2E7D32' }]}>
                   -{saleInfo.savingsPercent}%
                 </Text>
               </View>
             )}
           </View>
         ) : (
-          <Text style={isFakeSale ? styles.fakeSalePrice : styles.regularPrice}>
+          <Text style={isFakeSale ? styles.fakeSalePrice : [styles.regularPrice, { color: isDark ? '#94A3B8' : '#666' }]}>
             {formatPrice(price.price)}
           </Text>
         )}
@@ -111,7 +117,7 @@ export default function PriceBadge({ price, isLoading }: PriceBadgeProps) {
 
       {/* Unit price */}
       {unitPriceStr ? (
-        <Text style={styles.unitPrice}>{unitPriceStr}</Text>
+        <Text style={[styles.unitPrice, { color: isDark ? '#64748B' : '#aaa' }]}>{unitPriceStr}</Text>
       ) : null}
 
       {/* Source badge */}
