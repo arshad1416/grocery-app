@@ -43,7 +43,7 @@ export async function stripExif(imageUri: string): Promise<string> {
     const { manipulateAsync, SaveFormat } = await import('expo-image-manipulator');
     const result = await manipulateAsync(imageUri, [], { format: SaveFormat.JPEG, compress: 0.92 });
     return result.uri;
-  } catch {
+  } catch (outerErr) {
     // Fallback: byte-level stripping for web/non-RN environments
     try {
       // Only handle file:// URIs (local temp files)
@@ -53,7 +53,6 @@ export async function stripExif(imageUri: string): Promise<string> {
 
       // Only strip EXIF from JPEG files
       if (!blob.type || (!blob.type.includes('jpeg') && !blob.type.includes('jpg'))) {
-        // For non-JPEG, we pass through — PNG/GIF don't store EXIF the same way
         return imageUri;
       }
 
@@ -72,9 +71,11 @@ export async function stripExif(imageUri: string): Promise<string> {
       const cleanBlob = new Blob([cleanBuf], { type: 'image/jpeg' });
       return URL.createObjectURL(cleanBlob);
     } catch (err) {
-      // Fallback: return original URI if stripping fails
-      console.warn(`[flyer-pipeline] EXIF stripping failed: ${err instanceof Error ? err.message : String(err)}`);
-      return imageUri;
+      // Both EXIF paths failed — fail closed
+      throw new Error(
+        `EXIF stripping failed: ${err instanceof Error ? err.message : String(err)}. ` +
+        `Original error: ${outerErr instanceof Error ? outerErr.message : String(outerErr)}`,
+      );
     }
   }
 }
