@@ -31,6 +31,7 @@ import { getListMeta } from '../sync/yjs-adapter';
 import type { RootStackParamList } from '../navigation/deepLinks';
 import AddItemSheet from './AddItemSheet';
 import PriceBadge from '../components/PriceBadge';
+import StopOptimizer from '../components/StopOptimizer';
 import UndoToast from '../components/UndoToast';
 import { usePriceStore } from '../pricing/price-store';
 import { CLAIM_EXPIRY_MS } from '../sync/yjs-adapter';
@@ -810,6 +811,21 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     },
   ).length;
 
+  // Filtered unchecked items for stop optimizer
+  const filteredUncheckedItems = useMemo(() => {
+    return Object.values(items)
+      .filter(
+        (i) => !i.isDeleted && i.listId === listId && !i.isChecked,
+      )
+      .filter(
+        (i) =>
+          !searchQuery.trim() ||
+          i.name.toLowerCase().includes(searchQuery.toLowerCase()),
+      );
+  }, [items, listId, searchQuery]);
+
+  const storeIdsWithPrices = getStoreIdsWithPrices();
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
@@ -860,6 +876,14 @@ export default function GroceryListScreen({ route, navigation }: Props) {
         storeTotals={storeTotals}
         selectedStoreId={selectedStoreId}
         onSelectStore={setSelectedStoreId}
+      />
+
+      {/* Stop optimizer */}
+      <StopOptimizer
+        items={filteredUncheckedItems}
+        perStorePrices={perStorePrices}
+        storeNameMap={STORE_NAME_MAP}
+        storeIds={storeIdsWithPrices}
       />
 
       {/* Sectioned list */}
