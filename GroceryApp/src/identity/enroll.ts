@@ -39,6 +39,7 @@ export async function enrollWithRelay(
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    signal: AbortSignal.timeout(10_000),
     body: JSON.stringify({
       deviceToken,
       familyInviteToken,

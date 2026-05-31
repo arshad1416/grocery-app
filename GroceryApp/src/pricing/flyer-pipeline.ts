@@ -196,11 +196,19 @@ export async function discardImage(imageUri: string): Promise<boolean> {
       return true;
     }
 
-    // For file:// URIs, delete via a no-cors fetch trick in React Native,
-    // or fall back to returning true (the temp system will clean up)
-    // In production, use expo-file-system's deleteAsync:
-    //   import * as FileSystem from 'expo-file-system';
-    //   await FileSystem.deleteAsync(imageUri, { idempotent: true });
+    // For file:// URIs, use expo-file-system to delete the file
+    if (imageUri.startsWith('file://')) {
+      try {
+        const { deleteAsync } = await import('expo-file-system');
+        await deleteAsync(imageUri, { idempotent: true });
+      } catch {
+        // expo-file-system not available (test environment, web, etc.)
+        // Return true — the file will be cleaned up by the OS temp system
+      }
+      return true;
+    }
+
+    // For other URIs (http, data, etc.), return true — caller manages cleanup
     return true;
   } catch (err) {
     console.warn(`[flyer-pipeline] Image discard failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -232,11 +240,12 @@ export async function processFlyerImage(
     // 3. Confidence gate
     const { accepted, needsReview } = confidenceGate(rawPrices);
 
-    // 4. Discard the image
+    // 4. Discard both images (cleanImage is a blob: URI, imageUri is the original)
+    await discardImage(cleanImage);
     await discardImage(imageUri);
 
     return {
-      imageUri,
+      imageUri: cleanImage,
       prices: [...accepted, ...needsReview],
       discarded: true,
     };

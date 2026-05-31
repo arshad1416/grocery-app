@@ -734,7 +734,10 @@ function handleMessage(sender, message) {
         enrolledDevices.delete(relayToken);
         // Also clean up from family device tracking
         const familyTokens = familyDeviceTokens.get(enrollment.familyId);
-        if (familyTokens) familyTokens.delete(relayToken);
+        if (familyTokens) {
+          familyTokens.delete(relayToken);
+          if (familyTokens.size === 0) familyDeviceTokens.delete(enrollment.familyId);
+        }
         persistState();
         sendTo(sender, {
           type: 'error',
@@ -983,7 +986,10 @@ async function handleTokenRequest(req, res) {
   if (Date.now() > enrollment.expiresAt) {
     enrolledDevices.delete(relayToken);
     const familyTokens = familyDeviceTokens.get(enrollment.familyId);
-    if (familyTokens) familyTokens.delete(relayToken);
+    if (familyTokens) {
+      familyTokens.delete(relayToken);
+      if (familyTokens.size === 0) familyDeviceTokens.delete(enrollment.familyId);
+    }
     persistState();
     res.writeHead(403, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Relay token has expired. Re-enroll to continue.' }));
@@ -1092,7 +1098,10 @@ server.listen(RELAY_PORT, () => {
         if (now > enrollment.expiresAt) {
           enrolledDevices.delete(token);
           const familyTokens = familyDeviceTokens.get(enrollment.familyId);
-          if (familyTokens) familyTokens.delete(token);
+          if (familyTokens) {
+            familyTokens.delete(token);
+            if (familyTokens.size === 0) familyDeviceTokens.delete(enrollment.familyId);
+          }
           cleaned++;
         }
       }
@@ -1117,6 +1126,18 @@ server.listen(RELAY_PORT, () => {
       }
     }, 60 * 60 * 1000);
 });
+
+// ─── Graceful Shutdown ────────────────────────────────────────────────────────
+
+function gracefulShutdown() {
+  console.log('[shutdown] Flushing state...');
+  if (_saveTimeout) { clearTimeout(_saveTimeout); persistState(); }
+  usedTokensStore.shutdown();
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 5000);
+}
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
 
 // Start the pool HTTP server on a separate port
 if (POOL_PORT !== RELAY_PORT) {

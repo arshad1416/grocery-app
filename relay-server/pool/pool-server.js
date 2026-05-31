@@ -226,6 +226,19 @@ function handlePoolRequest(req, res, store) {
 }
 
 /**
+ * Parse the request body into a string, wrapped in a Promise
+ * to avoid async race conditions with streaming events.
+ */
+function parseBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => resolve(body));
+    req.on('error', reject);
+  });
+}
+
+/**
  * Handle a contribution POST request with Blind RSA token verification.
  */
 async function handleContribute(req, res, store) {
@@ -281,41 +294,38 @@ async function handleContribute(req, res, store) {
   }
 
   // ── Body Parsing & Validation ────────────────────────────────────────
-  let body = '';
-  req.on('data', (chunk) => { body += chunk; });
-  req.on('end', () => {
-    // Enforce body size limit
-    if (body.length > 4096) {
-      res.writeHead(413, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Request body too large (max 4096 bytes)' }));
-      return;
-    }
+  const body = await parseBody(req);
+  // Enforce body size limit
+  if (body.length > 4096) {
+    res.writeHead(413, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Request body too large (max 4096 bytes)' }));
+    return;
+  }
 
-    let parsed;
-    try {
-      parsed = JSON.parse(body);
-    } catch {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Invalid JSON' }));
-      return;
-    }
+  let bodyParsed;
+  try {
+    bodyParsed = JSON.parse(body);
+  } catch {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Invalid JSON' }));
+    return;
+  }
 
-    const validation = validateContribution(parsed);
-    if (!validation.valid) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: validation.error }));
-      return;
-    }
+  const validation = validateContribution(bodyParsed);
+  if (!validation.valid) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: validation.error }));
+    return;
+  }
 
-    const { storeId, itemName, price, flyerWeek, validTo } = parsed;
-    const normalizedName = itemName.toLowerCase().trim();
-    const key = `${storeId}:${normalizedName}:${flyerWeek}`;
+  const { storeId, itemName, price, flyerWeek, validTo } = bodyParsed;
+  const normalizedName = itemName.toLowerCase().trim();
+  const key = `${storeId}:${normalizedName}:${flyerWeek}`;
 
-    store.addReport(key, price, validTo);
+  store.addReport(key, price, validTo);
 
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ status: 'ok', key }));
-  });
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ status: 'ok', key }));
 }
 
 module.exports = {

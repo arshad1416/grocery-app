@@ -217,7 +217,7 @@ export async function setupMasterKey(passphrase: string): Promise<void> {
   const saltBase64 = uint8ArrayToBase64(salt);
   await SecureStore.setItemAsync(
     SECURE_STORE_KEY_ALIAS,
-    JSON.stringify({ key: keyBase64, salt: saltBase64 }),
+    JSON.stringify({ key: keyBase64, salt: saltBase64, type: 'passphrase' }),
   );
 }
 
@@ -248,10 +248,19 @@ export async function verifyAndGetMasterKey(
   await ensureReady();
   const stored = await SecureStore.getItemAsync(SECURE_STORE_KEY_ALIAS);
   if (!stored) return null;
-  const { key: storedKeyBase64, salt: saltBase64 } = JSON.parse(stored);
+  const parsed = JSON.parse(stored);
+
+  // If the stored key was created via recovery (not passphrase), return it directly
+  if (parsed.type === 'recovery') {
+    return base64ToUint8Array(parsed.key);
+  }
+
+  // Legacy format (no type field) or passphrase-derived: re-derive and verify
+  const saltBase64 = parsed.salt;
+  if (!saltBase64) return null; // Missing salt — can't verify
   const salt = base64ToUint8Array(saltBase64);
   const derivedKey = await deriveKeyFromPassphrase(passphrase, salt);
-  const storedKey = base64ToUint8Array(storedKeyBase64);
+  const storedKey = base64ToUint8Array(parsed.key);
 
   // Constant-time comparison using libsodium's sodium_memcmp
   const match = sodium.memcmp(derivedKey, storedKey);
@@ -304,10 +313,9 @@ export async function deriveSyncKey(
 export async function setMasterKey(key: Uint8Array): Promise<void> {
   await ensureReady();
   const keyBase64 = uint8ArrayToBase64(key);
-  const saltBase64 = uint8ArrayToBase64(new Uint8Array(16));
   await SecureStore.setItemAsync(
     SECURE_STORE_KEY_ALIAS,
-    JSON.stringify({ key: keyBase64, salt: saltBase64 }),
+    JSON.stringify({ key: keyBase64, type: 'recovery' }),
   );
 }
 
