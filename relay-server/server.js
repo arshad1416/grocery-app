@@ -41,8 +41,14 @@ const TOKEN_RATE_LIMIT = parseInt(process.env.TOKEN_RATE_LIMIT || '10', 10);
 const TOKEN_RATE_WINDOW_MS = 3_600_000; // 1 hour
 
 /**
- * Map<deviceId, { count: number, windowStart: number }>
  * Per-device token issuance rate limiters.
+ * Map<deviceId, { count: number, windowStart: number }>
+ *
+ * NOTE: In-memory only — resets on restart. This is intentional:
+ * - The used-tokens store (checkAndMark) prevents replay of issued tokens.
+ * - Restart is a deliberate admin action.
+ * - Persistence would add complexity for marginal security gain.
+ * See UsedTokensStore for the persisted counterpart.
  */
 const tokenRateLimiters = new Map();
 

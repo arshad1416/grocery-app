@@ -37,35 +37,45 @@ export const CONFIDENCE_THRESHOLD = 0.6;
  */
 export async function stripExif(imageUri: string): Promise<string> {
   try {
-    // Only handle file:// URIs (local temp files)
-    // Remote URIs would require a download step first
-    const response = await fetch(imageUri);
-    const blob = await response.blob();
+    // Primary path: use expo-image-manipulator for React Native environments.
+    // Re-encode JPEG to strip EXIF metadata cleanly without needing byte-level parsing.
+    // Returns a file:// URI that RN supports natively.
+    const { manipulateAsync, SaveFormat } = await import('expo-image-manipulator');
+    const result = await manipulateAsync(imageUri, [], { format: SaveFormat.JPEG, compress: 0.92 });
+    return result.uri;
+  } catch {
+    // Fallback: byte-level stripping for web/non-RN environments
+    try {
+      // Only handle file:// URIs (local temp files)
+      // Remote URIs would require a download step first
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
 
-    // Only strip EXIF from JPEG files
-    if (!blob.type || (!blob.type.includes('jpeg') && !blob.type.includes('jpg'))) {
-      // For non-JPEG, we pass through — PNG/GIF don't store EXIF the same way
+      // Only strip EXIF from JPEG files
+      if (!blob.type || (!blob.type.includes('jpeg') && !blob.type.includes('jpg'))) {
+        // For non-JPEG, we pass through — PNG/GIF don't store EXIF the same way
+        return imageUri;
+      }
+
+      const arrayBuf = await blob.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuf);
+
+      // Simple JPEG EXIF stripper: scan for APP1 (0xFF 0xE1) markers and skip them
+      const cleaned = stripJpegExif(bytes);
+
+      if (cleaned.length === bytes.length) {
+        return imageUri; // No EXIF found
+      }
+
+      // Write cleaned bytes back as a blob URL (works on web)
+      const cleanBuf = new Uint8Array(cleaned).buffer as unknown as ArrayBuffer;
+      const cleanBlob = new Blob([cleanBuf], { type: 'image/jpeg' });
+      return URL.createObjectURL(cleanBlob);
+    } catch (err) {
+      // Fallback: return original URI if stripping fails
+      console.warn(`[flyer-pipeline] EXIF stripping failed: ${err instanceof Error ? err.message : String(err)}`);
       return imageUri;
     }
-
-    const arrayBuf = await blob.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuf);
-
-    // Simple JPEG EXIF stripper: scan for APP1 (0xFF 0xE1) markers and skip them
-    const cleaned = stripJpegExif(bytes);
-
-    if (cleaned.length === bytes.length) {
-      return imageUri; // No EXIF found
-    }
-
-    // Write cleaned bytes back as a blob URL (React Native supports blob: URIs)
-    const cleanBuf = new Uint8Array(cleaned).buffer as unknown as ArrayBuffer;
-    const cleanBlob = new Blob([cleanBuf], { type: 'image/jpeg' });
-    return URL.createObjectURL(cleanBlob);
-  } catch (err) {
-    // Fallback: return original URI if stripping fails
-    console.warn(`[flyer-pipeline] EXIF stripping failed: ${err instanceof Error ? err.message : String(err)}`);
-    return imageUri;
   }
 }
 
