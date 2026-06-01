@@ -1,13 +1,12 @@
 /**
  * Hermes WebAssembly polyfill.
  *
- * Some Hermes builds (Expo SDK 56 on Android) lack the global `WebAssembly`
- * object entirely. Any code that references `WebAssembly` directly (not via
- * `typeof`) throws a ReferenceError at load time.
- *
- * libsodium-wrappers-sumo is pure JS and doesn't need WASM, but some
- * transitive dependency or polyfill references the global. This stub makes
- * `typeof WebAssembly` return "object" and prevents RuntimeErrors.
+ * Some Hermes builds lack the global `WebAssembly` entirely. libsodium-sumo's
+ * ESM build (used by Metro's package exports resolution) tries to construct
+ * `new WebAssembly.Module(buffer)` during initialization. This stub provides
+ * the expected API surface so the constructor call doesn't crash — it throws
+ * a controlled error instead, which libsodium's Emscripten wrapper catches
+ * and falls back to the pure JS implementation.
  */
 
 (function () {
@@ -18,6 +17,19 @@
     {};
 
   if (typeof g.WebAssembly === 'undefined') {
-    g.WebAssembly = {};
+    var WasmError = function (msg) { this.message = msg || 'WebAssembly not supported on this Hermes build'; };
+    WasmError.prototype = Object.create(Error.prototype);
+
+    g.WebAssembly = {
+      Module: function () { throw new WasmError('WebAssembly.Module not available'); },
+      Instance: function () { throw new WasmError('WebAssembly.Instance not available'); },
+      compile: function () { return Promise.reject(new WasmError('WebAssembly.compile not available')); },
+      instantiate: function () { return Promise.reject(new WasmError('WebAssembly.instantiate not available')); },
+      instantiateStreaming: function () { return Promise.reject(new WasmError('WebAssembly.instantiateStreaming not available')); },
+      compileStreaming: function () { return Promise.reject(new WasmError('WebAssembly.compileStreaming not available')); },
+      RuntimeError: WasmError,
+      CompileError: WasmError,
+      LinkError: WasmError,
+    };
   }
 })();
