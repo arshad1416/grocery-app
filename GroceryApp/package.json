@@ -1,7 +1,7 @@
 {
   "name": "groceryapp",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "index.ts",
   "dependencies": {
     "@cloudflare/blindrsa-ts": "^0.4.4",
     "@nozbe/watermelondb": "^0.28.0",
@@ -12,11 +12,10 @@
     "expo-linking": "^56.0.12",
     "expo-secure-store": "^56.0.4",
     "expo-status-bar": "~56.0.4",
-    "isomorphic-webcrypto": "^2.3.8",
-    "libsodium-wrappers": "npm:libsodium-wrappers-sumo@^0.8.4",
     "react": "19.2.3",
     "react-native": "0.85.3",
     "react-native-get-random-values": "^2.0.0",
+    "react-native-libsodium": "^1.7.0",
     "react-native-safe-area-context": "^5.8.0",
     "react-native-screens": "^4.25.2",
     "y-websocket": "^3.0.0",
@@ -33,6 +32,7 @@
     "fast-json-stable-stringify": "^2.1.0",
     "fs-extra": "^11.3.5",
     "jest": "29.7.0",
+    "libsodium-wrappers": "^0.8.4",
     "ts-jest": "^29.4.11",
     "typescript": "~6.0.3"
   },
@@ -41,8 +41,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "test": "jest",
-    "postinstall": "node scripts/disable-libsodium-esm.js"
+    "test": "jest"
   },
   "private": true
 }

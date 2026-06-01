@@ -32,17 +32,17 @@ let cachedDeviceId: string | null = null;
 // ─── Internal Helpers ────────────────────────────────────────────────────────
 
 function uint8ArrayToBase64(bytes: Uint8Array): string {
-  const sodium = require('libsodium-wrappers');
+  const sodium = require('react-native-libsodium');
   return sodium.to_base64(bytes, sodium.base64_variants.ORIGINAL);
 }
 
 function base64ToUint8Array(b64: string): Uint8Array {
-  const sodium = require('libsodium-wrappers');
+  const sodium = require('react-native-libsodium');
   return sodium.from_base64(b64, sodium.base64_variants.ORIGINAL);
 }
 
 async function generateNewKeypair(): Promise<DeviceKeypair> {
-  const sodium = require('libsodium-wrappers');
+  const sodium = require('react-native-libsodium');
   await sodium.ready;
   const kp = sodium.crypto_box_keypair();
   return {

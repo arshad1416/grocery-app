@@ -1,5 +1,5 @@
 /**
- * Encryption layer using libsodium-wrappers (XChaCha20-Poly1305 AEAD + Argon2id KDF).
+ * Encryption layer using react-native-libsodium (XChaCha20-Poly1305 AEAD + Argon2id KDF).
  *
  * Design:
  *  - Master key derived from family passphrase via libsodium crypto_pwhash (Argon2id,
@@ -14,7 +14,7 @@
  */
 
 import * as SecureStore from 'expo-secure-store';
-import sodium from 'libsodium-wrappers';
+import sodium from 'react-native-libsodium';
 
 import type { EncryptedData } from '../types';
 
@@ -61,6 +61,14 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
 
 function base64ToUint8Array(b64: string): Uint8Array {
   return sodium.from_base64(b64, sodium.base64_variants.ORIGINAL);
+}
+
+/** Constant-time comparison. Replaces sodium.memcmp which react-native-libsodium doesn't export. */
+function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
 }
 
 // ─── Key Derivation (Argon2id via libsodium crypto_pwhash) ────────────────────
@@ -143,9 +151,9 @@ export async function encrypt(
 ): Promise<EncryptedData> {
   await ensureReady();
   const nonce = await generateNonce();
-  const additionalData = context ? new TextEncoder().encode(context) : null;
+  const additionalData = context || null;
 
-  // libsodium: crypto_aead_xchacha20poly1305_ietf_encrypt
+  // libsodium: crypto_aead_xchacha20poly1305_ietf_encrypt (react-native-libsodium takes string AAD)
   // Returns ciphertext + tag concatenated
   const cipherWithTag = sodium.crypto_aead_xchacha20poly1305_ietf_encrypt(
     plaintext,
@@ -185,7 +193,7 @@ export async function decrypt(
   const nonce = base64ToUint8Array(data.iv);
   const tag = base64ToUint8Array(data.tag);
   const ciphertext = base64ToUint8Array(data.ciphertext);
-  const additionalData = context ? new TextEncoder().encode(context) : null;
+  const additionalData = context || null;
 
   // Recombine ciphertext + tag for libsodium
   const cipherWithTag = new Uint8Array(ciphertext.length + tag.length);
@@ -262,8 +270,8 @@ export async function verifyAndGetMasterKey(
   const derivedKey = await deriveKeyFromPassphrase(passphrase, salt);
   const storedKey = base64ToUint8Array(parsed.key);
 
-  // Constant-time comparison using libsodium's sodium_memcmp
-  const match = sodium.memcmp(derivedKey, storedKey);
+  // Constant-time comparison
+  const match = constantTimeEqual(derivedKey, storedKey);
   if (!match) {
     return null; // Wrong passphrase
   }

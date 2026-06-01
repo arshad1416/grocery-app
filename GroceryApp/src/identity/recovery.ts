@@ -268,7 +268,7 @@ export function entropyToWordIndices(entropy: Uint8Array): number[] {
   // Calculate checksum: first CHECKSUM_BITS bits of SHA-256 of entropy
   // Use crypto_generichash (BLAKE2b-64) truncated to first 4 bits —
   // self-consistent even though it's not standard BIP39 SHA-256 checksum.
-  const sodium = require('libsodium-wrappers');
+  const sodium = require('react-native-libsodium');
   const hash = sodium.crypto_generichash(64, entropy);
   const checksum = hash[0] >> (8 - CHECKSUM_BITS); // top CHECKSUM_BITS bits
 
@@ -330,7 +330,7 @@ export function wordIndicesToEntropy(indices: number[]): Uint8Array {
   const storedChecksum = Number(buffer & 0xFn);
 
   // Verify checksum
-  const sodium = require('libsodium-wrappers');
+  const sodium = require('react-native-libsodium');
   const hash = sodium.crypto_generichash(64, entropy);
   const expectedChecksum = hash[0] >> (8 - CHECKSUM_BITS);
 
@@ -400,7 +400,7 @@ async function setRecoverySeed(familyId: string, seed: Uint8Array): Promise<void
  */
 export async function generateRecoveryPhrase(): Promise<string> {
   await initCrypto();
-  const sodium = require('libsodium-wrappers');
+  const sodium = require('react-native-libsodium');
   await sodium.ready;
 
   const familyId = await getFamilyId();
@@ -473,7 +473,7 @@ export async function generateRecoveryPhrase(): Promise<string> {
  */
 export async function recoverFromPhrase(phrase: string): Promise<Uint8Array> {
   await initCrypto();
-  const sodium = require('libsodium-wrappers');
+  const sodium = require('react-native-libsodium');
   await sodium.ready;
 
   // Validate the phrase first

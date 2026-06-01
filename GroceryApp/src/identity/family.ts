@@ -19,7 +19,7 @@
  * 7. New device decrypts with its secret key (crypto_box_seal_open)
  * 8. Both devices now share the family key — zero-knowledge to relay
  *
- * All operations require libsodium-wrappers.
+ * All operations require react-native-libsodium.
  */
 
 import * as SecureStore from 'expo-secure-store';
@@ -44,12 +44,12 @@ let cachedMembership: FamilyMembership | null = null;
 // ─── Internal Helpers ────────────────────────────────────────────────────────
 
 function uint8ArrayToBase64(bytes: Uint8Array): string {
-  const sodium = require('libsodium-wrappers');
+  const sodium = require('react-native-libsodium');
   return sodium.to_base64(bytes, sodium.base64_variants.ORIGINAL);
 }
 
 function base64ToUint8Array(b64: string): Uint8Array {
-  const sodium = require('libsodium-wrappers');
+  const sodium = require('react-native-libsodium');
   return sodium.from_base64(b64, sodium.base64_variants.ORIGINAL);
 }
 
@@ -79,7 +79,7 @@ export async function createFamilyInvite(
   expiresAt?: number,
 ): Promise<FamilyInviteToken> {
   await initCrypto();
-  const sodium = require('libsodium-wrappers');
+  const sodium = require('react-native-libsodium');
   await sodium.ready;
 
   const familyId = await generateUUID();
@@ -118,7 +118,7 @@ export async function verifyFamilyInvite(
   inviteToken: FamilyInviteToken,
 ): Promise<FamilyInviteVerification> {
   await initCrypto();
-  const sodium = require('libsodium-wrappers');
+  const sodium = require('react-native-libsodium');
   await sodium.ready;
 
   const { signature, ...payload } = inviteToken;
@@ -323,7 +323,7 @@ export async function encryptKeyForDevice(
   familyKey: Uint8Array,
 ): Promise<{ encryptedKey: Uint8Array; ephemeralPublicKey: Uint8Array }> {
   await initCrypto();
-  const sodium = require('libsodium-wrappers');
+  const sodium = require('react-native-libsodium');
   await sodium.ready;
 
   // crypto_box_seal encrypts a message for a given public key using an
@@ -358,7 +358,7 @@ export async function decryptKeyFromDevice(
   deviceSecretKey: Uint8Array,
 ): Promise<Uint8Array> {
   await initCrypto();
-  const sodium = require('libsodium-wrappers');
+  const sodium = require('react-native-libsodium');
   await sodium.ready;
 
   // Derive the public key from the secret key

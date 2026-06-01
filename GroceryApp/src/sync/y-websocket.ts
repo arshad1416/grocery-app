@@ -10,7 +10,7 @@
  *  3. Offline: queue pending updates in memory; flush when connection restores
  */
 
-import sodium from 'libsodium-wrappers';
+import sodium from 'react-native-libsodium';
 import * as Y from 'yjs';
 import type { EncryptedData } from '../types';
 import { encrypt, decrypt } from '../crypto';

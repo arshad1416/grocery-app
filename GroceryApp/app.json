@@ -7,11 +7,13 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "scheme": "groceryapp",
+    "plugins": [
+      ["react-native-libsodium", {}]
+    ],
     "ios": {
       "supportsTablet": true
     },
     "android": {
-      "jsEngine": "jsc",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

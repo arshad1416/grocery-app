@@ -69,7 +69,7 @@ async function getOrCreateSettingsKey(): Promise<Uint8Array> {
   }
 
   // Generate a random key for device settings
-  const sodium = require('libsodium-wrappers');
+  const sodium = require('react-native-libsodium');
   await sodium.ready;
   const key = sodium.randombytes_buf(32);
   deviceSettingsKey = key;
