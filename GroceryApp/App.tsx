@@ -73,8 +73,11 @@ export default function App() {
     (async () => {
       try {
         // Step 1: Initialise core services
+        console.log('Init: crypto...');
         await initCrypto();
+        console.log('Init: device identity...');
         await initDeviceIdentity();
+        console.log('Init: settings...');
         await initSettings();
         useThemeStore.getState().hydrateTheme();
         
@@ -164,6 +167,9 @@ export default function App() {
         const message = err instanceof Error ? err.message : 'Initialization failed';
         setInitError(message);
         console.error('App init error:', err);
+        if (err instanceof Error) {
+          console.error('Stack:', err.stack);
+        }
       }
     })();
   }, []);
