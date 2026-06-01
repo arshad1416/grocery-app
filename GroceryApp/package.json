@@ -1,7 +1,7 @@
 {
   "name": "groceryapp",
   "version": "1.0.0",
-  "main": "index.ts",
+  "main": "index.js",
   "dependencies": {
     "@cloudflare/blindrsa-ts": "^0.4.4",
     "@nozbe/watermelondb": "^0.28.0",
