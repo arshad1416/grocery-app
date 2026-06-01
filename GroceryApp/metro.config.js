@@ -4,24 +4,27 @@ const path = require('path');
 
 const config = getDefaultConfig(__dirname);
 
-// Force libsodium-wrappers and libsodium-sumo to use CJS build (ESM build tries
-// WebAssembly.Module which fails on Hermes — CJS build is pure JS fallback)
+// Force CJS builds for libsodium packages: Metro resolves via package.json "exports"
+// to the ESM (.mjs) build, which tries new WebAssembly.Module() and fails on Hermes.
+// The CJS (.js) build is a pure JS wrapper — no WASM dependency.
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  // Redirect libsodium-wrappers and libsodium-sumo to CJS
   if (moduleName === 'libsodium-wrappers' || moduleName === 'libsodium-sumo') {
-    const pkgName = moduleName === 'libsodium-wrappers' ? 'libsodium-wrappers' : 'libsodium-sumo';
+    const base = moduleName === 'libsodium-wrappers' ? 'libsodium-wrappers' : 'libsodium-sumo';
     const cjsPath = path.join(
-      __dirname,
-      'node_modules',
-      pkgName,
-      'dist',
-      'modules-sumo',
-      pkgName === 'libsodium-wrappers' ? 'libsodium-wrappers.js' : 'libsodium-sumo.js'
+      __dirname, 'node_modules', base,
+      'dist', 'modules-sumo',
+      base === 'libsodium-wrappers' ? 'libsodium-wrappers.js' : 'libsodium-sumo.js'
     );
-    return {
-      filePath: cjsPath,
-      type: 'sourceFile',
-    };
+    return { filePath: cjsPath, type: 'sourceFile' };
   }
+
+  // Catch any remaining .mjs resolutions for libsodium packages and redirect to .js
+  if (moduleName.startsWith('libsodium') && moduleName.endsWith('.mjs')) {
+    const jsPath = moduleName.replace(/\.mjs$/, '.js');
+    return context.resolveRequest(context, jsPath, platform);
+  }
+
   return context.resolveRequest(context, moduleName, platform);
 };
 
@@ -41,5 +44,8 @@ config.resolver.extraNodeModules = new Proxy(
     },
   }
 );
+
+// Disable package exports to prevent Metro from picking ESM builds
+config.resolver.unstable_enablePackageExports = false;
 
 module.exports = config;
