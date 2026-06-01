@@ -16,8 +16,8 @@ import { GroceryListModel, GroceryItemModel, FamilyMemberModel } from './models'
 const adapter = new SQLiteAdapter({
   schema,
   migrations,
-  // Use JSI for performance
-  jsi: true,
+  // Use JSI for performance (disabled on New Architecture / Hermes)
+  jsi: false,
   dbName: 'groceryapp',
 });
 

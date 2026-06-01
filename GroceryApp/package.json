@@ -12,7 +12,6 @@
     "expo-linking": "^56.0.12",
     "expo-secure-store": "^56.0.4",
     "expo-status-bar": "~56.0.4",
-    "isomorphic-webcrypto": "^2.3.8",
     "libsodium-wrappers": "npm:libsodium-wrappers-sumo@^0.8.4",
     "react": "19.2.3",
     "react-native": "0.85.3",
