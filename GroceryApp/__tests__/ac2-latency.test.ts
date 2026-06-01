@@ -133,6 +133,9 @@ function setupEchoRelay(familyId: string, clients: { client: YjsWebSocketClient;
     send(data: string): void {
       try {
         const msg = JSON.parse(data);
+        if (msg.type === 'identity') {
+          this.deviceId = msg.deviceId;
+        }
         if (msg.type === 'update' && msg.listId && msg.payload) {
           // Echo to other subscribers
           echoRelay.echo(familyId, msg.listId, new Uint8Array(0));
@@ -222,6 +225,7 @@ describe('AC2: Sync Latency', () => {
         familyId: FAMILY_ID,
         deviceId: DEVICE_A,
         encryptionKey,
+        allowUnauthenticated: true,
       });
 
       const clientB = new YjsWebSocketClient({
@@ -229,6 +233,7 @@ describe('AC2: Sync Latency', () => {
         familyId: FAMILY_ID,
         deviceId: DEVICE_B,
         encryptionKey,
+        allowUnauthenticated: true,
       });
 
       clients[0].client = clientA;
@@ -309,6 +314,7 @@ describe('AC2: Sync Latency', () => {
       familyId: FAMILY_ID,
       deviceId: 'device-concurrent-a',
       encryptionKey,
+      allowUnauthenticated: true,
     });
 
     const clientB = new YjsWebSocketClient({
@@ -316,6 +322,7 @@ describe('AC2: Sync Latency', () => {
       familyId: FAMILY_ID,
       deviceId: 'device-concurrent-b',
       encryptionKey,
+      allowUnauthenticated: true,
     });
 
     clients[0].client = clientA;

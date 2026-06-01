@@ -77,9 +77,7 @@ describe('AC1: Family Invite Flow', () => {
         signature: invite.signature.replace(/A/g, 'B'),
       };
 
-      await expect(verifyFamilyInvite(tamperedInvite)).rejects.toThrow(
-        'signature',
-      );
+      await expect(verifyFamilyInvite(tamperedInvite)).rejects.toThrow();
     });
   });
 

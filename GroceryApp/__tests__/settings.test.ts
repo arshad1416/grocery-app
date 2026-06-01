@@ -35,11 +35,7 @@ jest.mock('expo-secure-store', () => ({
   deleteItemAsync: jest.fn().mockResolvedValue(undefined),
 }));
 
-// Mock libsodium-wrappers
-jest.mock('libsodium-wrappers', () => {
-  const realSodium = jest.requireActual('libsodium-wrappers');
-  return realSodium;
-});
+
 
 // Mock fetch for testRelayConnection
 global.fetch = jest.fn();

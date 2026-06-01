@@ -20,16 +20,16 @@ import type { EncryptedData } from '../types';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const KEY_LENGTH_BYTES = sodium.crypto_aead_xchacha20poly1305_ietf_KEYBYTES; // 32
-const NONCE_LENGTH_BYTES = sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES; // 24
-const ABYTES = sodium.crypto_aead_xchacha20poly1305_ietf_ABYTES; // 16 (auth tag)
+const KEY_LENGTH_BYTES = 32; // sodium.crypto_aead_xchacha20poly1305_ietf_KEYBYTES
+const NONCE_LENGTH_BYTES = 24; // sodium.crypto_aead_xchacha20poly1305_ietf_NPUBBYTES
+const ABYTES = 16; // sodium.crypto_aead_xchacha20poly1305_ietf_ABYTES
 const SALT_LENGTH_BYTES = 16; // Argon2id salt
 
 const SECURE_STORE_KEY_ALIAS = 'groceryapp.master_key';
 
 // Argon2id parameters (moderate — ~1s on mobile)
-const OPSLIMIT = sodium.crypto_pwhash_OPSLIMIT_MODERATE;
-const MEMLIMIT = sodium.crypto_pwhash_MEMLIMIT_MODERATE;
+const OPSLIMIT = 3; // sodium.crypto_pwhash_OPSLIMIT_MODERATE
+const MEMLIMIT = 268435456; // sodium.crypto_pwhash_MEMLIMIT_MODERATE
 
 // ─── Ready / Init ─────────────────────────────────────────────────────────────
 

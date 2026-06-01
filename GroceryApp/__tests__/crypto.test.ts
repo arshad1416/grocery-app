@@ -137,6 +137,11 @@ describe('Master Key Management', () => {
   test('setupMasterKey stores key', async () => {
     (SecureStore.getItemAsync as jest.Mock).mockResolvedValue(null);
     await setupMasterKey(passphrase);
+    // Setup stores the key — grab it for the mock
+    const keyCall = (SecureStore.setItemAsync as jest.Mock).mock.calls[0];
+    const storedVal = keyCall[1];
+    (SecureStore.getItemAsync as jest.Mock).mockResolvedValue(storedVal);
+
     const stored = await getMasterKey();
     expect(stored).toBeInstanceOf(Uint8Array);
     expect(stored!.length).toBe(32);

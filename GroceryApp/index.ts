@@ -1,3 +1,12 @@
+if (typeof (global as any).WebAssembly === 'undefined') {
+  const mockError = class extends Error {};
+  (global as any).WebAssembly = {
+    RuntimeError: mockError,
+    CompileError: mockError,
+    LinkError: mockError,
+  };
+}
+import 'react-native-get-random-values';
 import { registerRootComponent } from 'expo';
 
 import App from './App';

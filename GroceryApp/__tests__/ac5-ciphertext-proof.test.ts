@@ -19,6 +19,12 @@ import type { EncryptedData } from '../src/types';
 
 let encryptionKey: Uint8Array;
 
+function tamperBase64(b64: string): string {
+  const bytes = sodium.from_base64(b64, sodium.base64_variants.ORIGINAL);
+  bytes[0] ^= 1;
+  return sodium.to_base64(bytes, sodium.base64_variants.ORIGINAL);
+}
+
 beforeAll(async () => {
   await initCrypto();
   await sodium.ready;
@@ -159,7 +165,7 @@ describe('AC5: Ciphertext-Only Proof', () => {
       // Tamper with the ciphertext
       const tampered: EncryptedData = {
         ...encrypted,
-        ciphertext: encrypted.ciphertext.replace(/A/g, 'Z'),
+        ciphertext: tamperBase64(encrypted.ciphertext),
       };
 
       await expect(
@@ -178,7 +184,7 @@ describe('AC5: Ciphertext-Only Proof', () => {
       // Tamper with the IV
       const tampered: EncryptedData = {
         ...encrypted,
-        iv: encrypted.iv.replace(/A/g, 'Z'),
+        iv: tamperBase64(encrypted.iv),
       };
 
       await expect(
@@ -197,7 +203,7 @@ describe('AC5: Ciphertext-Only Proof', () => {
       // Tamper with the auth tag
       const tampered: EncryptedData = {
         ...encrypted,
-        tag: encrypted.tag.replace(/A/g, 'Z'),
+        tag: tamperBase64(encrypted.tag),
       };
 
       await expect(

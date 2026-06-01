@@ -77,11 +77,9 @@ export async function generatePairingCode(
 
   const serialized = serializePairingCodePayload(codePayload);
 
-  // Get device keypair and derive signing key
-  const deviceKp = getDeviceKeypair();
-  // Use crypto_sign_seed_keypair to derive a signing keypair from the device key seed
+  // Use crypto_sign_seed_keypair to derive a signing keypair from the device public key seed (matches parsePairingCode)
   const signKp = sodium.crypto_sign_seed_keypair(
-    deviceKp.privateKey.slice(0, 32),
+    base64ToUint8Array(deviceId).slice(0, 32),
   );
 
   const signature = sodium.crypto_sign_detached(

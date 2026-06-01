@@ -17,7 +17,7 @@ const makeList = (id: string): GroceryList => ({
 });
 
 const makeItem = (listId: string, idx: number): GroceryItem => ({
-  id: `item-${idx}`, listId, name: `Item ${idx}`, quantity: 1,
+  id: `item-${idx}`, listId, familyId: 'fam1', name: `Item ${idx}`, quantity: 1,
   unit: 'pieces', category: 'produce', isChecked: false,
   addedBy: 'user1', sortOrder: idx, isDeleted: false,
   deletedAt: null, version: 1, syncStatus: 'synced',
