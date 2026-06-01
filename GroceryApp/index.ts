@@ -1,11 +1,5 @@
-if (typeof (global as any).WebAssembly === 'undefined') {
-  const mockError = class extends Error {};
-  (global as any).WebAssembly = {
-    RuntimeError: mockError,
-    CompileError: mockError,
-    LinkError: mockError,
-  };
-}
+// react-native-get-random-values MUST be the first import — polyfills crypto.getRandomValues
+// before any module (including libsodium) tries to use it during WASM initialization
 import 'react-native-get-random-values';
 import { registerRootComponent } from 'expo';
 
