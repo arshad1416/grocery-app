@@ -19,12 +19,6 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     return { filePath: cjsPath, type: 'sourceFile' };
   }
 
-  // Catch any remaining .mjs resolutions for libsodium packages and redirect to .js
-  if (moduleName.startsWith('libsodium') && moduleName.endsWith('.mjs')) {
-    const jsPath = moduleName.replace(/\.mjs$/, '.js');
-    return context.resolveRequest(context, jsPath, platform);
-  }
-
   return context.resolveRequest(context, moduleName, platform);
 };
 
