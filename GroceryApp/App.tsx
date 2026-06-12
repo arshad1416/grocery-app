@@ -1,5 +1,5 @@
 /**
- * GroceryApp — Root Application Component.
+ * StopHop — Root Application Component.
  *
  * Sets up:
  *  - Navigation container with deep linking config
@@ -252,7 +252,7 @@ function App() {
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#4CAF50" />
         <Text style={styles.loadingText}>
-          {initError ? `Error: ${initError}` : 'Loading GroceryApp...'}
+          {initError ? `Error: ${initError}` : 'Loading StopHop...'}
         </Text>
         {initError && (
           <Text style={styles.errorHint}>
