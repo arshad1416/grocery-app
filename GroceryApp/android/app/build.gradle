@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.anonymous.GroceryApp'
+    namespace 'com.shiftlogichq.stophop'
     defaultConfig {
-        applicationId 'com.anonymous.GroceryApp'
+        applicationId 'com.shiftlogichq.stophop'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

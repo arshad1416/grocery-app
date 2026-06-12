@@ -1,4 +1,4 @@
-package com.anonymous.GroceryApp
+package com.shiftlogichq.stophop
 
 import android.app.Application
 import android.content.res.Configuration
