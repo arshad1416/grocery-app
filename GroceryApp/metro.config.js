@@ -3,21 +3,7 @@ const { getDefaultConfig } = require('expo/metro-config');
 
 const config = getDefaultConfig(__dirname);
 
-// Intercept all Node.js built-ins and redirect them to our shim
-config.resolver.extraNodeModules = new Proxy(
-  {},
-  {
-    get: (target, name) => {
-      if (
-        typeof name === 'string' &&
-        (name.startsWith('node:') ||
-          ['fs', 'path', 'crypto', 'stream', 'os', 'http', 'https', 'zlib'].includes(name))
-      ) {
-        return __dirname + '/metro-shim.js';
-      }
-      return target[name];
-    },
-  }
-);
+// No more Node.js built-in shim hacks — libsodium is now native JSI (not WASM).
+// metro-shim.js is kept as a no-op safety net but is no longer wired in.
 
 module.exports = config;

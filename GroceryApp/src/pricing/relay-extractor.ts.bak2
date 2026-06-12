@@ -4,21 +4,6 @@
  * Implements the FlyerExtractor interface by sending images to the
  * relay server's POST /api/extract/flyer endpoint.
  *
- * ⚠️  PRIVACY NOTICE — THIS CHANNEL IS NOT ZERO-KNOWLEDGE  ⚠️
- * Unlike the core E2E-encrypted sync channel, the flyer extraction
- * pipeline sends raw base64-encoded images to the relay server in
- * plaintext (over TLS). The relay operator CAN see the contents of
- * flyer images, including store names, product names, and pricing.
- *
- * The zero-knowledge guarantee (AC-11) applies only to the grocery
- * list sync path (Yjs + libsodium). The flyer extraction pipeline
- * explicitly does NOT carry that guarantee.
- *
- * Future improvements for true zero-knowledge extraction:
- *   - Client-side on-device OCR (CoreML / MLKit)
- *   - Client-side image redaction before upload
- *   - Fully homomorphic encryption (not practical for images yet)
- *
  * Never throws — returns empty array on any failure so the pipeline
  * continues without crashing.
  */

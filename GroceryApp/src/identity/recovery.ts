@@ -266,10 +266,8 @@ export function entropyToWordIndices(entropy: Uint8Array): number[] {
   }
 
   // Calculate checksum: first CHECKSUM_BITS bits of SHA-256 of entropy
-  // Use crypto_generichash (BLAKE2b-64) truncated to first 4 bits —
-  // self-consistent even though it's not standard BIP39 SHA-256 checksum.
   const sodium = require('react-native-libsodium');
-  const hash = sodium.crypto_generichash(64, entropy);
+  const hash = sodium.crypto_hash_sha256(entropy);
   const checksum = hash[0] >> (8 - CHECKSUM_BITS); // top CHECKSUM_BITS bits
 
   // Build a 132-bit big-endian buffer: 128 bits entropy + 4 bits checksum
@@ -331,7 +329,7 @@ export function wordIndicesToEntropy(indices: number[]): Uint8Array {
 
   // Verify checksum
   const sodium = require('react-native-libsodium');
-  const hash = sodium.crypto_generichash(64, entropy);
+  const hash = sodium.crypto_hash_sha256(entropy);
   const expectedChecksum = hash[0] >> (8 - CHECKSUM_BITS);
 
   if (storedChecksum !== expectedChecksum) {

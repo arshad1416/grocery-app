@@ -17,6 +17,7 @@ import {
   extractItems,
   yjsAddItem,
   yjsUpdateItem,
+  yjsBatchUpdate,
   yjsDeleteItem,
   yjsClaimItem,
   yjsUnclaimItem,
@@ -175,9 +176,29 @@ export const useGroceryStore = create<GroceryState>((set, get) => ({
     const currentSort = currentItem.sortOrder;
     const swapSort = swapItem.sortOrder;
 
-    // Update both items via Yjs
-    await get().updateItem(currentItem.id, { sortOrder: swapSort });
-    await get().updateItem(swapItem.id, { sortOrder: currentSort });
+    // Update both items atomically in a single Yjs transaction
+    // Prevents duplicate sortOrder values if the app crashes mid-swap
+    yjsBatchUpdate(listId, [
+      { itemId: currentItem.id, changes: { sortOrder: swapSort, updatedAt: Date.now() } },
+      { itemId: swapItem.id, changes: { sortOrder: currentSort, updatedAt: Date.now() } },
+    ]);
+
+    // Update Zustand state immediately for responsive UI
+    set((state) => ({
+      items: {
+        ...state.items,
+        [currentItem.id]: {
+          ...state.items[currentItem.id],
+          sortOrder: swapSort,
+          updatedAt: Date.now(),
+        },
+        [swapItem.id]: {
+          ...state.items[swapItem.id],
+          sortOrder: currentSort,
+          updatedAt: Date.now(),
+        },
+      },
+    }));
   },
 
   removeItem: (id) => {

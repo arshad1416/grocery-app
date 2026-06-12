@@ -17,5 +17,6 @@ module.exports = {
     '^expo-secure-store$': '<rootDir>/__mocks__/expo-secure-store.ts',
     '^@nozbe/watermelondb$': '<rootDir>/__mocks__/watermelondb.ts',
     '^@nozbe/watermelondb/(.*)$': '<rootDir>/__mocks__/watermelondb.ts',
+    '^react-native-libsodium$': '<rootDir>/__mocks__/react-native-libsodium.js',
   },
 };

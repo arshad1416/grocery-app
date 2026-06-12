@@ -5,7 +5,7 @@
  * FAB add button, and sync indicator.
  */
 
-import React, { useState, useMemo, useCallback, useEffect, useRef, memo } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -169,11 +169,7 @@ interface ItemRowProps {
   claimExpired?: boolean;
 }
 
-const ItemRow = memo(function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFirst, isLast, price, priceLoading }: ItemRowProps) {
-  const isClaimed = !!item.claimedBy && !!item.claimedAt;
-  const claimExpired = isClaimed && item.claimedAt
-    ? Date.now() - item.claimedAt >= 30 * 60 * 1000 // 30 min
-    : false;
+function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFirst, isLast, price, priceLoading }: ItemRowProps) {
   const activeTheme = useActiveTheme();
   const theme = activeTheme === 'dark' ? themeColors.dark : themeColors.light;
   const isDark = activeTheme === 'dark';
@@ -319,7 +315,7 @@ const ItemRow = memo(function ItemRow({ item, onToggle, onPress, onDelete, onMov
       </TouchableOpacity>
     </View>
   );
-})
+}
 
 // ─── Category Header ─────────────────────────────────────────────────────────
 
@@ -586,12 +582,12 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     },
     [selectedStoreId, selectedRouteNumStops, perStorePrices, prices, filteredUncheckedItems],
   );
-  // Claim-an-item expiry timer — checks every 60s (not 30s), React.memo on ItemRow prevents full re-render
+  // Re-render timer for claim-an-item expiry checks (tick every 30s)
   const [, forceRender] = useState(0);
   useEffect(() => {
     const timer = setInterval(() => {
       forceRender((n) => n + 1);
-    }, 60_000);
+    }, 30_000);
     return () => clearInterval(timer);
   }, []);
 

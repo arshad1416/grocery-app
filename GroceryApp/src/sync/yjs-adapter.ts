@@ -246,6 +246,43 @@ export function yjsUpdateItem(
 }
 
 /**
+ * Batch-update multiple items in a single atomic Yjs transaction.
+ * Prevents data integrity issues (e.g. duplicate sortOrder values) when
+ * multiple items must be updated together.
+ *
+ * Each entry is { itemId, changes } — same changes format as yjsUpdateItem.
+ * All updates and the metadata version bump happen inside one doc.transact().
+ */
+export function yjsBatchUpdate(
+  listId: string,
+  updates: Array<{ itemId: string; changes: Partial<GroceryItem> }>,
+): void {
+  if (updates.length === 0) return;
+  const doc = getDoc(listId);
+  doc.transact(() => {
+    const itemsArr = doc.getArray('items');
+    for (const { itemId, changes } of updates) {
+      const { createdAt: _, id: _id, listId: _listId, familyId: _familyId, addedBy: _addedBy, ...safeChanges } = changes;
+      for (let i = 0; i < itemsArr.length; i++) {
+        const yItem = itemsArr.get(i) as Y.Map<any>;
+        if (yItem.get('id') === itemId) {
+          Object.entries(safeChanges).forEach(([key, value]) => {
+            yItem.set(key, value as any);
+          });
+          yItem.set('version', (yItem.get('version') as number) + 1);
+          yItem.set('updatedAt', Date.now());
+          break;
+        }
+      }
+    }
+    // Bump list metadata once for the entire batch
+    const meta = doc.getMap('meta');
+    meta.set('version', (meta.get('version') as number) + 1);
+    meta.set('updatedAt', Date.now());
+  });
+}
+
+/**
  * Remove (soft-delete) an item via Yjs.
  */
 export function yjsDeleteItem(listId: string, itemId: string): void {
