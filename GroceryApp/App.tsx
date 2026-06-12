@@ -8,6 +8,14 @@
  *  - Status bar
  */
 
+import * as Sentry from '@sentry/react-native';
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN ?? 'https://examplePublicKey@o0.ingest.sentry.io/0',
+  tracesSampleRate: 1.0,
+  enabled: !__DEV__,
+});
+
 import React, { useEffect, useState, useRef } from 'react';
 import { StyleSheet, View, Text, ActivityIndicator } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -65,7 +73,7 @@ function InviteScreen({ route, navigation }: any) {
 
 // ─── App ─────────────────────────────────────────────────────────────────────
 
-export default function App() {
+function App() {
   const [isReady, setIsReady] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
 
@@ -269,3 +277,5 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 });
+
+export default Sentry.wrap(App);
