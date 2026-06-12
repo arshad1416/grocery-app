@@ -195,6 +195,7 @@ export interface FamilyInviteToken {
   familyId: string;
   deviceId: string;
   expiresAt: number;
+  nonce: string;       // random nonce — ensures one-time-use even without server replay tracking
   signature: string; // base64-encoded Ed25519 signature
 }
 

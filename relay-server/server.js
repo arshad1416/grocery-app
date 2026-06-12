@@ -500,7 +500,7 @@ const server = createServer((req, res) => {
           return;
         }
 
-        const { familyId, deviceId: inviterDeviceId, expiresAt, signature } = invite;
+        const { familyId, deviceId: inviterDeviceId, expiresAt, nonce, signature } = invite;
 
         if (!familyId || !inviterDeviceId || !expiresAt || !signature) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -515,11 +515,14 @@ const server = createServer((req, res) => {
           return;
         }
 
-        // Verify invite signature using Ed25519
+        // Verify invite signature using Ed25519.
+        // The payload must match the client's serializeTokenPayload exactly,
+        // including the nonce field (added for one-time-use enforcement).
         const invitePayload = JSON.stringify({
           familyId,
           deviceId: inviterDeviceId,
           expiresAt,
+          ...(nonce !== undefined ? { nonce } : {}),
         });
 
         const signatureValid = verifyEd25519Signature(

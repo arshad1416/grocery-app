@@ -57,6 +57,7 @@ describe('AC-12b: Family Invite Tokens — Opaque Identifiers Only', () => {
       familyId: 'fam_uVjR8t2KpQ6',
       deviceId: 'dev_XzA4bNcEwF3',
       expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000,
+      nonce: 'random-nonce-base64',
       signature: 'base64-signature-data',
     };
 
@@ -64,6 +65,7 @@ describe('AC-12b: Family Invite Tokens — Opaque Identifiers Only', () => {
     expect(keys).toContain('familyId');
     expect(keys).toContain('deviceId');
     expect(keys).toContain('expiresAt');
+    expect(keys).toContain('nonce');
     expect(keys).toContain('signature');
 
     // No PII fields

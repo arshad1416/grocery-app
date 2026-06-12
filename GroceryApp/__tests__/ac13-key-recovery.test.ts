@@ -343,6 +343,7 @@ describe('AC-13e: Social Re-invite — Signed Token with 7-day Expiry', () => {
       familyId,
       deviceId: 'base64:' + Buffer.from(inviterKeypair.publicKey).toString('base64'),
       expiresAt: Date.now() + expiresMs,
+      nonce: 'mock-nonce-base64',
       signature: 'mock-ed25519-signature-base64',
     };
   }
@@ -388,7 +389,7 @@ describe('AC-13e: Social Re-invite — Signed Token with 7-day Expiry', () => {
     expect(keys).toContain('deviceId');
     expect(keys).toContain('expiresAt');
     expect(keys).toContain('signature');
-    expect(keys.length).toBe(4);
+    expect(keys.length).toBe(5);
   });
 
   it('reinvite token can be serialized to JSON for QR encoding', () => {

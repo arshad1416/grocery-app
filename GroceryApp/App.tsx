@@ -14,6 +14,41 @@ Sentry.init({
   dsn: process.env.SENTRY_DSN ?? 'https://examplePublicKey@o0.ingest.sentry.io/0',
   tracesSampleRate: 1.0,
   enabled: !__DEV__,
+  beforeSend: (event) => {
+    // Scrub sensitive crypto variables from stack traces to prevent
+    // key material, passphrases, or plaintext data from leaking to Sentry.
+    if (event.exception?.values) {
+      for (const value of event.exception.values) {
+        if (value.stacktrace?.frames) {
+          for (const frame of value.stacktrace.frames) {
+            if (frame.vars) {
+              // Remove variables that could contain key material or plaintext
+              delete frame.vars.key;
+              delete frame.vars.masterKey;
+              delete frame.vars.secretKey;
+              delete frame.vars.privateKey;
+              delete frame.vars.encryptionKey;
+              delete frame.vars.password;
+              delete frame.vars.passphrase;
+              delete frame.vars.plaintext;
+              delete frame.vars.mnemonic;
+              delete frame.vars.recoveryPhrase;
+              delete frame.vars.familyKey;
+              delete frame.vars.syncKey;
+              delete frame.vars.derivedKey;
+              delete frame.vars.salt;
+              delete frame.vars.nonce;
+            }
+          }
+        }
+      }
+    }
+    // Scrub network request bodies that might contain encrypted payloads
+    if (event.request?.data) {
+      delete event.request.data;
+    }
+    return event;
+  },
 });
 
 import React, { useEffect, useState, useRef } from 'react';

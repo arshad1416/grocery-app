@@ -315,6 +315,35 @@ export async function deriveSyncKey(
 }
 
 /**
+ * Derive a sub-key for local database encryption from the master key.
+ *
+ * Uses a distinct context string ('db-encr') to ensure domain separation:
+ * the DB encryption key is cryptographically independent from the sync key
+ * and the master key. Compromise of one key does not compromise the others.
+ *
+ * This key is intended for use with SQLCipher / encrypted SQLite adapters.
+ * Currently, WatermelonDB's community SQLiteAdapter does not support
+ * native encryption. Sensitive fields are encrypted at the application layer
+ * (see src/storage/hydrate.ts). This function is provided so that when a
+ * SQLCipher-capable native adapter is integrated, the key derivation is
+ * already in place and tested.
+ *
+ * @param masterKey - The 256-bit master encryption key.
+ * @returns A 256-bit derived sub-key for database encryption.
+ */
+export async function deriveDBKey(
+  masterKey: Uint8Array,
+): Promise<Uint8Array> {
+  await ensureReady();
+  return sodium.crypto_kdf_derive_from_key(
+    KEY_LENGTH_BYTES,
+    2, // distinct subkey ID from sync key (0) and future keys
+    'db-encr',
+    masterKey,
+  );
+}
+
+/**
  * Store a new master key directly (e.g. from recovery phrase).
  * Overwrites any existing master key.
  */

@@ -62,6 +62,7 @@ function serializeTokenPayload(token: Omit<FamilyInviteToken, 'signature'>): str
     familyId: token.familyId,
     deviceId: token.deviceId,
     expiresAt: token.expiresAt,
+    nonce: token.nonce,
   });
 }
 
@@ -85,11 +86,19 @@ export async function createFamilyInvite(
   const familyId = await generateUUID();
   const exp = expiresAt ?? Date.now() + MAX_INVITE_AGE_MS;
 
+  // Generate a random nonce for one-time-use enforcement.
+  // The nonce is included in the signed payload, so each invite token is
+  // cryptographically unique even if created with the same familyId and expiry.
+  // This enables the relay server to track used nonces independently of the
+  // full token string, and makes the one-time-use property self-describing.
+  const nonceBytes = sodium.randombytes_buf(16);
+  const nonce = uint8ArrayToBase64(nonceBytes);
+
   // Derive Ed25519 sign keypair deterministically from the device's box secret key
   const signKp = sodium.crypto_sign_seed_keypair(inviterKeypair.privateKey.slice(0, 32));
   const edDeviceId = uint8ArrayToBase64(signKp.publicKey);
 
-  const tokenPayload = { familyId, deviceId: edDeviceId, expiresAt: exp };
+  const tokenPayload = { familyId, deviceId: edDeviceId, expiresAt: exp, nonce };
   const serialized = serializeTokenPayload(tokenPayload);
 
   // Sign with the inviter's Ed25519 key
@@ -102,6 +111,7 @@ export async function createFamilyInvite(
     familyId,
     deviceId: edDeviceId,
     expiresAt: exp,
+    nonce,
     signature: uint8ArrayToBase64(signature),
   };
 }
@@ -279,6 +289,7 @@ export function reinviteToString(inviteToken: FamilyInviteToken): string {
     familyId: inviteToken.familyId,
     deviceId: inviteToken.deviceId,
     expiresAt: inviteToken.expiresAt,
+    nonce: inviteToken.nonce,
     signature: inviteToken.signature,
   });
 }
@@ -299,6 +310,7 @@ export function parseReinviteString(data: string): FamilyInviteToken {
     familyId: parsed.familyId,
     deviceId: parsed.deviceId,
     expiresAt: parsed.expiresAt,
+    nonce: parsed.nonce,
     signature: parsed.signature,
   };
 }
