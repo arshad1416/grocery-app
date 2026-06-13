@@ -40,7 +40,7 @@ index aea3c38..b087d9b 100644
 +  sodium
 +)
 diff --git a/node_modules/react-native-libsodium/android/build.gradle b/node_modules/react-native-libsodium/android/build.gradle
-index 49282df..13ca668 100644
+index 49282df..9094488 100644
 --- a/node_modules/react-native-libsodium/android/build.gradle
 +++ b/node_modules/react-native-libsodium/android/build.gradle
 @@ -1,16 +1,5 @@
@@ -69,3 +69,14 @@ index 49282df..13ca668 100644
      disable "GradleCompatible"
    }
  
+@@ -90,6 +79,10 @@ android {
+     targetCompatibility JavaVersion.VERSION_1_8
+   }
+ 
++  buildFeatures {
++    prefab true
++  }
++
+ }
+ 
+ repositories {
