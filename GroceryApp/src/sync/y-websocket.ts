@@ -10,7 +10,17 @@
  *  3. Offline: queue pending updates in memory; flush when connection restores
  */
 
-import sodium from 'react-native-libsodium';
+// ─── Lazy sodium import ──────────────────────────────────────────────────────
+// Deferred to avoid SIGSEGV during module evaluation (see crypto/index.ts).
+let sodium: any = null;
+
+async function getSodium(): Promise<any> {
+  if (!sodium) {
+    const mod = await import('react-native-libsodium');
+    sodium = mod.default;
+  }
+  return sodium;
+}
 import * as Y from 'yjs';
 import type { EncryptedData } from '../types';
 import { encrypt, decrypt } from '../crypto';
@@ -84,6 +94,7 @@ export class YjsWebSocketClient {
    * Initialise libsodium and connect.
    */
   async init(): Promise<void> {
+    await getSodium(); // triggers lazy import + sets module-level `sodium`
     await sodium.ready;
     this.ready = true;
     this.connect();

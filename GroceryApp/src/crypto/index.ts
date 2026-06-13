@@ -14,7 +14,22 @@
  */
 
 import * as SecureStore from 'expo-secure-store';
-import sodium from 'react-native-libsodium';
+
+// ─── Lazy sodium import ──────────────────────────────────────────────────────
+// IMPORTANT: react-native-libsodium MUST NOT be imported at the top level.
+// Its native JSI install (Libsodium.install()) runs synchronously during
+// module evaluation and can SIGSEGV if the Hermes JSI runtime is not fully
+// ready. Deferring the import to first use (inside async initCrypto()) ensures
+// React has loaded and the error handler is in place.
+let sodium: any = null;
+
+async function getSodium(): Promise<any> {
+  if (!sodium) {
+    const mod = await import('react-native-libsodium');
+    sodium = mod.default;
+  }
+  return sodium;
+}
 
 import type { EncryptedData } from '../types';
 
@@ -41,14 +56,16 @@ let ready = false;
  */
 export async function initCrypto(): Promise<void> {
   if (!ready) {
-    await sodium.ready;
+    const s = await getSodium();
+    await s.ready;
     ready = true;
   }
 }
 
 async function ensureReady(): Promise<void> {
   if (!ready) {
-    await sodium.ready;
+    const s = await getSodium();
+    await s.ready;
     ready = true;
   }
 }
@@ -121,7 +138,7 @@ export async function generateNonce(): Promise<Uint8Array> {
 export async function generateUUID(): Promise<string> {
   await ensureReady();
   // 16 random bytes → format as UUID v4
-  const bytes = sodium.randombytes_buf(16);
+  const bytes = sodium.randombytes_buf(16) as Uint8Array;
   // Set version (4) and variant bits
   bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
   bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant RFC 4122

@@ -1,0 +1,49 @@
+diff --git a/node_modules/react-native-libsodium/android/CMakeLists.txt b/node_modules/react-native-libsodium/android/CMakeLists.txt
+index aea3c38..d48c2fb 100644
+--- a/node_modules/react-native-libsodium/android/CMakeLists.txt
++++ b/node_modules/react-native-libsodium/android/CMakeLists.txt
+@@ -31,9 +31,13 @@ set_target_properties( sodium PROPERTIES IMPORTED_LOCATION ${LIBSODIUM_BUILD_DIR
+ 
+ # here we define a library target called "libsodium"
+ # which will be built from the listed source files
++# NOTE: jsi.cpp is deliberately EXCLUDED. On RN 0.85+ with New Architecture,
++# Hermes already provides JSI symbols. Compiling a second copy into
++# liblibsodium.so causes vtable/symbol conflicts that SIGSEGV at runtime
++# when installLibsodium() casts the jsi::Runtime pointer.
++# The JSI symbols are resolved at load-time from libhermes.so.
+ add_library(libsodium
+   SHARED
+-  "${NODE_MODULES_DIR}/react-native/ReactCommon/jsi/jsi/jsi.cpp"
+   ../cpp/react-native-libsodium.cpp
+   ../cpp/react-native-libsodium.h
+   cpp-adapter.cpp
+diff --git a/node_modules/react-native-libsodium/android/build.gradle b/node_modules/react-native-libsodium/android/build.gradle
+index 49282df..13ca668 100644
+--- a/node_modules/react-native-libsodium/android/build.gradle
++++ b/node_modules/react-native-libsodium/android/build.gradle
+@@ -1,16 +1,5 @@
+ import java.nio.file.Paths
+ 
+-buildscript {
+-  repositories {
+-    google()
+-    mavenCentral()
+-  }
+-
+-  dependencies {
+-    classpath "com.android.tools.build:gradle:7.2.1"
+-  }
+-}
+-
+ def isNewArchitectureEnabled() {
+   return rootProject.hasProperty("newArchEnabled") && rootProject.getProperty("newArchEnabled") == "true"
+ }
+@@ -81,7 +70,7 @@ android {
+     }
+   }
+ 
+-  lintOptions {
++  lint {
+     disable "GradleCompatible"
+   }
+ 
