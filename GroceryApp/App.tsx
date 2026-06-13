@@ -8,8 +8,6 @@
  *  - Status bar
  */
 
-import * as Sentry from '@sentry/react-native';
-
 // ─── Global Error Handler ────────────────────────────────────────────────────
 // Catch any JS error that escapes React's error boundary (e.g. errors during
 // module evaluation or async callbacks). This prevents a silent force-close
@@ -25,51 +23,56 @@ if (typeof (globalThis as any).ErrorUtils !== 'undefined') {
   (globalThis as any).ErrorUtils.setGlobalHandler(_globalErrorHandler);
 }
 
-// Wrap Sentry.init in try/catch — if the native module is missing this
-// would otherwise crash before React mounts.
-try {
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN ?? 'https://examplePublicKey@o0.ingest.sentry.io/0',
-    tracesSampleRate: 1.0,
-    enabled: !__DEV__,
-    beforeSend: (event) => {
-      // Scrub sensitive crypto variables from stack traces to prevent
-      // key material, passphrases, or plaintext data from leaking to Sentry.
-      if (event.exception?.values) {
-        for (const value of event.exception.values) {
-          if (value.stacktrace?.frames) {
-            for (const frame of value.stacktrace.frames) {
-              if (frame.vars) {
-                // Remove variables that could contain key material or plaintext
-                delete frame.vars.key;
-                delete frame.vars.masterKey;
-                delete frame.vars.secretKey;
-                delete frame.vars.privateKey;
-                delete frame.vars.encryptionKey;
-                delete frame.vars.password;
-                delete frame.vars.passphrase;
-                delete frame.vars.plaintext;
-                delete frame.vars.mnemonic;
-                delete frame.vars.recoveryPhrase;
-                delete frame.vars.familyKey;
-                delete frame.vars.syncKey;
-                delete frame.vars.derivedKey;
-                delete frame.vars.salt;
-                delete frame.vars.nonce;
+// ─── Sentry (lazy, non-blocking) ─────────────────────────────────────────────
+// IMPORTANT: @sentry/react-native uses TurboModuleRegistry.getEnforcing('RNSentry')
+// which THROWS at module-evaluation time if the native module is not registered.
+// A top-level `import * as Sentry` would crash the entire App module before React
+// mounts, producing a blank screen. We therefore defer the import to a dynamic
+// import() wrapped in try/catch so the app always renders even without Sentry.
+async function initSentry(): Promise<void> {
+  try {
+    const Sentry = await import('@sentry/react-native');
+    Sentry.init({
+      dsn: process.env.SENTRY_DSN ?? 'https://examplePublicKey@o0.ingest.sentry.io/0',
+      tracesSampleRate: 1.0,
+      enabled: !__DEV__,
+      beforeSend: (event) => {
+        // Scrub sensitive crypto variables from stack traces
+        if (event.exception?.values) {
+          for (const value of event.exception.values) {
+            if (value.stacktrace?.frames) {
+              for (const frame of value.stacktrace.frames) {
+                if (frame.vars) {
+                  delete frame.vars.key;
+                  delete frame.vars.masterKey;
+                  delete frame.vars.secretKey;
+                  delete frame.vars.privateKey;
+                  delete frame.vars.encryptionKey;
+                  delete frame.vars.password;
+                  delete frame.vars.passphrase;
+                  delete frame.vars.plaintext;
+                  delete frame.vars.mnemonic;
+                  delete frame.vars.recoveryPhrase;
+                  delete frame.vars.familyKey;
+                  delete frame.vars.syncKey;
+                  delete frame.vars.derivedKey;
+                  delete frame.vars.salt;
+                  delete frame.vars.nonce;
+                }
               }
             }
           }
         }
-      }
-      // Scrub network request bodies that might contain encrypted payloads
-      if (event.request?.data) {
-        delete event.request.data;
-      }
-      return event;
-    },
-  });
-} catch (sentryErr) {
-  console.warn('[App] Sentry.init failed (non-fatal):', sentryErr);
+        if (event.request?.data) {
+          delete event.request.data;
+        }
+        return event;
+      },
+    });
+    console.log('[App] Sentry initialized successfully');
+  } catch (sentryErr) {
+    console.warn('[App] Sentry unavailable (non-fatal):', sentryErr);
+  }
 }
 
 import React, { useEffect, useState, useRef } from 'react';
@@ -137,6 +140,10 @@ function App() {
   useEffect(() => {
     (async () => {
       try {
+        // Step 0: Init Sentry (non-blocking — failures are non-fatal)
+        console.log('Init: sentry...');
+        await initSentry();
+
         // Step 1: Initialise core services
         console.log('Init: crypto...');
         await initCrypto();
@@ -362,4 +369,10 @@ const styles = StyleSheet.create({
   },
 });
 
-export default Sentry.wrap(App);
+// Export the App component directly. Previously `Sentry.wrap(App)` was used as
+// the default export, but @sentry/react-native's NativeRNSentry.ts calls
+// TurboModuleRegistry.getEnforcing('RNSentry') at module-evaluation time, which
+// throws if the native module is not registered — crashing the entire App module
+// before React mounts and producing a blank screen. Sentry init is now done
+// lazily inside useEffect; error boundaries can be added separately if needed.
+export default App;
