@@ -9,6 +9,9 @@
     "@react-navigation/native-stack": "^7.16.0",
     "@sentry/react-native": "^8.14.0",
     "expo": "~56.0.6",
+    "expo-application": "^56.0.3",
+    "expo-constants": "^56.0.18",
+    "expo-device": "^56.0.4",
     "expo-image-manipulator": "~56.0.16",
     "expo-linking": "^56.0.12",
     "expo-secure-store": "^56.0.4",
@@ -22,6 +25,7 @@
     "react-native-safe-area-context": "^5.8.0",
     "react-native-screens": "^4.25.2",
     "react-native-svg": "^15.15.5",
+    "sentry-expo": "^7.2.0",
     "y-websocket": "^3.0.0",
     "yjs": "^13.6.31",
     "zustand": "^5.0.14"

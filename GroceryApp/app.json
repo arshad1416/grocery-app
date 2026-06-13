@@ -9,6 +9,7 @@
     "userInterfaceStyle": "light",
     "scheme": "groceryapp",
     "plugins": [
+      "sentry-expo",
       [
         "react-native-libsodium",
         {}
