@@ -1,5 +1,5 @@
 diff --git a/node_modules/react-native-libsodium/android/CMakeLists.txt b/node_modules/react-native-libsodium/android/CMakeLists.txt
-index aea3c38..68e7833 100644
+index aea3c38..b087d9b 100644
 --- a/node_modules/react-native-libsodium/android/CMakeLists.txt
 +++ b/node_modules/react-native-libsodium/android/CMakeLists.txt
 @@ -31,9 +31,12 @@ set_target_properties( sodium PROPERTIES IMPORTED_LOCATION ${LIBSODIUM_BUILD_DIR
@@ -16,16 +16,29 @@ index aea3c38..68e7833 100644
    ../cpp/react-native-libsodium.cpp
    ../cpp/react-native-libsodium.h
    cpp-adapter.cpp
-@@ -42,5 +45,9 @@ add_library(libsodium
+@@ -42,5 +45,21 @@ add_library(libsodium
  # Enable Android 16kb native library alignment
  target_link_options(libsodium PRIVATE "-Wl,-z,max-page-size=16384")
  
-+# Link against ReactAndroid's JSI prefab for facebook::jsi symbols
++# Find ReactAndroid and fbjni prefab packages
 +find_package(ReactAndroid REQUIRED CONFIG)
-+target_link_libraries(libsodium ReactAndroid::jsi)
++find_package(fbjni REQUIRED CONFIG)
++
++# Include directories for headers
++target_include_directories(${PROJECT_NAME} PRIVATE
++  "${NODE_MODULES_DIR}/react-native/ReactCommon"
++)
 +
  # link the sodium lib with our "libsodium" library target defined earlier
- target_link_libraries(libsodium sodium)
+-target_link_libraries(libsodium sodium)
++target_link_libraries(${PROJECT_NAME}
++  ReactAndroid::jsi
++  ReactAndroid::reactnative
++  fbjni::fbjni
++  android
++  log
++  sodium
++)
 diff --git a/node_modules/react-native-libsodium/android/build.gradle b/node_modules/react-native-libsodium/android/build.gradle
 index 49282df..13ca668 100644
 --- a/node_modules/react-native-libsodium/android/build.gradle

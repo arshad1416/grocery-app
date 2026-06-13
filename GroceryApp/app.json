@@ -12,7 +12,8 @@
       [
         "react-native-libsodium",
         {}
-      ]
+      ],
+      "./plugins/withLibcxxPickFirst.js"
     ],
     "ios": {
       "supportsTablet": true,
@@ -84,7 +85,10 @@
           ]
         }
       ],
-      "package": "com.shiftlogichq.stophop"
+      "package": "com.shiftlogichq.stophop",
+      "packagingOptions": {
+        "pickFirst": ["**/libc++_shared.so"]
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
