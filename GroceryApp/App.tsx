@@ -10,49 +10,70 @@
 
 import * as Sentry from '@sentry/react-native';
 
-Sentry.init({
-  dsn: process.env.SENTRY_DSN ?? 'https://examplePublicKey@o0.ingest.sentry.io/0',
-  tracesSampleRate: 1.0,
-  enabled: !__DEV__,
-  beforeSend: (event) => {
-    // Scrub sensitive crypto variables from stack traces to prevent
-    // key material, passphrases, or plaintext data from leaking to Sentry.
-    if (event.exception?.values) {
-      for (const value of event.exception.values) {
-        if (value.stacktrace?.frames) {
-          for (const frame of value.stacktrace.frames) {
-            if (frame.vars) {
-              // Remove variables that could contain key material or plaintext
-              delete frame.vars.key;
-              delete frame.vars.masterKey;
-              delete frame.vars.secretKey;
-              delete frame.vars.privateKey;
-              delete frame.vars.encryptionKey;
-              delete frame.vars.password;
-              delete frame.vars.passphrase;
-              delete frame.vars.plaintext;
-              delete frame.vars.mnemonic;
-              delete frame.vars.recoveryPhrase;
-              delete frame.vars.familyKey;
-              delete frame.vars.syncKey;
-              delete frame.vars.derivedKey;
-              delete frame.vars.salt;
-              delete frame.vars.nonce;
+// ─── Global Error Handler ────────────────────────────────────────────────────
+// Catch any JS error that escapes React's error boundary (e.g. errors during
+// module evaluation or async callbacks). This prevents a silent force-close
+// and instead stores the error so the loading screen can display it.
+let _globalInitError: string | null = null;
+const _globalErrorHandler = (error: any, isFatal?: boolean) => {
+  const msg = error?.message ?? String(error);
+  console.error(`[GlobalError] fatal=${isFatal}:`, error);
+  _globalInitError = `Fatal: ${msg}`;
+};
+// React Native's ErrorUtils is a global polyfill for error handling
+if (typeof (globalThis as any).ErrorUtils !== 'undefined') {
+  (globalThis as any).ErrorUtils.setGlobalHandler(_globalErrorHandler);
+}
+
+// Wrap Sentry.init in try/catch — if the native module is missing this
+// would otherwise crash before React mounts.
+try {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN ?? 'https://examplePublicKey@o0.ingest.sentry.io/0',
+    tracesSampleRate: 1.0,
+    enabled: !__DEV__,
+    beforeSend: (event) => {
+      // Scrub sensitive crypto variables from stack traces to prevent
+      // key material, passphrases, or plaintext data from leaking to Sentry.
+      if (event.exception?.values) {
+        for (const value of event.exception.values) {
+          if (value.stacktrace?.frames) {
+            for (const frame of value.stacktrace.frames) {
+              if (frame.vars) {
+                // Remove variables that could contain key material or plaintext
+                delete frame.vars.key;
+                delete frame.vars.masterKey;
+                delete frame.vars.secretKey;
+                delete frame.vars.privateKey;
+                delete frame.vars.encryptionKey;
+                delete frame.vars.password;
+                delete frame.vars.passphrase;
+                delete frame.vars.plaintext;
+                delete frame.vars.mnemonic;
+                delete frame.vars.recoveryPhrase;
+                delete frame.vars.familyKey;
+                delete frame.vars.syncKey;
+                delete frame.vars.derivedKey;
+                delete frame.vars.salt;
+                delete frame.vars.nonce;
+              }
             }
           }
         }
       }
-    }
-    // Scrub network request bodies that might contain encrypted payloads
-    if (event.request?.data) {
-      delete event.request.data;
-    }
-    return event;
-  },
-});
+      // Scrub network request bodies that might contain encrypted payloads
+      if (event.request?.data) {
+        delete event.request.data;
+      }
+      return event;
+    },
+  });
+} catch (sentryErr) {
+  console.warn('[App] Sentry.init failed (non-fatal):', sentryErr);
+}
 
 import React, { useEffect, useState, useRef } from 'react';
-import { StyleSheet, View, Text, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Text, ActivityIndicator, ScrollView } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -65,7 +86,7 @@ import { initDeviceIdentity, getDeviceId } from './src/identity/device';
 import { getRelayToken, getRelayUrl } from './src/identity/enroll';
 import { initSettings, getSettings } from './src/config/settings';
 import { useThemeStore } from './src/state/useThemeStore';
-import { database } from './src/storage/database';
+import { getDatabase } from './src/storage/database';
 import { syncManager } from './src/sync/sync-manager';
 import { useSyncStore } from './src/state/useSyncStore';
 import { getFamilyId } from './src/identity/family';
@@ -110,7 +131,8 @@ function InviteScreen({ route, navigation }: any) {
 
 function App() {
   const [isReady, setIsReady] = useState(false);
-  const [initError, setInitError] = useState<string | null>(null);
+  const [initError, setInitError] = useState<string | null>(_globalInitError);
+  const [errorStack, setErrorStack] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -125,9 +147,9 @@ function App() {
         useThemeStore.getState().hydrateTheme();
         
         // Step 2: Initialise WatermelonDB database (touch it to ensure adapter is ready)
-        // The database is already created as a module-level singleton; accessing it
-        // triggers adapter initialisation.
-        const db = database;
+        // getDatabase() creates the adapter lazily on first call — errors are
+        // caught by our try/catch instead of crashing at module evaluation time.
+        const db = getDatabase();
         // Verify database is accessible
         await db.get('grocery_lists').query().fetchCount();
         
@@ -208,7 +230,9 @@ function App() {
         setIsReady(true);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Initialization failed';
+        const stack = err instanceof Error ? err.stack ?? '' : '';
         setInitError(message);
+        setErrorStack(stack);
         console.error('App init error:', err);
         if (err instanceof Error) {
           console.error('Stack:', err.stack);
@@ -255,10 +279,17 @@ function App() {
           {initError ? `Error: ${initError}` : 'Loading StopHop...'}
         </Text>
         {initError && (
-          <Text style={styles.errorHint}>
-            Please restart the app. If the problem persists, check your device
-            storage and permissions.
-          </Text>
+          <>
+            <ScrollView style={styles.errorScroll} contentContainerStyle={styles.errorScrollContent}>
+              <Text style={styles.errorDetail} selectable>
+                {errorStack ? `${initError}\n\n${errorStack}` : initError}
+              </Text>
+            </ScrollView>
+            <Text style={styles.errorHint}>
+              Please restart the app. If the problem persists, check your device
+              storage and permissions. Long-press the error above to copy.
+            </Text>
+          </>
         )}
       </View>
     );
@@ -309,6 +340,24 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#999',
     textAlign: 'center',
+    lineHeight: 18,
+  },
+  errorScroll: {
+    maxHeight: 300,
+    marginTop: 12,
+    marginHorizontal: 16,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  errorScrollContent: {
+    padding: 12,
+  },
+  errorDetail: {
+    fontSize: 12,
+    color: '#c00',
+    fontFamily: 'monospace',
     lineHeight: 18,
   },
 });

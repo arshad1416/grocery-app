@@ -12,7 +12,7 @@
  */
 
 import { Q } from '@nozbe/watermelondb';
-import { database } from './database';
+import { getDatabase } from './database';
 import { getMasterKey, encrypt, decrypt } from '../crypto';
 import { FIELD_CONTEXTS } from '../types';
 
@@ -91,7 +91,7 @@ export async function persistItem(
   item: GroceryItem,
   key: Uint8Array,
 ): Promise<void> {
-  const collection = database.get('grocery_items');
+  const collection = getDatabase().get('grocery_items');
   const encryptedName = await encryptField(
     item.name,
     key,
@@ -147,7 +147,7 @@ export async function persistList(
   list: GroceryList,
   key: Uint8Array,
 ): Promise<void> {
-  const collection = database.get('grocery_lists');
+  const collection = getDatabase().get('grocery_lists');
   const encryptedName = await encryptField(
     list.name,
     key,
@@ -198,7 +198,7 @@ export async function persistMember(
   member: FamilyMember,
   key: Uint8Array,
 ): Promise<void> {
-  const collection = database.get('family_members');
+  const collection = getDatabase().get('family_members');
   const encryptedDisplayName = await encryptField(
     member.displayName,
     key,
@@ -244,7 +244,7 @@ export async function deleteRecord(
   table: 'grocery_items' | 'grocery_lists' | 'family_members',
   id: string,
 ): Promise<void> {
-  const collection = database.get(table);
+  const collection = getDatabase().get(table);
   const records = await collection.query(Q.where('id', id)).fetch();
   if (records.length > 0) {
     await records[0].markAsDeleted();
@@ -258,7 +258,7 @@ export async function deleteRecord(
  * Used by Zustand stores during app initialization.
  */
 export async function loadItemsFromDB(key: Uint8Array): Promise<GroceryItem[]> {
-  const collection = database.get('grocery_items');
+  const collection = getDatabase().get('grocery_items');
   const records = await collection.query().fetch();
   const items: GroceryItem[] = [];
 
@@ -303,7 +303,7 @@ export async function loadItemsFromDB(key: Uint8Array): Promise<GroceryItem[]> {
  * Read all lists from WatermelonDB, decrypt sensitive fields, and return them.
  */
 export async function loadListsFromDB(key: Uint8Array): Promise<GroceryList[]> {
-  const collection = database.get('grocery_lists');
+  const collection = getDatabase().get('grocery_lists');
   const records = await collection.query().fetch();
   const lists: GroceryList[] = [];
 
@@ -347,7 +347,7 @@ export async function loadListsFromDB(key: Uint8Array): Promise<GroceryList[]> {
  * Read all family members from WatermelonDB, decrypt sensitive fields, and return them.
  */
 export async function loadMembersFromDB(key: Uint8Array): Promise<FamilyMember[]> {
-  const collection = database.get('family_members');
+  const collection = getDatabase().get('family_members');
   const records = await collection.query().fetch();
   const members: FamilyMember[] = [];
 

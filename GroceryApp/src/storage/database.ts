@@ -41,27 +41,43 @@ import { schema } from './schema';
 import { migrations } from './migrations';
 import { GroceryListModel, GroceryItemModel, FamilyMemberModel } from './models';
 
-// Create adapter with migrations enabled
-const adapter = new SQLiteAdapter({
-  schema,
-  migrations,
-  // Use JSI for performance (disabled on New Architecture / Hermes)
-  jsi: false,
-  dbName: 'groceryapp',
-  // NOTE: `encryptionKey` is not a supported option in the community SQLiteAdapter.
-  // Sensitive fields are encrypted at the application layer (see hydrate.ts).
-  // For full SQLCipher database encryption, a custom native adapter is required.
-});
+// ─── Lazy Singleton ──────────────────────────────────────────────────────────
+// The database is created lazily (not at module evaluation time) so that any
+// native-module errors are thrown inside a try/catch rather than crashing the
+// app before React mounts.
 
-// Create database
-export const database = new Database({
-  adapter,
-  modelClasses: [
-    GroceryListModel,
-    GroceryItemModel,
-    FamilyMemberModel,
-  ],
-});
+let _database: Database | null = null;
+
+/**
+ * Returns the WatermelonDB singleton, creating it on first call.
+ * Throws if the native SQLite adapter fails to initialise.
+ */
+export function getDatabase(): Database {
+  if (_database) return _database;
+
+  // Create adapter with migrations enabled
+  const adapter = new SQLiteAdapter({
+    schema,
+    migrations,
+    // Use JSI for performance (disabled on New Architecture / Hermes)
+    jsi: false,
+    dbName: 'groceryapp',
+    // NOTE: `encryptionKey` is not a supported option in the community SQLiteAdapter.
+    // Sensitive fields are encrypted at the application layer (see hydrate.ts).
+    // For full SQLCipher database encryption, a custom native adapter is required.
+  });
+
+  _database = new Database({
+    adapter,
+    modelClasses: [
+      GroceryListModel,
+      GroceryItemModel,
+      FamilyMemberModel,
+    ],
+  });
+
+  return _database;
+}
 
 export { GroceryListModel, GroceryItemModel, FamilyMemberModel };
 export type { TableName } from './schema';
