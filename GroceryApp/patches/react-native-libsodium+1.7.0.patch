@@ -1,5 +1,5 @@
 diff --git a/node_modules/react-native-libsodium/android/CMakeLists.txt b/node_modules/react-native-libsodium/android/CMakeLists.txt
-index aea3c38..b087d9b 100644
+index aea3c38..d3d90c2 100644
 --- a/node_modules/react-native-libsodium/android/CMakeLists.txt
 +++ b/node_modules/react-native-libsodium/android/CMakeLists.txt
 @@ -31,9 +31,12 @@ set_target_properties( sodium PROPERTIES IMPORTED_LOCATION ${LIBSODIUM_BUILD_DIR
@@ -25,13 +25,13 @@ index aea3c38..b087d9b 100644
 +find_package(fbjni REQUIRED CONFIG)
 +
 +# Include directories for headers
-+target_include_directories(${PROJECT_NAME} PRIVATE
++target_include_directories(libsodium PRIVATE
 +  "${NODE_MODULES_DIR}/react-native/ReactCommon"
 +)
 +
  # link the sodium lib with our "libsodium" library target defined earlier
 -target_link_libraries(libsodium sodium)
-+target_link_libraries(${PROJECT_NAME}
++target_link_libraries(libsodium
 +  ReactAndroid::jsi
 +  ReactAndroid::reactnative
 +  fbjni::fbjni
