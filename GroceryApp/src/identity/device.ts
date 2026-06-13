@@ -72,24 +72,29 @@ async function storeKeypair(kp: DeviceKeypair): Promise<void> {
  */
 export async function initDeviceIdentity(): Promise<string> {
   await initCrypto();
+  console.log('[identity] Checking for stored device keypair…');
 
   // Check if we already have a keypair stored
   const storedSecret = await SecureStore.getItemAsync(DEVICE_SECRET_KEY_ALIAS);
   const storedPublic = await SecureStore.getItemAsync(DEVICE_PUBLIC_KEY_ALIAS);
 
   if (storedSecret && storedPublic) {
+    console.log('[identity] Found stored keypair, loading…');
     const publicKey = base64ToUint8Array(storedPublic);
     const privateKey = base64ToUint8Array(storedSecret);
     cachedKeypair = { publicKey, privateKey };
     cachedDeviceId = uint8ArrayToBase64(publicKey);
+    console.log('[identity] ✓ Device ID loaded');
     return cachedDeviceId;
   }
 
   // First launch — generate new keypair
+  console.log('[identity] No stored keypair — generating new one…');
   const kp = await generateNewKeypair();
   await storeKeypair(kp);
   cachedKeypair = kp;
   cachedDeviceId = uint8ArrayToBase64(kp.publicKey);
+  console.log('[identity] ✓ New device keypair generated');
   return cachedDeviceId;
 }
 

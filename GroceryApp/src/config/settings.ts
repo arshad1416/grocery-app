@@ -113,14 +113,18 @@ async function loadSettingsFromStore(): Promise<AppSettings | null> {
  */
 export async function initSettings(): Promise<AppSettings> {
   await initCrypto();
+  console.log('[settings] Loading settings from secure store…');
   const loaded = await loadSettingsFromStore();
   if (loaded) {
     settingsCache = loaded;
+    console.log('[settings] ✓ Settings loaded from store');
     return { ...loaded };
   }
 
   // First launch — populate with defaults
+  console.log('[settings] No stored settings — writing defaults…');
   await persistSettings(DEFAULT_SETTINGS);
+  console.log('[settings] ✓ Default settings written');
   return { ...DEFAULT_SETTINGS };
 }
 

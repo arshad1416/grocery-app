@@ -78,7 +78,7 @@ import { initDeviceIdentity, getDeviceId } from './src/identity/device';
 import { getRelayToken, getRelayUrl } from './src/identity/enroll';
 import { initSettings, getSettings } from './src/config/settings';
 import { useThemeStore } from './src/state/useThemeStore';
-import { getDatabase } from './src/storage/database';
+import { getDatabase, getDatabaseInitError } from './src/storage/database';
 import { syncManager } from './src/sync/sync-manager';
 import { useSyncStore } from './src/state/useSyncStore';
 import { getFamilyId } from './src/identity/family';
@@ -127,26 +127,68 @@ function App() {
   const [errorStack, setErrorStack] = useState<string | null>(null);
 
   useEffect(() => {
+    const INIT_TIMEOUT_MS = 30_000; // 30s timeout — if init hangs, surface the error
+    let timedOut = false;
+
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      const hungSteps: string[] = [];
+      if (!_cryptoDone) hungSteps.push('crypto');
+      if (!_identityDone) hungSteps.push('device-identity');
+      if (!_settingsDone) hungSteps.push('settings');
+      if (!_dbDone) hungSteps.push('database');
+      const detail = `Init timed out after ${INIT_TIMEOUT_MS / 1000}s. Stuck at: ${hungSteps.join(', ') || 'unknown'}`;
+      console.error('[init]', detail);
+      setInitError(detail);
+    }, INIT_TIMEOUT_MS);
+
+    // Progress flags for timeout diagnostics
+    let _cryptoDone = false;
+    let _identityDone = false;
+    let _settingsDone = false;
+    let _dbDone = false;
+
     (async () => {
       try {
         // Step 1: Initialise core services
-        console.log('Init: crypto...');
+        console.log('[init] Step 1/7: crypto…');
         await initCrypto();
-        console.log('Init: device identity...');
+        _cryptoDone = true;
+        console.log('[init] ✓ crypto ready');
+
+        console.log('[init] Step 2/7: device identity…');
         await initDeviceIdentity();
-        console.log('Init: settings...');
+        _identityDone = true;
+        console.log('[init] ✓ device identity ready');
+
+        console.log('[init] Step 3/7: settings…');
         await initSettings();
+        _settingsDone = true;
+        console.log('[init] ✓ settings ready');
+
         useThemeStore.getState().hydrateTheme();
         
         // Step 2: Initialise WatermelonDB database (touch it to ensure adapter is ready)
         // getDatabase() creates the adapter lazily on first call — errors are
         // caught by our try/catch instead of crashing at module evaluation time.
+        console.log('[init] Step 4/7: database…');
         const db = getDatabase();
-        // Verify database is accessible
-        await db.get('grocery_lists').query().fetchCount();
+        // Verify database is accessible — this also waits for adapter _initPromise
+        console.log('[init]   → running fetchCount to verify adapter…');
+        const count = await db.get('grocery_lists').query().fetchCount();
+        _dbDone = true;
+        console.log('[init] ✓ database ready (lists count:', count, ')');
+
+        // Check for adapter setup errors that WatermelonDB reported via onSetUpError
+        const dbInitErr = getDatabaseInitError();
+        if (dbInitErr) {
+          console.warn('[init] Database adapter reported setup error (non-fatal):', dbInitErr.message);
+        }
         
         // Step 3: Get master key — may be null if no family set up yet
+        console.log('[init] Step 5/7: master key…');
         const masterKey = await getMasterKey();
+        console.log('[init] ✓ master key:', masterKey ? 'present' : 'null (no family yet)');
 
         // Step 4: Get device ID, family ID, and settings
         const deviceId = getDeviceId();
@@ -156,7 +198,7 @@ function App() {
         // If no family membership, skip sync initialization entirely
         // (don't fall back to a shared 'default-family' room)
         if (!familyId) {
-          console.log('[app] No family membership found — skipping sync init');
+          console.log('[init] Step 6/7: no family membership — skipping sync init');
           // Still initialise pricing subsystem
           priceRegistry.registerAdapter(crowdsourcedAdapter);
           priceRegistry.registerAdapter(scrapingAdapter);
@@ -165,7 +207,9 @@ function App() {
           if (settings.hostingTier === 'managed') {
             priceRegistry.registerAdapter(instacartAdapter);
           }
-          setIsReady(true);
+          console.log('[init] ✓ pricing adapters registered');
+          if (!timedOut) setIsReady(true);
+          console.log('[init] ====== APP READY (no sync) ======');
           return;
         }
 
@@ -176,6 +220,7 @@ function App() {
         const encryptionKey = await deriveSyncKey(masterKey, 0);
 
         // Step 5: Load relay token and stored relay URL (from enrollment)
+        console.log('[init] Step 6/7: sync manager…');
         const loadedRelayToken = await getRelayToken();
         const storedRelayUrl = await getRelayUrl();
         // Prefer stored relay URL over settings (enrollment binds token to URL)
@@ -210,6 +255,7 @@ function App() {
         }
 
         // Step 7: Initialise pricing subsystem
+        console.log('[init] Step 7/7: pricing adapters…');
         priceRegistry.registerAdapter(crowdsourcedAdapter);
         priceRegistry.registerAdapter(scrapingAdapter);
         priceRegistry.registerAdapter(flyerScanAdapter);
@@ -219,18 +265,24 @@ function App() {
           priceRegistry.registerAdapter(instacartAdapter);
         }
 
-        setIsReady(true);
+        console.log('[init] ✓ pricing adapters registered');
+        if (!timedOut) setIsReady(true);
+        console.log('[init] ====== APP READY (full sync) ======');
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Initialization failed';
         const stack = err instanceof Error ? err.stack ?? '' : '';
-        setInitError(message);
-        setErrorStack(stack);
-        console.error('App init error:', err);
-        if (err instanceof Error) {
-          console.error('Stack:', err.stack);
+        console.error('[init] ====== INIT FAILED ======');
+        console.error('[init] Error:', message);
+        console.error('[init] Stack:', stack);
+        console.error('[init] Progress: crypto=' + _cryptoDone + ' identity=' + _identityDone + ' settings=' + _settingsDone + ' db=' + _dbDone);
+        if (!timedOut) {
+          setInitError(message);
+          setErrorStack(stack);
         }
       }
     })();
+
+    return () => clearTimeout(timeout);
   }, []);
 
   // Handle deep links at the app level

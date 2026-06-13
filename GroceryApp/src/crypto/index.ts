@@ -56,9 +56,18 @@ let ready = false;
  */
 export async function initCrypto(): Promise<void> {
   if (!ready) {
+    console.log('[crypto] Importing react-native-libsodium…');
     const s = await getSodium();
+    console.log('[crypto] Module loaded, waiting for ready…');
     await s.ready;
+    // Verify JSI functions are actually installed
+    if (typeof (globalThis as any).jsi_randombytes_buf !== 'function') {
+      console.warn('[crypto] WARNING: jsi_randombytes_buf not installed — Libsodium.install() may have failed');
+    } else {
+      console.log('[crypto] JSI functions verified (jsi_randombytes_buf present)');
+    }
     ready = true;
+    console.log('[crypto] initCrypto complete');
   }
 }
 
