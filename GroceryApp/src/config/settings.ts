@@ -68,12 +68,16 @@ async function getOrCreateSettingsKey(): Promise<Uint8Array> {
   if (deviceSettingsKey) return deviceSettingsKey;
 
   await initCrypto();
-  const stored = await (await getSecureStore()).getItemAsync(DEVICE_SETTINGS_KEY);
-  if (stored) {
-    deviceSettingsKey = new Uint8Array(
-      stored.split(',').map((s) => parseInt(s, 10)),
-    );
-    return deviceSettingsKey;
+  try {
+    const stored = await (await getSecureStore()).getItemAsync(DEVICE_SETTINGS_KEY);
+    if (stored) {
+      deviceSettingsKey = new Uint8Array(
+        stored.split(',').map((s: string) => parseInt(s, 10)),
+      );
+      return deviceSettingsKey;
+    }
+  } catch (err) {
+    console.warn('[settings] Failed to read device settings key, generating new one:', err);
   }
 
   // Generate a random key for device settings
@@ -81,7 +85,11 @@ async function getOrCreateSettingsKey(): Promise<Uint8Array> {
   await sodium.ready;
   const key = sodium.randombytes_buf(32);
   deviceSettingsKey = key;
-  await (await getSecureStore()).setItemAsync(DEVICE_SETTINGS_KEY, Array.from(key).join(','));
+  try {
+    await (await getSecureStore()).setItemAsync(DEVICE_SETTINGS_KEY, Array.from(key).join(','));
+  } catch (err) {
+    console.warn('[settings] Failed to persist device settings key:', err);
+  }
   return key;
 }
 
@@ -92,7 +100,11 @@ async function persistSettings(settings: AppSettings): Promise<void> {
   const key = await getOrCreateSettingsKey();
   const serialized = JSON.stringify(settings);
   const encrypted = await encrypt(serialized, key, SETTINGS_AAD_CONTEXT);
-  await (await getSecureStore()).setItemAsync(SETTINGS_CACHE_KEY, JSON.stringify(encrypted));
+  try {
+    await (await getSecureStore()).setItemAsync(SETTINGS_CACHE_KEY, JSON.stringify(encrypted));
+  } catch (err) {
+    console.warn('[settings] Failed to persist settings:', err);
+  }
   settingsCache = { ...settings };
 }
 
@@ -108,7 +120,8 @@ async function loadSettingsFromStore(): Promise<AppSettings | null> {
     const encrypted = JSON.parse(stored);
     const decrypted = await decrypt(encrypted, key, SETTINGS_AAD_CONTEXT);
     return JSON.parse(decrypted) as AppSettings;
-  } catch {
+  } catch (e) {
+    console.error('[settings] loadSettingsFromStore error:', e);
     return null;
   }
 }
