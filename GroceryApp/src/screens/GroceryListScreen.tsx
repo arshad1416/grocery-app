@@ -36,6 +36,7 @@ import { usePriceStore } from '../pricing/price-store';
 import { useThemeStore, useActiveTheme } from '../state/useThemeStore';
 import { computeStopProposals } from '../pricing/stop-optimizer';
 import { flippDealsAdapter } from '../pricing/flipp-deals-adapter';
+import { crowdsourcedAdapter } from '../pricing/crowdsourced';
 import { getSettings } from '../config/settings';
 
 // Extracted components
@@ -193,11 +194,20 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     }
   }, [listId, loadItems]);
 
-  // Load stores from flipp deals adapter
+  // Load available stores from price sources
   useEffect(() => {
-    if (flippDealsAdapter.isAvailable()) {
-      flippDealsAdapter.getAvailableStores().then(setAvailableStores);
-    }
+    Promise.all([
+      flippDealsAdapter.getAvailableStores(),
+      crowdsourcedAdapter.getAvailableStores(),
+    ]).then(([flippStores, crowdStores]) => {
+      const all = [...flippStores, ...crowdStores];
+      const seen = new Set<string>();
+      setAvailableStores(all.filter(s => {
+        if (seen.has(s.storeId)) return false;
+        seen.add(s.storeId);
+        return true;
+      }));
+    });
   }, []);
 
   // Load prices for visible items across all available stores

@@ -210,6 +210,23 @@ export class CrowdsourcedAdapter implements PriceAdapter {
   clearAllPrices(): void {
     this.prices.clear();
   }
+
+  /**
+   * Get list of stores that have crowd-sourced price data.
+   */
+  async getAvailableStores(): Promise<{ storeId: string; storeName: string }[]> {
+    const stores: { storeId: string; storeName: string }[] = [];
+    for (const [storeId, itemMap] of this.prices) {
+      if (itemMap.size > 0) {
+        // Get store name from first submission
+        const items = Array.from(itemMap.values());
+        const firstItem = items.find(arr => arr.length > 0);
+        const name = firstItem && firstItem[0] ? firstItem[0].storeName : storeId;
+        stores.push({ storeId, storeName: name });
+      }
+    }
+    return stores.sort((a, b) => a.storeName.localeCompare(b.storeName));
+  }
 }
 
 // ─── Singleton ──────────────────────────────────────────────────────────────
