@@ -1,8 +1,9 @@
 /**
  * StopOptimizer — collapsible multi-stop route optimization UI.
  *
- * Displays proposals below the StoreTotalBar. Returns null if
- * < 2 stores have prices.
+ * Displays proposals below the StoreTotalBar when available.
+ * Always renders MaxStopsStepper and Plan My Trip button so the
+ * user can plan a trip even with a single-store proposal.
  */
 
 import React, { useState, useMemo, useCallback } from 'react';
@@ -75,8 +76,6 @@ export default function StopOptimizer({
     [items, perStorePrices, storeNameMap],
   );
 
-  if (proposals.length < 2) return null;
-
   // Trip plan handler
   const handlePlanTrip = useCallback(() => {
     const itemsToPlan = fullItems ?? items.map((i) => ({ ...i, name: '', unit: '' }));
@@ -126,64 +125,66 @@ export default function StopOptimizer({
 
       {expanded && (
         <View style={[styles.body, { borderTopColor: theme.border }]}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.scrollContent}
-          >
-            {proposals.map((prop) => {
-              const isSelected = selectedRouteNumStops === prop.numStops;
-              // Best value is typically 2 stops when we have >= 2 stops options
-              const isBestValue = prop.numStops === 2;
+          {proposals.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.scrollContent}
+            >
+              {proposals.map((prop) => {
+                const isSelected = selectedRouteNumStops === prop.numStops;
+                // Best value is typically 2 stops when we have >= 2 stops options
+                const isBestValue = prop.numStops === 2;
 
-              return (
-                <TouchableOpacity
-                  key={prop.numStops}
-                  style={[
-                    styles.card,
-                    {
-                      backgroundColor: theme.cardBg,
-                      borderColor: isSelected
-                        ? theme.primary
-                        : isBestValue
-                        ? theme.bestValueBorder
-                        : theme.border,
-                      borderWidth: isSelected || isBestValue ? 2 : 1,
-                    },
-                  ]}
-                  onPress={() => onSelectRouteNumStops?.(isSelected ? null : prop.numStops)}
-                  activeOpacity={0.8}
-                >
-                  {isBestValue && (
-                    <View style={[styles.bestValueBadge, { backgroundColor: theme.bestValueBg }]}>
-                      <Text style={[styles.bestValueText, { color: theme.bestValueText }]}>
-                        BEST VALUE
-                      </Text>
-                    </View>
-                  )}
-                  <Text style={[styles.cardTitle, { color: theme.text }]}>
-                    {prop.numStops} {prop.numStops === 1 ? 'STOP' : 'STOPS'}
-                  </Text>
-                  <Text style={[styles.cardTotal, { color: theme.text }]}>
-                    Est. Total:{' '}
-                    <Text style={[styles.bold, { color: theme.text }]}>
-                      ${prop.totalCost.toFixed(2)}
+                return (
+                  <TouchableOpacity
+                    key={prop.numStops}
+                    style={[
+                      styles.card,
+                      {
+                        backgroundColor: theme.cardBg,
+                        borderColor: isSelected
+                          ? theme.primary
+                          : isBestValue
+                          ? theme.bestValueBorder
+                          : theme.border,
+                        borderWidth: isSelected || isBestValue ? 2 : 1,
+                      },
+                    ]}
+                    onPress={() => onSelectRouteNumStops?.(isSelected ? null : prop.numStops)}
+                    activeOpacity={0.8}
+                  >
+                    {isBestValue && (
+                      <View style={[styles.bestValueBadge, { backgroundColor: theme.bestValueBg }]}>
+                        <Text style={[styles.bestValueText, { color: theme.bestValueText }]}>
+                          BEST VALUE
+                        </Text>
+                      </View>
+                    )}
+                    <Text style={[styles.cardTitle, { color: theme.text }]}>
+                      {prop.numStops} {prop.numStops === 1 ? 'STOP' : 'STOPS'}
                     </Text>
-                  </Text>
-                  <Text style={[styles.cardStores, { color: theme.secondaryText }]} numberOfLines={2}>
-                    {prop.stores.map((s) => s.storeName).join(' + ')}
-                  </Text>
-                  {prop.savingsVsOneStop > 0 && (
-                    <View style={[styles.savingsBadge, { backgroundColor: theme.savingsBg }]}>
-                      <Text style={[styles.savingsText, { color: theme.savingsText }]}>
-                        * You Save: ${prop.savingsVsOneStop.toFixed(2)}
+                    <Text style={[styles.cardTotal, { color: theme.text }]}>
+                      Est. Total:{' '}
+                      <Text style={[styles.bold, { color: theme.text }]}>
+                        ${prop.totalCost.toFixed(2)}
                       </Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
+                    </Text>
+                    <Text style={[styles.cardStores, { color: theme.secondaryText }]} numberOfLines={2}>
+                      {prop.stores.map((s) => s.storeName).join(' + ')}
+                    </Text>
+                    {prop.savingsVsOneStop > 0 && (
+                      <View style={[styles.savingsBadge, { backgroundColor: theme.savingsBg }]}>
+                        <Text style={[styles.savingsText, { color: theme.savingsText }]}>
+                          * You Save: ${prop.savingsVsOneStop.toFixed(2)}
+                        </Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          )}
           {/* Max stops stepper + Plan My Trip button */}
           <View style={styles.planSection}>
             <Text style={[styles.planLabel, { color: theme.secondaryText }]}>

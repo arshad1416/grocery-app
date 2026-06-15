@@ -7,7 +7,7 @@
  *  - "Unassigned" section for items without prices
  */
 
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   View,
   Text,
@@ -15,6 +15,9 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
+  PanResponder,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import { useActiveTheme } from '../state/useThemeStore';
 import type { TripPlan } from '../pricing/trip-plan';
@@ -70,6 +73,33 @@ export default function TripPlanSheet({
   const activeTheme = useActiveTheme();
   const theme = themeColors[activeTheme];
 
+  const { height: SCREEN_H } = Dimensions.get('window');
+  const COLLAPSED = SCREEN_H * 0.4;
+  const EXPANDED  = SCREEN_H * 0.95;
+  const sheetHeight = useRef(new Animated.Value(COLLAPSED)).current;
+  const committedHeight = useRef(COLLAPSED);
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 5,
+      onPanResponderMove: (_, g) => {
+        const newH = committedHeight.current - g.dy;
+        const clamped = Math.max(COLLAPSED, Math.min(EXPANDED, newH));
+        sheetHeight.setValue(clamped);
+      },
+      onPanResponderRelease: (_, g) => {
+        const target = (committedHeight.current - g.dy) > (COLLAPSED + (EXPANDED - COLLAPSED) * 0.35)
+          ? EXPANDED : COLLAPSED;
+        committedHeight.current = target;
+        Animated.spring(sheetHeight, {
+          toValue: target,
+          useNativeDriver: false,
+          tension: 60, friction: 11,
+        }).start();
+      },
+    }),
+  ).current;
+
   if (!plan) return null;
 
   return (
@@ -80,7 +110,11 @@ export default function TripPlanSheet({
       onRequestClose={onClose}
     >
       <View style={[styles.overlay, { backgroundColor: theme.overlay }]}>
-        <View style={[styles.sheet, { backgroundColor: theme.cardBg }]}>
+        <Animated.View style={[styles.sheet, { backgroundColor: theme.cardBg, height: sheetHeight }]}>
+          {/* Drag handle */}
+          <View style={styles.handleContainer} {...panResponder.panHandlers}>
+            <View style={[styles.handleBar, { backgroundColor: theme.secondaryText }]} />
+          </View>
           {/* Header */}
           <View style={[styles.header, { borderBottomColor: theme.border }]}>
             <View style={styles.headerLeft}>
@@ -223,7 +257,7 @@ export default function TripPlanSheet({
           >
             <Text style={styles.doneText}>Done</Text>
           </TouchableOpacity>
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );
@@ -237,8 +271,7 @@ const styles = StyleSheet.create({
   sheet: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: '85%',
-    minHeight: 300,
+    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
@@ -397,5 +430,15 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '700',
+  },
+  handleContainer: {
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  handleBar: {
+    width: 40,
+    height: 5,
+    borderRadius: 2.5,
+    opacity: 0.35,
   },
 });
