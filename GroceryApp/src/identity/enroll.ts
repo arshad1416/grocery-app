@@ -12,8 +12,16 @@
  * re-enrollment requires a fresh family invite from an existing member.
  */
 
-import * as SecureStore from 'expo-secure-store';
 import type { RelayEnrollmentResponse } from '../types';
+// expo-secure-store loaded lazily to avoid Hermes crash (chains to expo-asset at eval time)
+let SecureStore: any = null;
+async function getSecureStore(): Promise<any> {
+  if (!SecureStore) {
+    const mod = await import('expo-secure-store');
+    SecureStore = mod;
+  }
+  return SecureStore;
+}
 
 const RELAY_TOKEN_ALIAS = 'groceryapp.relay_token';
 const RELAY_URL_ALIAS = 'groceryapp.relay_url';
@@ -58,12 +66,12 @@ export async function enrollWithRelay(
 
   // Persist atomically — write both, or clean up if either fails
   try {
-    await SecureStore.setItemAsync(RELAY_TOKEN_ALIAS, relayToken);
-    await SecureStore.setItemAsync(RELAY_URL_ALIAS, baseUrl);
+    await (await getSecureStore()).setItemAsync(RELAY_TOKEN_ALIAS, relayToken);
+    await (await getSecureStore()).setItemAsync(RELAY_URL_ALIAS, baseUrl);
   } catch (err) {
     // Partial write: clean up anything that was saved
-    await SecureStore.deleteItemAsync(RELAY_TOKEN_ALIAS).catch(() => {});
-    await SecureStore.deleteItemAsync(RELAY_URL_ALIAS).catch(() => {});
+    await (await getSecureStore()).deleteItemAsync(RELAY_TOKEN_ALIAS).catch(() => {});
+    await (await getSecureStore()).deleteItemAsync(RELAY_URL_ALIAS).catch(() => {});
     throw new Error(
       `Failed to persist enrollment credentials: ${err instanceof Error ? err.message : String(err)}`,
     );
@@ -78,7 +86,7 @@ export async function enrollWithRelay(
  */
 export async function getRelayToken(): Promise<string | null> {
   try {
-    return await SecureStore.getItemAsync(RELAY_TOKEN_ALIAS);
+    return await (await getSecureStore()).getItemAsync(RELAY_TOKEN_ALIAS);
   } catch {
     return null;
   }
@@ -89,7 +97,7 @@ export async function getRelayToken(): Promise<string | null> {
  */
 export async function getRelayUrl(): Promise<string | null> {
   try {
-    return await SecureStore.getItemAsync(RELAY_URL_ALIAS);
+    return await (await getSecureStore()).getItemAsync(RELAY_URL_ALIAS);
   } catch {
     return null;
   }
@@ -100,8 +108,8 @@ export async function getRelayUrl(): Promise<string | null> {
  */
 export async function clearRelayCredentials(): Promise<void> {
   try {
-    await SecureStore.deleteItemAsync(RELAY_TOKEN_ALIAS);
-    await SecureStore.deleteItemAsync(RELAY_URL_ALIAS);
+    await (await getSecureStore()).deleteItemAsync(RELAY_TOKEN_ALIAS);
+    await (await getSecureStore()).deleteItemAsync(RELAY_URL_ALIAS);
   } catch {
     // Best-effort cleanup — swallow errors since this is called during family leave
     // and the device may already be in a degraded state.

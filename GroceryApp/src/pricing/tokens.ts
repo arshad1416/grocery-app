@@ -25,7 +25,15 @@
  */
 
 import { getSettings } from '../config/settings';
-import * as SecureStore from 'expo-secure-store';
+// expo-secure-store loaded lazily to avoid Hermes crash (chains to expo-asset at eval time)
+let SecureStore: any = null;
+async function getSecureStore(): Promise<any> {
+  if (!SecureStore) {
+    const mod = await import('expo-secure-store');
+    SecureStore = mod;
+  }
+  return SecureStore;
+}
 
 const TOKEN_VERSION = 'v2';
 const TOKEN_SEPARATOR = '.';
@@ -82,7 +90,7 @@ async function getRelayToken(): Promise<string | null> {
     // The relay token is the device's relayToken from enrollment
     // It's stored as part of the relay state by the relay connection module.
     // For now, we use SecureStore to retrieve it.
-    const stored = await SecureStore.getItemAsync(RELAY_TOKEN_KEY);
+    const stored = await (await getSecureStore()).getItemAsync(RELAY_TOKEN_KEY);
     return stored || null;
   } catch {
     return null;

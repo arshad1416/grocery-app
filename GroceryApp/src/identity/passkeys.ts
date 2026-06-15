@@ -14,8 +14,16 @@
  * In test environments, we mock the native module.
  */
 
-import * as SecureStore from 'expo-secure-store';
 import { getDeviceId } from './device';
+// expo-secure-store loaded lazily to avoid Hermes crash (chains to expo-asset at eval time)
+let SecureStore: any = null;
+async function getSecureStore(): Promise<any> {
+  if (!SecureStore) {
+    const mod = await import('expo-secure-store');
+    SecureStore = mod;
+  }
+  return SecureStore;
+}
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -41,7 +49,7 @@ export async function isPasskeySupported(): Promise<boolean> {
   // In React Native / Expo, we check for platform support
   // For Node.js / test environments, return false
   try {
-    const stored = await SecureStore.getItemAsync(PASSKEY_SUPPORT_ALIAS);
+    const stored = await (await getSecureStore()).getItemAsync(PASSKEY_SUPPORT_ALIAS);
     if (stored === 'true') return true;
     if (stored === 'false') return false;
 
@@ -52,7 +60,7 @@ export async function isPasskeySupported(): Promise<boolean> {
     ) {
       const available = await window.PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
       const supported = available === true;
-      await SecureStore.setItemAsync(
+      await (await getSecureStore()).setItemAsync(
         PASSKEY_SUPPORT_ALIAS,
         supported ? 'true' : 'false',
       );
@@ -61,10 +69,10 @@ export async function isPasskeySupported(): Promise<boolean> {
 
     // Native platforms: try to detect passkey module
     // In real app, check Platform.OS and available native modules
-    await SecureStore.setItemAsync(PASSKEY_SUPPORT_ALIAS, 'false');
+    await (await getSecureStore()).setItemAsync(PASSKEY_SUPPORT_ALIAS, 'false');
     return false;
   } catch {
-    await SecureStore.setItemAsync(PASSKEY_SUPPORT_ALIAS, 'false');
+    await (await getSecureStore()).setItemAsync(PASSKEY_SUPPORT_ALIAS, 'false');
     return false;
   }
 }
@@ -124,7 +132,7 @@ export async function registerPasskey(): Promise<PasskeyCredential | null> {
   };
 
   // Store credential mapping
-  await SecureStore.setItemAsync(
+  await (await getSecureStore()).setItemAsync(
     `${PASSKEY_CREDENTIAL_ALIAS_PREFIX}${deviceId}`,
     JSON.stringify(credential),
   );
@@ -153,7 +161,7 @@ export async function authenticateWithPasskey(): Promise<string | null> {
   //   const assertion = await PasskeyModule.get({ ... });
   // For now, verify we have a stored credential
   try {
-    const stored = await SecureStore.getItemAsync(
+    const stored = await (await getSecureStore()).getItemAsync(
       `${PASSKEY_CREDENTIAL_ALIAS_PREFIX}${deviceId}`,
     );
     if (!stored) return null;
@@ -171,7 +179,7 @@ export async function authenticateWithPasskey(): Promise<string | null> {
 export async function hasPasskey(): Promise<boolean> {
   const deviceId = getDeviceId();
   try {
-    const stored = await SecureStore.getItemAsync(
+    const stored = await (await getSecureStore()).getItemAsync(
       `${PASSKEY_CREDENTIAL_ALIAS_PREFIX}${deviceId}`,
     );
     return stored !== null;
@@ -185,7 +193,7 @@ export async function hasPasskey(): Promise<boolean> {
  */
 export async function removePasskey(): Promise<void> {
   const deviceId = getDeviceId();
-  await SecureStore.deleteItemAsync(
+  await (await getSecureStore()).deleteItemAsync(
     `${PASSKEY_CREDENTIAL_ALIAS_PREFIX}${deviceId}`,
   );
 }
@@ -195,5 +203,5 @@ export async function removePasskey(): Promise<void> {
  */
 export async function clearPasskeyData(): Promise<void> {
   // In real app, clear all stored credentials
-  await SecureStore.deleteItemAsync(PASSKEY_SUPPORT_ALIAS);
+  await (await getSecureStore()).deleteItemAsync(PASSKEY_SUPPORT_ALIAS);
 }

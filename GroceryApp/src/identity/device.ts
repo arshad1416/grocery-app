@@ -12,8 +12,16 @@
  *  - Supports key rotation via rotateDeviceKey()
  */
 
-import * as SecureStore from 'expo-secure-store';
 import { initCrypto } from '../crypto/index';
+// expo-secure-store loaded lazily to avoid Hermes crash (chains to expo-asset at eval time)
+let SecureStore: any = null;
+async function getSecureStore(): Promise<any> {
+  if (!SecureStore) {
+    const mod = await import('expo-secure-store');
+    SecureStore = mod;
+  }
+  return SecureStore;
+}
 import type { DeviceKeypair } from '../types';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -53,15 +61,15 @@ async function generateNewKeypair(): Promise<DeviceKeypair> {
 
 async function storeKeypair(kp: DeviceKeypair): Promise<void> {
   const deviceId = uint8ArrayToBase64(kp.publicKey);
-  await SecureStore.setItemAsync(
+  await (await getSecureStore()).setItemAsync(
     DEVICE_SECRET_KEY_ALIAS,
     uint8ArrayToBase64(kp.privateKey),
   );
-  await SecureStore.setItemAsync(
+  await (await getSecureStore()).setItemAsync(
     DEVICE_PUBLIC_KEY_ALIAS,
     uint8ArrayToBase64(kp.publicKey),
   );
-  await SecureStore.setItemAsync(DEVICE_ID_ALIAS, deviceId);
+  await (await getSecureStore()).setItemAsync(DEVICE_ID_ALIAS, deviceId);
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
@@ -75,8 +83,8 @@ export async function initDeviceIdentity(): Promise<string> {
   console.log('[identity] Checking for stored device keypair…');
 
   // Check if we already have a keypair stored
-  const storedSecret = await SecureStore.getItemAsync(DEVICE_SECRET_KEY_ALIAS);
-  const storedPublic = await SecureStore.getItemAsync(DEVICE_PUBLIC_KEY_ALIAS);
+  const storedSecret = await (await getSecureStore()).getItemAsync(DEVICE_SECRET_KEY_ALIAS);
+  const storedPublic = await (await getSecureStore()).getItemAsync(DEVICE_PUBLIC_KEY_ALIAS);
 
   if (storedSecret && storedPublic) {
     console.log('[identity] Found stored keypair, loading…');
@@ -159,7 +167,7 @@ export async function rotateDeviceKey(): Promise<string> {
 export async function clearDeviceIdentity(): Promise<void> {
   cachedKeypair = null;
   cachedDeviceId = null;
-  await SecureStore.deleteItemAsync(DEVICE_SECRET_KEY_ALIAS);
-  await SecureStore.deleteItemAsync(DEVICE_PUBLIC_KEY_ALIAS);
-  await SecureStore.deleteItemAsync(DEVICE_ID_ALIAS);
+  await (await getSecureStore()).deleteItemAsync(DEVICE_SECRET_KEY_ALIAS);
+  await (await getSecureStore()).deleteItemAsync(DEVICE_PUBLIC_KEY_ALIAS);
+  await (await getSecureStore()).deleteItemAsync(DEVICE_ID_ALIAS);
 }

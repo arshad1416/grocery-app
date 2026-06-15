@@ -119,7 +119,7 @@ export default function HomeScreen({ navigation }: Props) {
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.bg }]}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
-        <Text style={[styles.title, { color: theme.text }]}>GroceryApp</Text>
+        <Text style={[styles.title, { color: theme.text }]}>StopHop</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity
             onPress={() => navigation.navigate('Pairing')}

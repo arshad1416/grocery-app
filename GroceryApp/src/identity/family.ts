@@ -22,8 +22,16 @@
  * All operations require react-native-libsodium.
  */
 
-import * as SecureStore from 'expo-secure-store';
 import { initCrypto, generateUUID } from '../crypto/index';
+// expo-secure-store loaded lazily to avoid Hermes crash (chains to expo-asset at eval time)
+let SecureStore: any = null;
+async function getSecureStore(): Promise<any> {
+  if (!SecureStore) {
+    const mod = await import('expo-secure-store');
+    SecureStore = mod;
+  }
+  return SecureStore;
+}
 import { getDeviceKeypair, getDeviceId } from './device';
 import type {
   DeviceKeypair,
@@ -189,7 +197,7 @@ export async function acceptFamilyInvite(
   };
 
   // Store membership
-  await SecureStore.setItemAsync(
+  await (await getSecureStore()).setItemAsync(
     FAMILY_MEMBERSHIP_ALIAS,
     JSON.stringify(membership),
   );
@@ -213,7 +221,7 @@ export async function getFamilyMembership(): Promise<FamilyMembership | null> {
   if (cachedMembership) return { ...cachedMembership };
 
   try {
-    const stored = await SecureStore.getItemAsync(FAMILY_MEMBERSHIP_ALIAS);
+    const stored = await (await getSecureStore()).getItemAsync(FAMILY_MEMBERSHIP_ALIAS);
     if (!stored) return null;
     cachedMembership = JSON.parse(stored) as FamilyMembership;
     return { ...cachedMembership };
@@ -234,7 +242,7 @@ export async function hasFamilyMembership(): Promise<boolean> {
  */
 export async function leaveFamily(): Promise<void> {
   cachedMembership = null;
-  await SecureStore.deleteItemAsync(FAMILY_MEMBERSHIP_ALIAS);
+  await (await getSecureStore()).deleteItemAsync(FAMILY_MEMBERSHIP_ALIAS);
 }
 
 /**
@@ -242,7 +250,7 @@ export async function leaveFamily(): Promise<void> {
  */
 export async function clearFamilyMembership(): Promise<void> {
   cachedMembership = null;
-  await SecureStore.deleteItemAsync(FAMILY_MEMBERSHIP_ALIAS);
+  await (await getSecureStore()).deleteItemAsync(FAMILY_MEMBERSHIP_ALIAS);
 }
 
 // ─── Social Re-Invite Flow ──────────────────────────────────────────────────

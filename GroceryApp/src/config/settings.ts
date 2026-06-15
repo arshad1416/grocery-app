@@ -11,8 +11,16 @@
  *  - Defaults are provided for all settings
  */
 
-import * as SecureStore from 'expo-secure-store';
 import { initCrypto, encrypt, decrypt, generateUUID } from '../crypto/index';
+// expo-secure-store loaded lazily to avoid Hermes crash (chains to expo-asset at eval time)
+let SecureStore: any = null;
+async function getSecureStore(): Promise<any> {
+  if (!SecureStore) {
+    const mod = await import('expo-secure-store');
+    SecureStore = mod;
+  }
+  return SecureStore;
+}
 import type { AppSettings, HostingTier } from '../types';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -60,7 +68,7 @@ async function getOrCreateSettingsKey(): Promise<Uint8Array> {
   if (deviceSettingsKey) return deviceSettingsKey;
 
   await initCrypto();
-  const stored = await SecureStore.getItemAsync(DEVICE_SETTINGS_KEY);
+  const stored = await (await getSecureStore()).getItemAsync(DEVICE_SETTINGS_KEY);
   if (stored) {
     deviceSettingsKey = new Uint8Array(
       stored.split(',').map((s) => parseInt(s, 10)),
@@ -73,7 +81,7 @@ async function getOrCreateSettingsKey(): Promise<Uint8Array> {
   await sodium.ready;
   const key = sodium.randombytes_buf(32);
   deviceSettingsKey = key;
-  await SecureStore.setItemAsync(DEVICE_SETTINGS_KEY, Array.from(key).join(','));
+  await (await getSecureStore()).setItemAsync(DEVICE_SETTINGS_KEY, Array.from(key).join(','));
   return key;
 }
 
@@ -84,7 +92,7 @@ async function persistSettings(settings: AppSettings): Promise<void> {
   const key = await getOrCreateSettingsKey();
   const serialized = JSON.stringify(settings);
   const encrypted = await encrypt(serialized, key, SETTINGS_AAD_CONTEXT);
-  await SecureStore.setItemAsync(SETTINGS_CACHE_KEY, JSON.stringify(encrypted));
+  await (await getSecureStore()).setItemAsync(SETTINGS_CACHE_KEY, JSON.stringify(encrypted));
   settingsCache = { ...settings };
 }
 
@@ -93,7 +101,7 @@ async function persistSettings(settings: AppSettings): Promise<void> {
  */
 async function loadSettingsFromStore(): Promise<AppSettings | null> {
   try {
-    const stored = await SecureStore.getItemAsync(SETTINGS_CACHE_KEY);
+    const stored = await (await getSecureStore()).getItemAsync(SETTINGS_CACHE_KEY);
     if (!stored) return null;
 
     const key = await getOrCreateSettingsKey();
@@ -289,6 +297,6 @@ export async function resetSettings(): Promise<AppSettings> {
 export async function clearSettings(): Promise<void> {
   settingsCache = null;
   deviceSettingsKey = null;
-  await SecureStore.deleteItemAsync(SETTINGS_CACHE_KEY);
-  await SecureStore.deleteItemAsync(DEVICE_SETTINGS_KEY);
+  await (await getSecureStore()).deleteItemAsync(SETTINGS_CACHE_KEY);
+  await (await getSecureStore()).deleteItemAsync(DEVICE_SETTINGS_KEY);
 }

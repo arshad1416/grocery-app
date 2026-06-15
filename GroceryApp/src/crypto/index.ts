@@ -13,7 +13,30 @@
  *  - Constant-time passphrase verification via sodium_memcmp
  */
 
-import * as SecureStore from 'expo-secure-store';
+import type { EncryptedData } from '../types';
+
+// ─── Lazy SecureStore import ─────────────────────────────────────────────────
+// IMPORTANT: must NOT be imported at the top level - Expo modules chain to
+// expo-asset which triggers Hermes 0.85.3 crash during module evaluation.
+let SecureStore: any = null;
+
+async function getSecureStore(): Promise<any> {
+  if (!SecureStore) {
+    const mod = await import('expo-secure-store');
+    SecureStore = mod;
+  }
+  return SecureStore;
+}
+
+// Helper to wrap SecureStore in a proxy that lazily initializes
+const secureStoreProxy = new Proxy({}, {
+  get(_target, prop: string) {
+    return async (...args: any[]) => {
+      const store = await getSecureStore();
+      return (store as any)[prop](...args);
+    };
+  },
+}) as any;
 
 // ─── Lazy sodium import ──────────────────────────────────────────────────────
 // IMPORTANT: react-native-libsodium MUST NOT be imported at the top level.
@@ -249,7 +272,7 @@ export async function setupMasterKey(passphrase: string): Promise<void> {
   const derivedKey = await deriveKeyFromPassphrase(passphrase, salt);
   const keyBase64 = uint8ArrayToBase64(derivedKey);
   const saltBase64 = uint8ArrayToBase64(salt);
-  await SecureStore.setItemAsync(
+  await secureStoreProxy.setItemAsync(
     SECURE_STORE_KEY_ALIAS,
     JSON.stringify({ key: keyBase64, salt: saltBase64, type: 'passphrase' }),
   );
@@ -261,7 +284,7 @@ export async function setupMasterKey(passphrase: string): Promise<void> {
 export async function getMasterKey(): Promise<Uint8Array | null> {
   await ensureReady();
   try {
-    const stored = await SecureStore.getItemAsync(SECURE_STORE_KEY_ALIAS);
+    const stored = await secureStoreProxy.getItemAsync(SECURE_STORE_KEY_ALIAS);
     if (!stored) return null;
     const { key: keyBase64 } = JSON.parse(stored);
     return base64ToUint8Array(keyBase64);
@@ -280,7 +303,7 @@ export async function verifyAndGetMasterKey(
   passphrase: string,
 ): Promise<Uint8Array | null> {
   await ensureReady();
-  const stored = await SecureStore.getItemAsync(SECURE_STORE_KEY_ALIAS);
+  const stored = await secureStoreProxy.getItemAsync(SECURE_STORE_KEY_ALIAS);
   if (!stored) return null;
   const parsed = JSON.parse(stored);
 
@@ -376,7 +399,7 @@ export async function deriveDBKey(
 export async function setMasterKey(key: Uint8Array): Promise<void> {
   await ensureReady();
   const keyBase64 = uint8ArrayToBase64(key);
-  await SecureStore.setItemAsync(
+  await secureStoreProxy.setItemAsync(
     SECURE_STORE_KEY_ALIAS,
     JSON.stringify({ key: keyBase64, type: 'recovery' }),
   );
@@ -386,5 +409,5 @@ export async function setMasterKey(key: Uint8Array): Promise<void> {
  * Clear the master key from secure storage (e.g. on family reset).
  */
 export async function clearMasterKey(): Promise<void> {
-  await SecureStore.deleteItemAsync(SECURE_STORE_KEY_ALIAS);
+  await secureStoreProxy.deleteItemAsync(SECURE_STORE_KEY_ALIAS);
 }

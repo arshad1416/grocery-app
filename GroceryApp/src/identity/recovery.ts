@@ -19,8 +19,16 @@
  *          master key is stored alongside (same alias as passphrase-derived key).
  */
 
-import * as SecureStore from 'expo-secure-store';
 import { initCrypto, setMasterKey, hasMasterKey } from '../crypto/index';
+// expo-secure-store loaded lazily to avoid Hermes crash (chains to expo-asset at eval time)
+let SecureStore: any = null;
+async function getSecureStore(): Promise<any> {
+  if (!SecureStore) {
+    const mod = await import('expo-secure-store');
+    SecureStore = mod;
+  }
+  return SecureStore;
+}
 import { getFamilyId } from './family';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -347,7 +355,7 @@ export function wordIndicesToEntropy(indices: number[]): Uint8Array {
  */
 async function getRecoverySeed(familyId: string): Promise<Uint8Array | null> {
   try {
-    const stored = await SecureStore.getItemAsync(
+    const stored = await (await getSecureStore()).getItemAsync(
       `${RECOVERY_SEED_ALIAS_PREFIX}${familyId}`,
     );
     if (!stored) return null;
@@ -361,7 +369,7 @@ async function getRecoverySeed(familyId: string): Promise<Uint8Array | null> {
  * Store a recovery seed for a family.
  */
 async function setRecoverySeed(familyId: string, seed: Uint8Array): Promise<void> {
-  await SecureStore.setItemAsync(
+  await (await getSecureStore()).setItemAsync(
     `${RECOVERY_SEED_ALIAS_PREFIX}${familyId}`,
     Array.from(seed).join(','),
   );
@@ -439,11 +447,11 @@ export async function generateRecoveryPhrase(): Promise<string> {
   const phrase = words.join(' ');
 
   // Store the phrase (encrypted) for later verification
-  await SecureStore.setItemAsync(
+  await (await getSecureStore()).setItemAsync(
     `${RECOVERY_PHRASE_ALIAS_PREFIX}${familyId}`,
     phrase,
   );
-  await SecureStore.setItemAsync(
+  await (await getSecureStore()).setItemAsync(
     `${RECOVERY_STORED_FLAG_PREFIX}${familyId}`,
     'true',
   );
@@ -553,7 +561,7 @@ export async function hasRecoveryPhrase(): Promise<boolean> {
     const familyId = await getFamilyId();
     if (!familyId) return false;
 
-    const stored = await SecureStore.getItemAsync(
+    const stored = await (await getSecureStore()).getItemAsync(
       `${RECOVERY_STORED_FLAG_PREFIX}${familyId}`,
     );
     return stored === 'true';
@@ -573,7 +581,7 @@ export async function getStoredRecoveryPhrase(): Promise<string | null> {
     const familyId = await getFamilyId();
     if (!familyId) return null;
 
-    const phrase = await SecureStore.getItemAsync(
+    const phrase = await (await getSecureStore()).getItemAsync(
       `${RECOVERY_PHRASE_ALIAS_PREFIX}${familyId}`,
     );
     return phrase;
@@ -589,13 +597,13 @@ export async function clearRecoveryPhrase(): Promise<void> {
   try {
     const familyId = await getFamilyId();
     if (familyId) {
-      await SecureStore.deleteItemAsync(
+      await (await getSecureStore()).deleteItemAsync(
         `${RECOVERY_PHRASE_ALIAS_PREFIX}${familyId}`,
       );
-      await SecureStore.deleteItemAsync(
+      await (await getSecureStore()).deleteItemAsync(
         `${RECOVERY_STORED_FLAG_PREFIX}${familyId}`,
       );
-      await SecureStore.deleteItemAsync(
+      await (await getSecureStore()).deleteItemAsync(
         `${RECOVERY_SEED_ALIAS_PREFIX}${familyId}`,
       );
     }
