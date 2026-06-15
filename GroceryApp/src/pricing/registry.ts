@@ -83,13 +83,16 @@ class PriceRegistry {
     items: string[],
     storeId: string,
   ): Promise<Map<string, PriceResult>> {
+    console.warn(`[registry] entered getAllPrices for store ${storeId}`);
     if (this.seedPromise) await this.seedPromise;
     const results = new Map<string, PriceResult>();
     const enabled = this.getEnabledMap();
     const normalizedNames = items.map(normalizeForLookup);
+    console.warn(`[registry] getAllPrices for ${items.length} items at ${storeId}, ${this.adapters.length} adapters`);
 
     for (const adapter of this.adapters) {
       if (!enabled[adapter.id] || !adapter.isAvailable()) continue;
+      console.warn(`[registry] Querying adapter: ${adapter.id}`);
 
       const useHash = adapterRequiresHash(adapter.id);
       const lookupNames = useHash
@@ -147,8 +150,12 @@ class PriceRegistry {
   // ─── Private Helpers ───────────────────────────────────────────────────
 
   private getEnabledMap(): AdapterEnableMap {
-    const settings = getSettings();
-    const states = settings.adapterEnabled;
+    let states: Record<string, boolean> | undefined;
+    try {
+      states = getSettings().adapterEnabled;
+    } catch {
+      // Settings not initialized yet — all adapters default to enabled
+    }
     const map: AdapterEnableMap = {};
     for (const adapter of this.adapters) {
       const enabled = states ? states[adapter.id] : true;
