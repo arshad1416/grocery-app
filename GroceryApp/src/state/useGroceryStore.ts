@@ -48,16 +48,20 @@ function schedulePriceLookup(item: { id: string; name: string }, listId: string)
     try {
       const { usePriceStore } = await import('../pricing/price-store');
       const { flippDealsAdapter } = await import('../pricing/flipp-deals-adapter');
-      const { getSettings } = await import('../config/settings');
+      const { crowdsourcedAdapter } = await import('../pricing/crowdsourced');
 
-      const settings = getSettings();
-      if (!settings.pricingOptedIn || !settings.priceServiceEnabled) return;
-
-      // Get available store IDs for batch lookup
+      // Get available store IDs from all local adapters for batch lookup
       let storeIds: string[] = [];
-      if (flippDealsAdapter.isAvailable()) {
-        const stores = await flippDealsAdapter.getAvailableStores();
-        storeIds = stores.map(s => s.storeId);
+      const [flippStores, crowdStores] = await Promise.all([
+        flippDealsAdapter.isAvailable() ? flippDealsAdapter.getAvailableStores().catch(() => []) : Promise.resolve([]),
+        crowdsourcedAdapter.isAvailable() ? crowdsourcedAdapter.getAvailableStores().catch(() => []) : Promise.resolve([]),
+      ]);
+      const seen = new Set<string>();
+      for (const s of [...flippStores, ...crowdStores]) {
+        if (!seen.has(s.storeId)) {
+          seen.add(s.storeId);
+          storeIds.push(s.storeId);
+        }
       }
 
       if (storeIds.length > 0) {

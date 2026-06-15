@@ -18,7 +18,7 @@ import { create } from 'zustand';
 import type { PriceResult, SubmittedPrice } from './types';
 import { priceRegistry } from './registry';
 import { crowdsourcedAdapter } from './crowdsourced';
-import { getSettings } from '../config/settings';
+
 import { computeTripPlan, type TripPlan } from './trip-plan';
 import { buildCacheKey, getCachedPlan, setCachedPlan } from './trip-plan-cache';
 
@@ -99,13 +99,6 @@ export const usePriceStore = create<PriceState>((set, get) => ({
 
   loadPrices: async (items, defaultStoreId) => {
     try {
-      // Check opt-in flag before making any lookups
-      const settings = getSettings();
-      if (!settings.pricingOptedIn || !settings.priceServiceEnabled) {
-        set({ isLoading: false, error: null });
-        return;
-      }
-
       set({ isLoading: true, error: null });
 
       // Process items in parallel, grouped by store
@@ -151,12 +144,6 @@ export const usePriceStore = create<PriceState>((set, get) => ({
 
   loadSinglePrice: async (itemId, itemName, storeId) => {
     try {
-      // Check opt-in flag before making any lookups
-      const settings = getSettings();
-      if (!settings.pricingOptedIn || !settings.priceServiceEnabled) {
-        return;
-      }
-
       set((state) => ({
         itemLoading: { ...state.itemLoading, [itemId]: true },
       }));
@@ -182,22 +169,20 @@ export const usePriceStore = create<PriceState>((set, get) => ({
 
   loadPricesForAllStores: async (items, storeIds) => {
     try {
-      const settings = getSettings();
-      if (!settings.pricingOptedIn || !settings.priceServiceEnabled) {
-        return;
-      }
-
       const results: Record<string, Record<string, PriceResult>> = {};
 
       await Promise.allSettled(
         storeIds.map(async (storeId: string) => {
           const itemNames = items.map((i) => i.name);
+          console.warn(`[prices] Looking up ${itemNames.join(',')} at store ${storeId}`);
           const priceMap = await priceRegistry.getAllPrices(itemNames, storeId);
+          console.warn(`[prices] Got ${priceMap.size} results from ${storeId}`);
           const storeResult: Record<string, PriceResult> = {};
           for (const item of items) {
             const result = priceMap.get(item.name);
             if (result) {
               storeResult[item.id] = result;
+              console.warn(`[prices] Found price for ${item.name}: $${result.price}`);
             }
           }
           if (Object.keys(storeResult).length > 0) {
