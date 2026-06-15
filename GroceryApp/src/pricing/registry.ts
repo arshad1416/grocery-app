@@ -11,6 +11,7 @@
 import type { PriceAdapter } from './adapter';
 import type { PriceResult } from './types';
 import { getSettings, updateSettings } from '../config/settings';
+import { adapterRequiresHash, normalizeForLookup, hashItemName } from './privacy';
 import { instacartAdapter } from './instacart';
 import { scrapingAdapter } from './scraping';
 import { crowdsourcedAdapter } from './crowdsourced';
@@ -94,9 +95,13 @@ class PriceRegistry {
     storeId: string,
   ): Promise<PriceResult | null> {
     const enabled = this.getEnabledMap();
+    const normalizedName = normalizeForLookup(itemName);
     for (const adapter of this.adapters) {
       if (!enabled[adapter.id] || !adapter.isAvailable()) continue;
-      const result = await adapter.getPrice(itemName, storeId);
+      const lookupName = adapterRequiresHash(adapter.id)
+        ? hashItemName(itemName)
+        : normalizedName;
+      const result = await adapter.getPrice(lookupName, storeId);
       if (result !== null) return result;
     }
     return null;
@@ -111,14 +116,24 @@ class PriceRegistry {
   ): Promise<Map<string, PriceResult>> {
     const results = new Map<string, PriceResult>();
     const enabled = this.getEnabledMap();
+    const normalizedNames = items.map(normalizeForLookup);
 
     for (const adapter of this.adapters) {
       if (!enabled[adapter.id] || !adapter.isAvailable()) continue;
 
-      const batch = await adapter.getPrices(items, storeId);
-      for (const [itemName, priceResult] of batch) {
-        if (!results.has(itemName)) {
-          results.set(itemName, priceResult);
+      const useHash = adapterRequiresHash(adapter.id);
+      const lookupNames = useHash
+        ? items.map(hashItemName)
+        : normalizedNames;
+
+      const batch = await adapter.getPrices(lookupNames, storeId);
+      // Map results back to original item names
+      for (let i = 0; i < items.length; i++) {
+        const lookupKey = lookupNames[i];
+        const originalName = items[i];
+        const priceResult = batch.get(lookupKey);
+        if (priceResult && !results.has(originalName)) {
+          results.set(originalName, priceResult);
         }
       }
     }
@@ -143,7 +158,7 @@ class PriceRegistry {
     const settings = getSettings();
     const adapterStates = { ...(settings.adapterEnabled ?? {} as AdapterEnableMap) };
     adapterStates[id] = enabled;
-    await updateSettings({ adapterEnabled: adapterStates } as any);
+    await updateSettings({ adapterEnabled: adapterStates });
   }
 
   /**
@@ -152,7 +167,7 @@ class PriceRegistry {
    */
   isAdapterEnabled(id: string): boolean {
     const settings = getSettings();
-    const states = (settings as any).adapterEnabled as AdapterEnableMap | undefined;
+    const states = settings.adapterEnabled;
     if (states && id in states) {
       return states[id];
     }
@@ -163,7 +178,7 @@ class PriceRegistry {
 
   private getEnabledMap(): AdapterEnableMap {
     const settings = getSettings();
-    const states = (settings as any).adapterEnabled as AdapterEnableMap | undefined;
+    const states = settings.adapterEnabled;
     const map: AdapterEnableMap = {};
     for (const adapter of this.adapters) {
       const enabled = states ? states[adapter.id] : true;

@@ -220,6 +220,28 @@ export class FlippDealsAdapter implements PriceAdapter {
     return results;
   }
 
+  /** Get list of stores available for the user's FSA from flipp_deals */
+  async getAvailableStores(): Promise<{ storeId: string; storeName: string }[]> {
+    const fsa = this.getUserFsa();
+    if (!fsa) return [];
+
+    try {
+      const allDeals = await fetchDealsForFSA(fsa, false);
+      const seen = new Set<string>();
+      const stores: { storeId: string; storeName: string }[] = [];
+      for (const deal of allDeals) {
+        const sid = merchantToStoreId(deal.merchant);
+        if (!seen.has(sid)) {
+          seen.add(sid);
+          stores.push({ storeId: sid, storeName: deal.merchant });
+        }
+      }
+      return stores.sort((a, b) => a.storeName.localeCompare(b.storeName));
+    } catch {
+      return [];
+    }
+  }
+
   /** Allow refreshing the deal cache (e.g., when FSA changes) */
   clearCache(): void {
     _merchantDealsCache = null;

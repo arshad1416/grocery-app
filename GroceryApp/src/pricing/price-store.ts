@@ -33,6 +33,10 @@ export interface PriceState {
   itemLoading: Record<string, boolean>;
   /** Error message */
   error: string | null;
+  /** When each item's price was last fetched (epoch ms) */
+  priceTimestamps: Record<string, number>;
+  /** Whether pull-to-refresh is active */
+  isRefreshing: boolean;
 
   // Actions
   loadPrices: (
@@ -54,6 +58,15 @@ export interface PriceState {
   clearPrices: () => void;
   clearPerStorePrices: () => void;
   clearError: () => void;
+  /** Check price age in hours for a given item */
+  getPriceAge: (itemId: string) => number | null;
+  /** Check if a price is stale (older than maxAgeMs, default 24h) */
+  isPriceStale: (itemId: string, maxAgeMs?: number) => boolean;
+  /** Force-refresh all prices for the current list */
+  refreshAllPrices: (
+    items: { id: string; name: string }[],
+    storeIds: string[],
+  ) => Promise<void>;
 }
 
 // ─── Store ──────────────────────────────────────────────────────────────────
@@ -64,12 +77,14 @@ export const usePriceStore = create<PriceState>((set, get) => ({
   isLoading: false,
   itemLoading: {},
   error: null,
+  priceTimestamps: {},
+  isRefreshing: false,
 
   loadPrices: async (items, defaultStoreId) => {
     try {
       // Check opt-in flag before making any lookups
       const settings = getSettings();
-      if (!settings.pricingOptedIn) {
+      if (!settings.pricingOptedIn || !settings.priceServiceEnabled) {
         set({ isLoading: false, error: null });
         return;
       }
@@ -104,6 +119,10 @@ export const usePriceStore = create<PriceState>((set, get) => ({
       set((state) => ({
         prices: { ...state.prices, ...newPrices },
         isLoading: false,
+        priceTimestamps: {
+          ...state.priceTimestamps,
+          ...Object.fromEntries(Object.keys(newPrices).map(id => [id, Date.now()])),
+        },
       }));
     } catch (err) {
       set({
@@ -117,7 +136,7 @@ export const usePriceStore = create<PriceState>((set, get) => ({
     try {
       // Check opt-in flag before making any lookups
       const settings = getSettings();
-      if (!settings.pricingOptedIn) {
+      if (!settings.pricingOptedIn || !settings.priceServiceEnabled) {
         return;
       }
 
@@ -130,6 +149,7 @@ export const usePriceStore = create<PriceState>((set, get) => ({
         set((state) => ({
           prices: { ...state.prices, [itemId]: result },
           itemLoading: { ...state.itemLoading, [itemId]: false },
+          priceTimestamps: { ...state.priceTimestamps, [itemId]: Date.now() },
         }));
       } else {
         set((state) => ({
@@ -146,14 +166,14 @@ export const usePriceStore = create<PriceState>((set, get) => ({
   loadPricesForAllStores: async (items, storeIds) => {
     try {
       const settings = getSettings();
-      if (!settings.pricingOptedIn) {
+      if (!settings.pricingOptedIn || !settings.priceServiceEnabled) {
         return;
       }
 
       const results: Record<string, Record<string, PriceResult>> = {};
 
-      await Promise.all(
-        storeIds.map(async (storeId) => {
+      await Promise.allSettled(
+        storeIds.map(async (storeId: string) => {
           const itemNames = items.map((i) => i.name);
           const priceMap = await priceRegistry.getAllPrices(itemNames, storeId);
           const storeResult: Record<string, PriceResult> = {};
@@ -166,12 +186,20 @@ export const usePriceStore = create<PriceState>((set, get) => ({
           if (Object.keys(storeResult).length > 0) {
             results[storeId] = storeResult;
           }
-        }),
+        })
       );
 
       set((state) => ({
         prices: { ...state.prices, ...Object.values(results).reduce((acc, storePrices) => ({ ...acc, ...storePrices }), {}) },
         perStorePrices: { ...state.perStorePrices, ...results },
+        priceTimestamps: {
+          ...state.priceTimestamps,
+          ...Object.fromEntries(
+            Object.values(results)
+              .flatMap(storePrices => Object.keys(storePrices))
+              .map(id => [id, Date.now()])
+          ),
+        },
       }));
     } catch (err) {
       set({
@@ -209,7 +237,7 @@ export const usePriceStore = create<PriceState>((set, get) => ({
   },
 
   clearPrices: () => {
-    set({ prices: {}, error: null });
+    set({ prices: {}, error: null, priceTimestamps: {} });
   },
 
   clearPerStorePrices: () => {
@@ -218,5 +246,35 @@ export const usePriceStore = create<PriceState>((set, get) => ({
 
   clearError: () => {
     set({ error: null });
+  },
+
+  getPriceAge: (itemId) => {
+    const ts = get().priceTimestamps[itemId];
+    if (!ts) return null;
+    return (Date.now() - ts) / (1000 * 60 * 60); // hours
+  },
+
+  isPriceStale: (itemId, maxAgeMs = 24 * 60 * 60 * 1000) => {
+    const ts = get().priceTimestamps[itemId];
+    if (!ts) return true; // no timestamp = stale
+    return Date.now() - ts > maxAgeMs;
+  },
+
+  refreshAllPrices: async (items, storeIds) => {
+    set({ isRefreshing: true, error: null });
+    try {
+      // Clear existing prices to force fresh lookups
+      get().clearPrices();
+      get().clearPerStorePrices();
+
+      // Re-fetch all prices
+      await get().loadPricesForAllStores(items, storeIds);
+    } catch (err) {
+      set({
+        error: err instanceof Error ? err.message : 'Failed to refresh prices',
+      });
+    } finally {
+      set({ isRefreshing: false });
+    }
   },
 }));

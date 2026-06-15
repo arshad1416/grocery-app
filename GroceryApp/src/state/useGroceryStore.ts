@@ -24,6 +24,51 @@ import {
 } from '../sync/yjs-adapter';
 import { syncManager } from '../sync/sync-manager';
 
+// ─── Debounced Price Lookup Buffer ──────────────────────────────────────────
+// Coalesces rapid item additions (e.g., voice input) into a single batch lookup.
+let pendingPriceItems: { id: string; name: string }[] = [];
+let priceDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+const PRICE_DEBOUNCE_MS = 500;
+
+/**
+ * Schedule a debounced price lookup for a newly added item.
+ * Accumulates items and flushes after PRICE_DEBOUNCE_MS of inactivity.
+ */
+function schedulePriceLookup(item: { id: string; name: string }, listId: string): void {
+  pendingPriceItems.push(item);
+
+  if (priceDebounceTimer) {
+    clearTimeout(priceDebounceTimer);
+  }
+
+  priceDebounceTimer = setTimeout(async () => {
+    const batch = pendingPriceItems.splice(0, pendingPriceItems.length);
+    if (batch.length === 0) return;
+
+    try {
+      const { usePriceStore } = await import('../pricing/price-store');
+      const { flippDealsAdapter } = await import('../pricing/flipp-deals-adapter');
+      const { getSettings } = await import('../config/settings');
+
+      const settings = getSettings();
+      if (!settings.pricingOptedIn || !settings.priceServiceEnabled) return;
+
+      // Get available store IDs for batch lookup
+      let storeIds: string[] = [];
+      if (flippDealsAdapter.isAvailable()) {
+        const stores = await flippDealsAdapter.getAvailableStores();
+        storeIds = stores.map(s => s.storeId);
+      }
+
+      if (storeIds.length > 0) {
+        await usePriceStore.getState().loadPricesForAllStores(batch, storeIds);
+      }
+    } catch {
+      // Price lookup failure should never block item add — fire-and-forget
+    }
+  }, PRICE_DEBOUNCE_MS);
+}
+
 // ─── State Shape ────────────────────────────────────────────────────────────
 
 export interface GroceryState {
@@ -118,6 +163,13 @@ export const useGroceryStore = create<GroceryState>((set, get) => ({
       }
     } catch {
       // Notification system not available — non-critical
+    }
+
+    // Fire price lookup (debounced, fire-and-forget — never blocks add)
+    try {
+      schedulePriceLookup({ id: newItem.id, name: newItem.name }, listId);
+    } catch {
+      // Price scheduling not available — non-critical
     }
 
     return newItem;

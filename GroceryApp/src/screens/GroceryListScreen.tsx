@@ -18,6 +18,7 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -34,6 +35,8 @@ import UndoToast from '../components/UndoToast';
 import { usePriceStore } from '../pricing/price-store';
 import { useThemeStore, useActiveTheme } from '../state/useThemeStore';
 import { computeStopProposals } from '../pricing/stop-optimizer';
+import { flippDealsAdapter } from '../pricing/flipp-deals-adapter';
+import { getSettings } from '../config/settings';
 
 // Extracted components
 import SyncIndicator from '../components/SyncIndicator';
@@ -57,18 +60,6 @@ if (
 type Props = NativeStackScreenProps<RootStackParamList, 'GroceryList'>;
 
 // ─── Main Screen ─────────────────────────────────────────────────────────────
-
-// Known store IDs to load prices from
-const ALL_STORE_IDS = ['no-frills', 'loblaws', 'freshco', 'metro', 'walmart', 'food-basics'] as const;
-
-const STORE_NAME_MAP: Record<string, string> = {
-  'no-frills': 'No Frills',
-  'loblaws': 'Loblaws',
-  'freshco': 'FreshCo',
-  'metro': 'Metro',
-  'walmart': 'Walmart',
-  'food-basics': 'Food Basics',
-};
 
 export default function GroceryListScreen({ route, navigation }: Props) {
   const { listId } = route.params;
@@ -98,6 +89,10 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   const loadPricesForAllStores = usePriceStore((s) => s.loadPricesForAllStores);
   const perStorePrices = usePriceStore((s) => s.perStorePrices);
   const getStoreIdsWithPrices = usePriceStore((s) => s.getStoreIdsWithPrices);
+  const isRefreshingPrices = usePriceStore((s) => s.isRefreshing);
+  const refreshAllPrices = usePriceStore((s) => s.refreshAllPrices);
+  const priceTimestamps = usePriceStore((s) => s.priceTimestamps);
+  const isPriceStale = usePriceStore((s) => s.isPriceStale);
 
   // Local state
   const [searchQuery, setSearchQuery] = useState('');
@@ -111,6 +106,14 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   } | null>(null);
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [selectedRouteNumStops, setSelectedRouteNumStops] = useState<number | null>(null);
+  const [availableStores, setAvailableStores] = useState<{ storeId: string; storeName: string }[]>([]);
+
+  // Build dynamic store name map from available stores
+  const storeNameMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const s of availableStores) map[s.storeId] = s.storeName;
+    return map;
+  }, [availableStores]);
 
   // Filtered unchecked items for stop optimizer
   const filteredUncheckedItems = useMemo(() => {
@@ -133,7 +136,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
         return perStorePrices[selectedStoreId][itemId] ?? null;
       }
       if (selectedRouteNumStops) {
-        const proposals = computeStopProposals(filteredUncheckedItems, perStorePrices, STORE_NAME_MAP);
+        const proposals = computeStopProposals(filteredUncheckedItems, perStorePrices, storeNameMap);
         const proposal = proposals.find(p => p.numStops === selectedRouteNumStops);
         if (proposal) {
           let bestPriceResult: PriceResult | null = null;
@@ -179,19 +182,34 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     }
   }, [listId, loadItems]);
 
-  // Load prices for visible items across all common stores
-  const ALL_STORE_IDS = ['no-frills', 'loblaws', 'freshco', 'metro', 'walmart', 'food-basics'];
+  // Load stores from flipp deals adapter
   useEffect(() => {
+    if (flippDealsAdapter.isAvailable()) {
+      flippDealsAdapter.getAvailableStores().then(setAvailableStores);
+    }
+  }, []);
+
+  // Load prices for visible items across all available stores
+  useEffect(() => {
+    const storeIds = availableStores.map(s => s.storeId);
+    if (storeIds.length === 0) return;
     const visibleItems = Object.values(items).filter(
       (item) => !item.isDeleted && item.listId === listId,
     );
-    if (visibleItems.length > 0) {
+    // Skip items with fresh prices (< 1 hour old)
+    const FRESHNESS_THRESHOLD = 60 * 60 * 1000; // 1 hour
+    const staleItems = visibleItems.filter((item) => {
+      const ts = priceTimestamps[item.id];
+      return !ts || Date.now() - ts > FRESHNESS_THRESHOLD;
+    });
+    if (staleItems.length > 0) {
       loadPricesForAllStores(
-        visibleItems.map((item) => ({ id: item.id, name: item.name })),
-        ALL_STORE_IDS,
+        staleItems.map((item) => ({ id: item.id, name: item.name })),
+        storeIds,
       ).catch(() => {});
     }
-  }, [Object.keys(items).length, listId, loadPricesForAllStores, isFocused]);
+
+  }, [Object.keys(items).length, listId, loadPricesForAllStores, isFocused, availableStores]);
 
   // Filtered and grouped items — unchecked stay in categories, checked go to "Got It"
   const groupedSections = useMemo(() => {
@@ -272,7 +290,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       if (hasPrice) {
         totals.push({
           storeId,
-          storeName: STORE_NAME_MAP[storeId] ?? storeId,
+          storeName: storeNameMap[storeId] ?? storeId,
           total,
         });
       }
@@ -339,7 +357,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     if (!selectedRouteNumStops) return null;
 
     // Get the proposal for this number of stops
-    const proposals = computeStopProposals(filteredUncheckedItems, perStorePrices, STORE_NAME_MAP);
+    const proposals = computeStopProposals(filteredUncheckedItems, perStorePrices, storeNameMap);
     const proposal = proposals.find(p => p.numStops === selectedRouteNumStops);
     if (!proposal) return null;
 
@@ -544,6 +562,27 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     navigation.navigate('Settings');
   }, [navigation]);
 
+  // Pull-to-refresh — force re-fetch all prices
+  const handleRefreshPrices = useCallback(() => {
+    const storeIds = availableStores.map(s => s.storeId);
+    if (storeIds.length === 0) return;
+    const visibleItems = Object.values(items).filter(
+      (item) => !item.isDeleted && item.listId === listId,
+    );
+    if (visibleItems.length > 0) {
+      refreshAllPrices(
+        visibleItems.map((item) => ({ id: item.id, name: item.name })),
+        storeIds,
+      ).catch(() => {});
+    }
+  }, [items, listId, availableStores, refreshAllPrices]);
+
+  // Check if any prices have been loaded (for "Find Prices" button)
+  const hasPrices = Object.keys(priceTimestamps).length > 0;
+  const hasStalePrices = Object.values(items)
+    .filter((item) => !item.isDeleted && item.listId === listId)
+    .some((item) => isPriceStale(item.id));
+
   if (isLoading) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: theme.bg }]}>
@@ -629,6 +668,18 @@ export default function GroceryListScreen({ route, navigation }: Props) {
           : `${totalItems} items`}
       </Text>
 
+      {/* Find Prices button — shown when no prices loaded or prices are stale */}
+      {(!hasPrices || hasStalePrices) && !priceLoading && (
+        <TouchableOpacity
+          style={[styles.findPricesBtn, { backgroundColor: theme.primary + '18', borderColor: theme.primary }]}
+          onPress={handleRefreshPrices}
+        >
+          <Text style={[styles.findPricesText, { color: theme.primary }]}>
+            {hasPrices ? '↻ Refresh Prices' : '🔍 Find Prices'}
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {/* Store total bar */}
       <StoreTotalBar
         storeTotals={storeTotals}
@@ -643,7 +694,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       <StopOptimizer
         items={filteredUncheckedItems}
         perStorePrices={perStorePrices}
-        storeNameMap={STORE_NAME_MAP}
+        storeNameMap={storeNameMap}
         storeIds={storeIdsWithPrices}
         selectedRouteNumStops={selectedRouteNumStops}
         onSelectRouteNumStops={(numStops) => {
@@ -679,6 +730,14 @@ export default function GroceryListScreen({ route, navigation }: Props) {
           <SectionList
             sections={activeSections}
             keyExtractor={(item) => item.id}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshingPrices}
+                onRefresh={handleRefreshPrices}
+                tintColor={theme.primary}
+                colors={[theme.primary]}
+              />
+            }
             renderItem={({ item, index, section }) => {
               if (section.title === '__got_it__') {
                 return (
@@ -910,5 +969,18 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '300',
     lineHeight: 30,
+  },
+  findPricesBtn: {
+    marginHorizontal: 16,
+    marginBottom: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+  },
+  findPricesText: {
+    fontSize: 13,
+    fontWeight: '600',
   },
 });
