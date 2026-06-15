@@ -108,17 +108,20 @@ function App() {
         const device = await import('./src/identity/device');
         await device.initDeviceIdentity();
 
+        // Init settings store (loads from SecureStore → populates cache)
+        const { initSettings, getSettings } = await import('./src/config/settings');
+        await initSettings();
+
         // Init Turso if configured
-        const { initTurso, isTursoReady } = await import('./src/services/tursoClient');
-        const { getSettings } = await import('./src/config/settings');
         try {
+          const { initTurso } = await import('./src/services/tursoClient');
           const settings = getSettings();
           if (settings.tursoUrl && settings.tursoToken) {
             initTurso({ url: settings.tursoUrl, token: settings.tursoToken });
             console.log('[init] Turso connected');
           }
         } catch {
-          // Settings not loaded yet or Turso not configured — skip
+          // Turso not configured or init failed — non-fatal
         }
 
         // Init Sentry (respects user's sentryEnabled opt-out)
