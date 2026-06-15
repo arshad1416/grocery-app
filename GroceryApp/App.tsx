@@ -121,6 +121,14 @@ function App() {
           // Settings not loaded yet or Turso not configured — skip
         }
 
+        // Init Sentry (respects user's sentryEnabled opt-out)
+        try {
+          const { initSentry } = await import('./src/services/sentry');
+          await initSentry();
+        } catch {
+          // Sentry init failure is non-fatal
+        }
+
         // 2. Load navigation config
         const deepLinks = await import('./src/navigation/deepLinks');
 

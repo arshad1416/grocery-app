@@ -265,12 +265,12 @@ export default function PrivacyScreen({ navigation }: Props) {
                   { text: 'Cancel', style: 'cancel' },
                   {
                     text: 'Disable',
-                    onPress: () => handleUpdate({ sentryEnabled: false } as any),
+                    onPress: () => handleUpdate({ sentryEnabled: false }),
                   },
                 ],
               );
             } else {
-              await handleUpdate({ sentryEnabled: true } as any);
+              await handleUpdate({ sentryEnabled: true });
             }
           }}
           theme={theme}
@@ -289,12 +289,12 @@ export default function PrivacyScreen({ navigation }: Props) {
                   { text: 'Cancel', style: 'cancel' },
                   {
                     text: 'Enable',
-                    onPress: () => handleUpdate({ pricingOptedIn: true } as any),
+                    onPress: () => handleUpdate({ pricingOptedIn: true }),
                   },
                 ],
               );
             } else {
-              await handleUpdate({ pricingOptedIn: false } as any);
+              await handleUpdate({ pricingOptedIn: false });
             }
           }}
           theme={theme}

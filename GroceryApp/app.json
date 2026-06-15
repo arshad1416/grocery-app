@@ -70,6 +70,8 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
+      "permissions": ["POST_NOTIFICATIONS"],
+      "_usesCleartextTrafficNote": "Required for self-hosted relay WebSocket connections on local network (ws:// scheme without TLS)",
       "usesCleartextTraffic": true,
       "intentFilters": [
         {

@@ -192,7 +192,7 @@ export interface AppSettings {
   tursoToken?: string;
   /** Whether the Turso product DB is connected */
   tursoEnabled?: boolean;
-  /** FSA (first 3 chars of postal code) for Flipp deal matching */
+  /** FSA (Forward Sortation Area) for Flipp deal matching (e.g. "L0R") */
   flippFsa?: string;
   /** Whether Sentry crash reporting is enabled (default: true) */
   sentryEnabled?: boolean;

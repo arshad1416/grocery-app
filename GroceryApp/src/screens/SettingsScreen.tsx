@@ -704,6 +704,59 @@ export default function SettingsScreen({ navigation }: Props) {
           </View>
         </View>
 
+        {/* ── Turso Database (for Flipp Deal Matching & Products) ───────── */}
+        <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Flipp Deal Matching</Text>
+          <Text style={[styles.sectionDescription, { color: theme.secondaryText }]}>
+            Connect your stophop-arshad1416 Turso database to power deal-matched
+            shopping. Your FSA (first 3 chars of your postal code) determines which
+            local flyer deals to use.
+          </Text>
+
+          <SettingsRow
+            label="Turso URL"
+            value={settings.tursoUrl}
+            onChangeText={(v) => handleUpdate({ tursoUrl: v })}
+            placeholder="https://stophop-arshad1416.aws-us-east-1.turso.io"
+            keyboardType="url"
+            theme={theme}
+            isDark={isDark}
+          />
+
+          <SettingsRow
+            label="Turso Token"
+            value={settings.tursoToken}
+            onChangeText={(v) => handleUpdate({ tursoToken: v })}
+            placeholder="eyJ... (JWT token)"
+            secureTextEntry
+            theme={theme}
+            isDark={isDark}
+          />
+
+          <SettingsRow
+            label="Your FSA (postal code prefix)"
+            value={(settings as any).flippFsa}
+            onChangeText={(v) => handleUpdate({ flippFsa: v.toUpperCase().slice(0, 3) } as any)}
+            placeholder="L0R"
+            theme={theme}
+            isDark={isDark}
+          />
+
+          <ToggleRow
+            label="Flipp Flyer Deals"
+            value={settings.flyerScanEnabled}
+            onValueChange={(v) => handleUpdate({ flyerScanEnabled: v })}
+            theme={theme}
+          />
+
+          <ToggleRow
+            label="Turso Enabled"
+            value={settings.tursoEnabled ?? false}
+            onValueChange={(v) => handleUpdate({ tursoEnabled: v })}
+            theme={theme}
+          />
+        </View>
+
         {/* Clear local price database */}
         <TouchableOpacity
           style={[styles.clearPricesBtn, { borderColor: '#f44336' }]}
