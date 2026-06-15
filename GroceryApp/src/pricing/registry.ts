@@ -18,6 +18,7 @@ import { crowdsourcedAdapter } from './crowdsourced';
 import { cloudFlyerAdapter } from './cloud-flyer';
 import { flyerScanAdapter } from './flyer-scan';
 import { flippDealsAdapter } from './flipp-deals-adapter';
+import { storePricesAdapter } from './store-prices-adapter';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -35,6 +36,7 @@ class PriceRegistry {
     this.registerAdapter(cloudFlyerAdapter);
     this.registerAdapter(flyerScanAdapter);
     this.registerAdapter(flippDealsAdapter);
+    this.registerAdapter(storePricesAdapter);
   }
 
   private seedPromise: Promise<void> | null = null;

@@ -147,7 +147,7 @@ export class FlippDealsAdapter implements PriceAdapter {
    */
   private getUserFsa(): string | null {
     const settings = getSettings() as any;
-    return settings.flippFsa ?? null;
+    return settings.flippFsa ?? 'L0R';
   }
 
   async getPrice(

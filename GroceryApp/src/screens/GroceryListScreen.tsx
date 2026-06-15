@@ -115,6 +115,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [selectedRouteNumStops, setSelectedRouteNumStops] = useState<number | null>(null);
   const [availableStores, setAvailableStores] = useState<{ storeId: string; storeName: string }[]>([]);
+  const [priceSummaryItem, setPriceSummaryItem] = useState<{ id: string; name: string } | null>(null);
 
   // Build dynamic store name map from available stores
   const storeNameMap = useMemo(() => {
@@ -465,12 +466,20 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     return sections;
   }, [items, listId, searchQuery, gotItExpanded, selectedRouteNumStops, stopProposals, perStorePrices]);
 
-  // Item press → navigate to edit
+  // Item press → show price summary on first tap, navigate to edit on second tap
   const handleItemPress = useCallback(
     (item: GroceryItem) => {
-      navigation.navigate('ItemEdit', { listId, itemId: item.id });
+      if (priceSummaryItem?.id === item.id) {
+        // Same item tapped again → navigate to edit
+        setPriceSummaryItem(null);
+        navigation.navigate('ItemEdit', { listId, itemId: item.id });
+      } else {
+        // First tap → show price summary banner
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setPriceSummaryItem({ id: item.id, name: item.name });
+      }
     },
-    [navigation, listId],
+    [navigation, listId, priceSummaryItem],
   );
 
   // Toggle check with animation + toast
@@ -528,23 +537,38 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     setToastState(null);
   }, []);
 
-  // Long-press delete
-  const handleDelete = useCallback(
+  // Long-press → show Edit/Delete context menu
+  const handleItemLongPress = useCallback(
     (id: string, name: string) => {
-      Alert.alert('Delete Item', `Delete "${name}"?`, [
-        { text: 'Cancel', style: 'cancel' },
+      Alert.alert(name, 'What would you like to do?', [
+        {
+          text: 'Edit',
+          onPress: () => {
+            navigation.navigate('ItemEdit', { listId, itemId: id });
+          },
+        },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            deleteItem(id).catch((err: Error) => {
-              Alert.alert('Error', err.message);
-            });
+            Alert.alert('Delete Item', `Delete "${name}"?`, [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Delete',
+                style: 'destructive',
+                onPress: () => {
+                  deleteItem(id).catch((err: Error) => {
+                    Alert.alert('Error', err.message);
+                  });
+                },
+              },
+            ]);
           },
         },
+        { text: 'Cancel', style: 'cancel' },
       ]);
     },
-    [deleteItem],
+    [deleteItem, navigation, listId],
   );
 
   // Claim-an-item
@@ -732,6 +756,42 @@ export default function GroceryListScreen({ route, navigation }: Props) {
         }))}
       />
 
+      {/* Price summary banner — shows when an item is tapped */}
+      {priceSummaryItem && (() => {
+        const priceEntries = availableStores
+          .map((store) => {
+            const pr = perStorePrices[store.storeId]?.[priceSummaryItem.id];
+            return pr ? `${store.storeName} $${pr.price.toFixed(2)}` : null;
+          })
+          .filter(Boolean);
+        return (
+          <View style={[styles.priceSummaryBanner, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+            <Text style={[styles.priceSummaryName, { color: theme.text }]}>
+              {priceSummaryItem.name}
+            </Text>
+            {priceEntries.length > 0 ? (
+              <Text style={[styles.priceSummaryText, { color: theme.secondaryText }]} numberOfLines={2}>
+                {priceEntries.join('  ·  ')}
+              </Text>
+            ) : (
+              <Text style={[styles.priceSummaryText, { color: theme.secondaryText }]}>
+                No prices found
+              </Text>
+            )}
+            <TouchableOpacity
+              style={styles.priceSummaryDismiss}
+              onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setPriceSummaryItem(null);
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={[styles.priceSummaryDismissText, { color: theme.secondaryText }]}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      })()}
+
       {/* Sectioned list */}
       {(() => {
         const activeSections = selectedStoreId && storePlanSections
@@ -774,7 +834,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
                     item={item}
                     onToggle={handleToggle}
                     onPress={handleItemPress}
-                    onDelete={handleDelete}
+                    onLongPress={handleItemLongPress}
                     isFirst={index === 0}
                     isLast={index === section.data.length - 1}
                     price={getItemPrice(item.id)}
@@ -787,7 +847,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
                   item={item}
                   onToggle={handleToggle}
                   onPress={handleItemPress}
-                  onDelete={handleDelete}
+                  onLongPress={handleItemLongPress}
                   onMoveUp={isStorePlan ? undefined : handleMoveUp}
                   onMoveDown={isStorePlan ? undefined : handleMoveDown}
                   isFirst={index === 0}
@@ -1010,6 +1070,33 @@ const styles = StyleSheet.create({
   },
   findPricesText: {
     fontSize: 13,
+    fontWeight: '600',
+  },
+  priceSummaryBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 12,
+    marginBottom: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  priceSummaryName: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginRight: 10,
+  },
+  priceSummaryText: {
+    fontSize: 13,
+    flex: 1,
+  },
+  priceSummaryDismiss: {
+    marginLeft: 8,
+    padding: 4,
+  },
+  priceSummaryDismissText: {
+    fontSize: 14,
     fontWeight: '600',
   },
 });

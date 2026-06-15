@@ -42,6 +42,40 @@ export const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
     `,
   },
+  {
+    version: 2,
+    name: 'create_store_prices',
+    sql: `
+      CREATE TABLE IF NOT EXISTS store_prices (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        store_id      TEXT NOT NULL,
+        store_name    TEXT NOT NULL,
+        name          TEXT NOT NULL,
+        name_clean    TEXT NOT NULL,
+        price         TEXT NOT NULL,
+        price_real    REAL,
+        unit_price    TEXT,
+        unit_price_real REAL,
+        unit          TEXT,
+        image_url     TEXT,
+        brand         TEXT,
+        category      TEXT,
+        is_on_sale    INTEGER DEFAULT 0,
+        sale_price    REAL,
+        was_price     REAL,
+        postal_code   TEXT NOT NULL,
+        scraped_at    TEXT NOT NULL DEFAULT (datetime('now')),
+        source        TEXT NOT NULL DEFAULT 'scraper',
+        UNIQUE(store_id, name_clean, postal_code)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_store_prices_store ON store_prices(store_id);
+      CREATE INDEX IF NOT EXISTS idx_store_prices_name ON store_prices(name_clean);
+      CREATE INDEX IF NOT EXISTS idx_store_prices_scraped ON store_prices(scraped_at);
+      CREATE INDEX IF NOT EXISTS idx_store_prices_postal ON store_prices(postal_code);
+      CREATE INDEX IF NOT EXISTS idx_store_prices_item ON store_prices(name_clean, store_id);
+    `,
+  },
 ];
 
 /**

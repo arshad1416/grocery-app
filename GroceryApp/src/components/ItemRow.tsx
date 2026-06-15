@@ -22,7 +22,8 @@ export interface ItemRowProps {
   item: GroceryItem;
   onToggle: (id: string) => void;
   onPress: (item: GroceryItem) => void;
-  onDelete: (id: string, name: string) => void;
+  onLongPress?: (id: string, name: string) => void;
+  onDelete?: (id: string, name: string) => void;
   onMoveUp?: (id: string) => void;
   onMoveDown?: (id: string) => void;
   isFirst: boolean;
@@ -37,7 +38,7 @@ export interface ItemRowProps {
   claimExpired?: boolean;
 }
 
-const ItemRow = memo(function ItemRow({ item, onToggle, onPress, onDelete, onMoveUp, onMoveDown, isFirst, isLast, price, priceLoading }: ItemRowProps) {
+const ItemRow = memo(function ItemRow({ item, onToggle, onPress, onLongPress, onDelete, onMoveUp, onMoveDown, isFirst, isLast, price, priceLoading }: ItemRowProps) {
   const isClaimed = !!item.claimedBy && !!item.claimedAt;
   const claimExpired = isClaimed && item.claimedAt
     ? Date.now() - item.claimedAt >= 30 * 60 * 1000 // 30 min
@@ -125,7 +126,10 @@ const ItemRow = memo(function ItemRow({ item, onToggle, onPress, onDelete, onMov
           { backgroundColor: theme.cardBg, borderBottomColor: theme.border },
         ]}
         onPress={() => onPress(item)}
-        onLongPress={() => onDelete(item.id, item.name)}
+        onLongPress={() => {
+          if (onLongPress) onLongPress(item.id, item.name);
+          else onDelete?.(item.id, item.name);
+        }}
         activeOpacity={0.7}
       >
         {/* Animated Checkbox */}

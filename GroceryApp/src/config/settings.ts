@@ -44,7 +44,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   pricingOptedIn: false,
   voiceInputEnabled: false,
   barcodeScanningEnabled: false,
-  flyerScanEnabled: false,
+  flyerScanEnabled: true,
+  tursoEnabled: true,
   cloudFlyerEnabled: false,
   contributeEnabled: false,
   contributeStoreGranularity: 'region',
@@ -137,9 +138,9 @@ export async function initSettings(): Promise<AppSettings> {
   console.log('[settings] Loading settings from secure store…');
   const loaded = await loadSettingsFromStore();
   if (loaded) {
-    settingsCache = loaded;
-    console.log('[settings] ✓ Settings loaded from store');
-    return { ...loaded };
+    settingsCache = { ...DEFAULT_SETTINGS, ...loaded };
+    console.log('[settings] ✓ Settings loaded (merged with defaults)');
+    return { ...settingsCache };
   }
 
   // First launch — populate with defaults

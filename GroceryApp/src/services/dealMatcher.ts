@@ -117,10 +117,10 @@ export async function fetchDealsForFSA(
     const result = await db.execute(
       `SELECT merchant, name, price, price_real, image_url, valid_to
        FROM flipp_deals
-       WHERE postal_code = ?
+       WHERE postal_code LIKE ?
          AND valid_to >= datetime('now')
        ORDER BY merchant, price_real ASC`,
-      [prefix],
+      [prefix + '%'],
     );
 
     const deals: FlippDealRow[] = result.rows.map((row) => ({

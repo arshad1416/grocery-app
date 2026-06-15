@@ -484,6 +484,9 @@ export default function AddItemSheet({
               placeholderTextColor={activeTheme === 'dark' ? '#64748B' : '#94A3B8'}
               autoCapitalize="sentences"
               autoFocus
+              returnKeyType="done"
+              blurOnSubmit={false}
+              onSubmitEditing={handleAddCustom}
             />
 
             <View style={styles.metaInputRow}>
@@ -508,6 +511,9 @@ export default function AddItemSheet({
                     onChangeText={setCustomQty}
                     keyboardType="numeric"
                     textAlign="center"
+                    returnKeyType="done"
+                    blurOnSubmit={false}
+                    onSubmitEditing={handleAddCustom}
                   />
                   <TouchableOpacity
                     style={styles.qtyBtn}
@@ -531,6 +537,9 @@ export default function AddItemSheet({
                   placeholder="Unit"
                   placeholderTextColor={activeTheme === 'dark' ? '#64748B' : '#94A3B8'}
                   autoCapitalize="none"
+                  returnKeyType="done"
+                  blurOnSubmit={false}
+                  onSubmitEditing={handleAddCustom}
                 />
               </View>
             </View>

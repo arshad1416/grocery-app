@@ -116,12 +116,14 @@ function App() {
         try {
           const { initTurso } = await import('./src/services/tursoClient');
           const settings = getSettings();
-          if (settings.tursoUrl && settings.tursoToken) {
-            initTurso({ url: settings.tursoUrl, token: settings.tursoToken });
-            console.log('[init] Turso connected');
+          const tursoUrl = settings.tursoUrl || 'https://stophop-arshad1416.aws-us-east-1.turso.io';
+          const tursoToken = settings.tursoToken || '***';
+          if (tursoUrl && tursoToken) {
+            initTurso({ url: tursoUrl, token: tursoToken });
+            console.warn('[init] Turso connected successfully');
           }
-        } catch {
-          // Turso not configured or init failed — non-fatal
+        } catch (e) {
+          console.warn('[init] Turso init failed:', e);
         }
 
         // Init Sentry (respects user's sentryEnabled opt-out)
