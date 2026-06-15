@@ -54,8 +54,6 @@ async function getSodium(): Promise<any> {
   return sodium;
 }
 
-import type { EncryptedData } from '../types';
-
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const KEY_LENGTH_BYTES = 32; // sodium.crypto_aead_xchacha20poly1305_ietf_KEYBYTES

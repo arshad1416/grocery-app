@@ -66,16 +66,16 @@ export const usePriceStore = create<PriceState>((set, get) => ({
   error: null,
 
   loadPrices: async (items, defaultStoreId) => {
-    // Check opt-in flag before making any lookups
-    const settings = getSettings();
-    if (!settings.pricingOptedIn) {
-      set({ isLoading: false, error: null });
-      return;
-    }
-
-    set({ isLoading: true, error: null });
-
     try {
+      // Check opt-in flag before making any lookups
+      const settings = getSettings();
+      if (!settings.pricingOptedIn) {
+        set({ isLoading: false, error: null });
+        return;
+      }
+
+      set({ isLoading: true, error: null });
+
       // Process items in parallel, grouped by store
       const storeGroups = new Map<string, { id: string; name: string }[]>();
 
@@ -114,17 +114,17 @@ export const usePriceStore = create<PriceState>((set, get) => ({
   },
 
   loadSinglePrice: async (itemId, itemName, storeId) => {
-    // Check opt-in flag before making any lookups
-    const settings = getSettings();
-    if (!settings.pricingOptedIn) {
-      return;
-    }
-
-    set((state) => ({
-      itemLoading: { ...state.itemLoading, [itemId]: true },
-    }));
-
     try {
+      // Check opt-in flag before making any lookups
+      const settings = getSettings();
+      if (!settings.pricingOptedIn) {
+        return;
+      }
+
+      set((state) => ({
+        itemLoading: { ...state.itemLoading, [itemId]: true },
+      }));
+
       const result = await priceRegistry.getPrice(itemName, storeId);
       if (result) {
         set((state) => ({
@@ -144,12 +144,12 @@ export const usePriceStore = create<PriceState>((set, get) => ({
   },
 
   loadPricesForAllStores: async (items, storeIds) => {
-    const settings = getSettings();
-    if (!settings.pricingOptedIn) {
-      return;
-    }
-
     try {
+      const settings = getSettings();
+      if (!settings.pricingOptedIn) {
+        return;
+      }
+
       const results: Record<string, Record<string, PriceResult>> = {};
 
       await Promise.all(

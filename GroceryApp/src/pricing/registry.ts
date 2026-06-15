@@ -11,6 +11,11 @@
 import type { PriceAdapter } from './adapter';
 import type { PriceResult } from './types';
 import { getSettings, updateSettings } from '../config/settings';
+import { instacartAdapter } from './instacart';
+import { scrapingAdapter } from './scraping';
+import { crowdsourcedAdapter } from './crowdsourced';
+import { cloudFlyerAdapter } from './cloud-flyer';
+import { flyerScanAdapter } from './flyer-scan';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -20,6 +25,48 @@ export type AdapterEnableMap = Record<string, boolean>;
 
 class PriceRegistry {
   private adapters: PriceAdapter[] = [];
+
+  constructor() {
+    this.registerAdapter(instacartAdapter);
+    this.registerAdapter(scrapingAdapter);
+    this.registerAdapter(crowdsourcedAdapter);
+    this.registerAdapter(cloudFlyerAdapter);
+    this.registerAdapter(flyerScanAdapter);
+    this.seedMockPrices();
+  }
+
+  private seedMockPrices() {
+    const stores = [
+      { id: 'no-frills', name: 'No Frills' },
+      { id: 'loblaws', name: 'Loblaws' },
+      { id: 'freshco', name: 'FreshCo' },
+      { id: 'metro', name: 'Metro' },
+      { id: 'walmart', name: 'Walmart' },
+      { id: 'food-basics', name: 'Food Basics' },
+    ];
+    const items = [
+      { name: 'Apples', unit: 'pcs', quantity: 6, prices: { 'no-frills': 1.99, 'loblaws': 3.49, 'freshco': 2.29, 'metro': 2.99, 'walmart': 2.49, 'food-basics': 2.09 } },
+      { name: 'Bananas', unit: 'bunch', quantity: 1, prices: { 'no-frills': 1.19, 'loblaws': 1.79, 'freshco': 1.25, 'metro': 1.49, 'walmart': 1.29, 'food-basics': 1.15 } },
+      { name: 'Milk', unit: 'L', quantity: 1, prices: { 'no-frills': 3.89, 'loblaws': 4.49, 'freshco': 3.95, 'metro': 4.29, 'walmart': 3.99, 'food-basics': 3.79 } },
+    ];
+
+    for (const store of stores) {
+      for (const item of items) {
+        const price = (item.prices as any)[store.id];
+        if (price !== undefined) {
+          crowdsourcedAdapter.submitPrice({
+            itemName: item.name,
+            storeId: store.id,
+            storeName: store.name,
+            price,
+            unit: item.unit,
+            quantity: item.quantity,
+            submittedBy: 'system-seed',
+          }).catch(() => {});
+        }
+      }
+    }
+  }
 
   /**
    * Register a price adapter.

@@ -21,6 +21,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useIsFocused } from '@react-navigation/native';
 import type { GroceryItem, GroceryCategory } from '../types';
 import type { PriceResult } from '../pricing/types';
 import { BUILT_IN_CATEGORIES, STORE_PLAN_CATEGORY_ORDER } from '../types';
@@ -72,6 +73,7 @@ const STORE_NAME_MAP: Record<string, string> = {
 export default function GroceryListScreen({ route, navigation }: Props) {
   const { listId } = route.params;
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
 
   const themeMode = useThemeStore((s) => s.themeMode);
   const activeTheme = useActiveTheme();
@@ -189,7 +191,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
         ALL_STORE_IDS,
       ).catch(() => {});
     }
-  }, [Object.keys(items).length, listId, loadPricesForAllStores]);
+  }, [Object.keys(items).length, listId, loadPricesForAllStores, isFocused]);
 
   // Filtered and grouped items — unchecked stay in categories, checked go to "Got It"
   const groupedSections = useMemo(() => {

@@ -5,7 +5,7 @@
  * the main screens.
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -77,16 +77,43 @@ export default function HomeScreen({ navigation }: Props) {
   const syncState = useSyncStore((s) => s.syncState);
 
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const { shareInvite } = useShareInvite();
 
-  useEffect(() => {
-    loadLists()
-      .catch((err: Error) => {
-        Alert.alert('Error', err.message);
+  // Guard against stale async state on unmount / rapid re-mount
+  const abortedRef = useRef(false);
+
+  const doLoadLists = useCallback(() => {
+    abortedRef.current = false;
+    setLoadError(null);
+
+    const TIMEOUT_MS = 10_000;
+    const timeout = new Promise<never>((_resolve, reject) =>
+      setTimeout(() => reject(new Error('Loading timed out')), TIMEOUT_MS),
+    );
+
+    Promise.race([loadLists(), timeout])
+      .then(() => {
+        if (!abortedRef.current) {
+          setLoaded(true);
+          setLoadError(null);
+        }
       })
-      .finally(() => setLoaded(true));
+      .catch((err: Error) => {
+        if (!abortedRef.current) {
+          setLoaded(true);
+          setLoadError(err.message ?? 'Failed to load lists');
+        }
+      });
   }, [loadLists]);
+
+  useEffect(() => {
+    doLoadLists();
+    return () => {
+      abortedRef.current = true;
+    };
+  }, [doLoadLists]);
 
   const handleListPress = useCallback(
     (list: GroceryList) => {
@@ -102,14 +129,12 @@ export default function HomeScreen({ navigation }: Props) {
 
     try {
       const newList = await createList('My Grocery List', familyId);
-      setLoaded(false);
-      await loadLists();
       navigation.navigate('GroceryList', { listId: newList.id });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create list';
       Alert.alert('Error', message);
     }
-  }, [createList, members, loadLists, navigation]);
+  }, [createList, members, navigation]);
 
   const activeLists = Object.values(lists).filter(
     (l) => !l.isDeleted,
@@ -169,6 +194,16 @@ export default function HomeScreen({ navigation }: Props) {
         <View style={styles.loadingRow}>
           <ActivityIndicator size="small" color={theme.primary} />
           <Text style={[styles.loadingText, { color: theme.secondaryText }]}>Loading lists...</Text>
+        </View>
+      ) : loadError ? (
+        <View style={styles.emptyContainer}>
+          <Text style={[styles.emptyTitle, { color: '#f44336' }]}>Something went wrong</Text>
+          <Text style={[styles.emptySubtitle, { color: theme.secondaryText }]}>
+            {loadError}
+          </Text>
+          <TouchableOpacity style={[styles.createBtn, { backgroundColor: theme.primary }]} onPress={doLoadLists}>
+            <Text style={styles.createBtnText}>Retry</Text>
+          </TouchableOpacity>
         </View>
       ) : activeLists.length === 0 ? (
         <View style={styles.emptyContainer}>

@@ -359,7 +359,7 @@ async function getRecoverySeed(familyId: string): Promise<Uint8Array | null> {
       `${RECOVERY_SEED_ALIAS_PREFIX}${familyId}`,
     );
     if (!stored) return null;
-    return new Uint8Array(stored.split(',').map((s) => parseInt(s, 10)));
+    return new Uint8Array(stored.split(',').map((s: string) => parseInt(s, 10)));
   } catch {
     return null;
   }
