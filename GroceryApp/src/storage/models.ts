@@ -53,6 +53,7 @@ export class GroceryItemModel extends Model {
   @field('added_by') addedBy: string;
   @field('assigned_to') assignedTo: string | null;
   @field('notes') notes: string | null;                // encrypted
+  @field('image_url') imageUrl: string | null;
   @field('sort_order') sortOrder: number;
   @field('is_deleted') isDeleted: boolean;
   @field('deleted_at') deletedAt: number | null;

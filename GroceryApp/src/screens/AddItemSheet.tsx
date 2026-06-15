@@ -19,6 +19,7 @@ import {
   StyleSheet,
   Alert,
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
@@ -28,6 +29,9 @@ import { useFamilyStore } from '../state/useFamilyStore';
 import { parseVoiceText } from '../voice/nlp';
 import type { ParsedItem } from '../voice/types';
 import { useActiveTheme } from '../state/useThemeStore';
+import BarcodeScannerScreen from '../components/BarcodeScannerScreen';
+import { lookupProduct, submitNewProduct } from '../services/productLookup';
+import type { ProductInfo, ScanResult } from '../types/product';
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -174,6 +178,15 @@ export default function AddItemSheet({
   const [customUnit, setCustomUnit] = useState('pcs');
   const [adding, setAdding] = useState(false);
 
+  // Barcode scanner state
+  const [scanMode, setScanMode] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<{ barcode: string; product?: ProductInfo } | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [showNewProductForm, setShowNewProductForm] = useState(false);
+  const [newProductName, setNewProductName] = useState('');
+  const [pendingImageUrl, setPendingImageUrl] = useState<string | undefined>();
+
   // Voice input state
   const [voiceModalVisible, setVoiceModalVisible] = useState(false);
   const [voiceText, setVoiceText] = useState('');
@@ -191,6 +204,14 @@ export default function AddItemSheet({
     setVoiceParsed(null);
     setVoiceModalVisible(false);
     setVoiceProcessing(false);
+    // Reset scanner state
+    setScanMode(false);
+    setScanning(false);
+    setScanResult(null);
+    setScanError(null);
+    setShowNewProductForm(false);
+    setNewProductName('');
+    setPendingImageUrl(undefined);
   }, []);
 
   const handleClose = useCallback(() => {
@@ -200,7 +221,7 @@ export default function AddItemSheet({
 
   // Add an item
   const handleAddItem = useCallback(
-    async (name: string, category: string, unit: string, quantity: number) => {
+    async (name: string, category: string, unit: string, quantity: number, imageUrl?: string) => {
       setAdding(true);
       try {
         // Find familyId from first existing item or member
@@ -228,6 +249,7 @@ export default function AddItemSheet({
           category,
           isChecked: false,
           addedBy: activeMemberId ?? 'unknown',
+          imageUrl,
           sortOrder: maxSort + 1,
         });
 
@@ -247,8 +269,8 @@ export default function AddItemSheet({
   const handleAddCustom = useCallback(() => {
     if (!customName.trim()) return;
     const qty = parseInt(customQty, 10) || 1;
-    handleAddItem(customName.trim(), activeTab, customUnit, qty);
-  }, [customName, customQty, activeTab, customUnit, handleAddItem]);
+    handleAddItem(customName.trim(), activeTab, customUnit, qty, pendingImageUrl);
+  }, [customName, customQty, activeTab, customUnit, handleAddItem, pendingImageUrl]);
 
   // ── Voice Input Handlers ───────────────────────────────────────────────
 
@@ -330,6 +352,102 @@ export default function AddItemSheet({
     setVoiceText('');
     setVoiceParsed(null);
   }, []);
+
+  // ── Barcode Scanner Handlers ─────────────────────────────────────────────
+
+  /**
+   * Called when barcode scanner detects a code.
+   */
+  const handleBarcodeScanned = useCallback(
+    async (barcode: string) => {
+      setScanMode(false);
+      setScanning(true);
+      setScanError(null);
+      setScanResult(null);
+
+      try {
+        const result: ScanResult = await lookupProduct(barcode);
+
+        if (result.status === 'found') {
+          // Pre-fill form with product details
+          setScanResult({ barcode, product: result.product });
+          setPendingImageUrl(result.product.imageUrl);
+          setCustomName(result.product.productName);
+          setCustomUnit(result.product.quantityLabel
+            ? (result.product.quantityLabel.match(/[a-zA-Z]+/)?.[0] ?? 'pcs')
+            : 'pcs'
+          );
+          setCustomQty(result.product.quantityLabel
+            ? (result.product.quantityLabel.match(/\d+/)?.[0] ?? '1')
+            : '1'
+          );
+          // Auto-detect category
+          if (result.product.category) {
+            const matched = BUILT_IN_CATEGORIES.find((c) =>
+              result.product!.category!.toLowerCase().includes(c.toLowerCase()),
+            );
+            if (matched) setActiveTab(matched);
+          }
+        } else {
+          // Not found anywhere — show new product form
+          setScanResult({ barcode });
+          setShowNewProductForm(true);
+          setNewProductName('');
+        }
+      } catch (err) {
+        setScanError(
+          err instanceof Error ? err.message : 'Scan failed',
+        );
+      } finally {
+        setScanning(false);
+      }
+    },
+    [],
+  );
+
+  /**
+   * Open barcode scanner UI.
+   */
+  const openScanner = useCallback(() => {
+    setScanMode(true);
+    setScanResult(null);
+    setScanError(null);
+    setShowNewProductForm(false);
+  }, []);
+
+  /**
+   * Save manually entered name for a product not found by barcode lookup.
+   */
+  const handleSaveNewProduct = useCallback(async () => {
+    if (!scanResult?.barcode || !newProductName.trim()) return;
+    setAdding(true);
+    try {
+      // Persist the new product to Turso so future scans find it
+      const cleaned = await submitNewProduct({
+        barcode: scanResult.barcode,
+        rawName: newProductName.trim(),
+      });
+      setCustomName(cleaned.productName);
+      setShowNewProductForm(false);
+      setScanResult({
+        barcode: scanResult.barcode,
+        product: {
+          barcode: cleaned.barcode,
+          productName: cleaned.productName,
+          brand: cleaned.brand ?? undefined,
+          category: cleaned.category ?? undefined,
+          imageUrl: cleaned.imageUrl ?? undefined,
+          quantityLabel: cleaned.quantityLabel ?? undefined,
+          source: 'turso',
+        },
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to save product';
+      Alert.alert('Error', message);
+    } finally {
+      setAdding(false);
+    }
+  }, [scanResult, newProductName]);
 
   return (
     <Modal
@@ -515,9 +633,13 @@ export default function AddItemSheet({
                 <Text style={styles.voiceBtnText}>🎤 Voice Input</Text>
               )}
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.voiceBtnDisabled, { backgroundColor: theme.tabInactiveBg, borderColor: theme.border }]}>
-              <Text style={[styles.voiceBtnText, { color: theme.secondaryText }]}>Barcode Scan</Text>
-              <Text style={[styles.voiceBadge, { color: theme.secondaryText }]}>Phase 3</Text>
+            <TouchableOpacity
+              style={[styles.voiceBtn, { backgroundColor: theme.primary }]}
+              onPress={openScanner}
+              disabled={adding}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.voiceBtnText}>📷 Scan Barcode</Text>
             </TouchableOpacity>
           </View>
 
@@ -527,6 +649,88 @@ export default function AddItemSheet({
               <Text style={[styles.voiceResultText, { color: theme.primary }]}>
                 Voice Added: {voiceParsed.name} ({voiceParsed.quantity} {voiceParsed.unit})
               </Text>
+            </View>
+          )}
+
+          {/* Barcode scan result */}
+          {scanning && (
+            <View style={[styles.voiceResult, { backgroundColor: theme.voiceBtnBg + '20' }]}>
+              <ActivityIndicator size="small" color={theme.voiceBtnBg} />
+              <Text style={[styles.voiceResultText, { color: theme.voiceBtnBg, marginTop: 6 }]}>
+                Looking up product...
+              </Text>
+            </View>
+          )}
+
+          {scanError && (
+            <View style={[styles.voiceResult, { backgroundColor: '#EF4444' + '15' }]}>
+              <Text style={[styles.voiceResultText, { color: '#EF4444' }]}>
+                {scanError}
+              </Text>
+            </View>
+          )}
+
+          {scanResult?.product && !showNewProductForm && (
+            <View style={[styles.voiceResult, { backgroundColor: theme.primary + '15', flexDirection: 'row', alignItems: 'center', gap: 12 }]}>
+              {scanResult.product.imageUrl && (
+                <Image
+                  source={{ uri: scanResult.product.imageUrl }}
+                  style={{ width: 48, height: 48, borderRadius: 8 }}
+                  resizeMode="contain"
+                />
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.voiceResultText, { color: theme.primary }]}>
+                  Scanned: {scanResult.product.productName}
+                  {scanResult.product.brand ? ` (${scanResult.product.brand})` : ''}
+                </Text>
+                <Text style={[styles.voiceResultText, { color: theme.secondaryText, fontSize: 12, marginTop: 2 }]}>
+                  from {scanResult.product.source.replace(/_/g, ' ')}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* New product form — for items not found in any DB */}
+          {showNewProductForm && scanResult && (
+            <View style={[styles.customSection, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+              <Text style={[styles.inputLabel, { color: theme.secondaryText }]}>
+                PRODUCT NOT FOUND
+              </Text>
+              <Text style={[styles.voiceResultText, { color: theme.text, marginBottom: 10 }]}>
+                Barcode: {scanResult.barcode}
+              </Text>
+              <Text style={[styles.inputLabel, { color: theme.secondaryText }]}>
+                ENTER PRODUCT NAME
+              </Text>
+              <TextInput
+                style={[styles.customNameInput, { backgroundColor: theme.inputBg, color: theme.text, borderColor: theme.border }]}
+                value={newProductName}
+                onChangeText={setNewProductName}
+                placeholder="e.g. Nutella Hazelnut Spread"
+                placeholderTextColor={activeTheme === 'dark' ? '#64748B' : '#94A3B8'}
+                autoCapitalize="sentences"
+                autoFocus
+              />
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+                <TouchableOpacity
+                  style={[styles.addBtn, { flex: 1, backgroundColor: theme.tabInactiveBg }]}
+                  onPress={() => setShowNewProductForm(false)}
+                >
+                  <Text style={[styles.addBtnText, { color: theme.text }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.addBtn,
+                    { flex: 1, backgroundColor: theme.primary },
+                    !newProductName.trim() && styles.addBtnDisabled,
+                  ]}
+                  onPress={handleSaveNewProduct}
+                  disabled={!newProductName.trim()}
+                >
+                  <Text style={[styles.addBtnText, { color: theme.btnText }]}>Use Name</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
 
@@ -579,7 +783,18 @@ export default function AddItemSheet({
             </View>
           </View>
         </Modal>
+
       </KeyboardAvoidingView>
+
+      {/* ── Barcode Scanner Overlay (outside KeyboardAvoidingView to avoid framing issues) ── */}
+      {scanMode && (
+        <View style={StyleSheet.absoluteFill}>
+          <BarcodeScannerScreen
+            onScan={handleBarcodeScanned}
+            onCancel={() => setScanMode(false)}
+          />
+        </View>
+      )}
     </Modal>
   );
 }

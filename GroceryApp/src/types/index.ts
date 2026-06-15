@@ -41,6 +41,8 @@ export interface GroceryItem {
   addedBy: string;          // family member id
   assignedTo?: string;      // family member id
   notes?: string;
+  /** URL for product image (Open Food Facts, USDA, or user-captured) */
+  imageUrl?: string;
   sortOrder: number;
   // Claim-an-item lock: real-time flag to prevent same-trip duplicates
   /** Device/member ID of whoever claimed this item (for shopping). */
@@ -182,6 +184,14 @@ export interface AppSettings {
   contributeConsentShown?: boolean;
   /** Separate pool server URL for contribution transport isolation */
   poolUrl?: string;
+
+  // ─── Turso (Product Database) ────────────────────────────────────────────
+  /** Turso database URL (https://<db>-<org>.turso.io) */
+  tursoUrl?: string;
+  /** Turso database API token */
+  tursoToken?: string;
+  /** Whether the Turso product DB is connected */
+  tursoEnabled?: boolean;
 }
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';

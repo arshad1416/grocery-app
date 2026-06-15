@@ -36,5 +36,17 @@ export const migrations = schemaMigrations({
         }),
       ],
     },
+    // v2 → v3: Add image_url to grocery_items for product images
+    {
+      toVersion: 3,
+      steps: [
+        addColumns({
+          table: 'grocery_items',
+          columns: [
+            { name: 'image_url', type: 'string', isOptional: true },
+          ],
+        }),
+      ],
+    },
   ],
 });

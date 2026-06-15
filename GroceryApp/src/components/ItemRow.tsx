@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Animated,
+  Image,
 } from 'react-native';
 import type { GroceryItem } from '../types';
 import type { PriceResult } from '../pricing/types';
@@ -143,6 +144,15 @@ const ItemRow = memo(function ItemRow({ item, onToggle, onPress, onDelete, onMov
           </Animated.View>
         </TouchableOpacity>
 
+        {/* Product image thumbnail */}
+        {item.imageUrl && (
+          <Image
+            source={{ uri: item.imageUrl }}
+            style={styles.itemImage}
+            resizeMode="contain"
+          />
+        )}
+
         {/* Item info with strikethrough */}
         <View style={styles.itemInfo}>
           <View style={styles.itemNameContainer}>
@@ -253,6 +263,12 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  itemImage: {
+    width: 32,
+    height: 32,
+    borderRadius: 6,
+    marginRight: 8,
   },
   itemInfo: {
     flex: 1,

@@ -11,7 +11,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const schema = appSchema({
-  version: 2,
+  version: 3,
   tables: [
     // ─── Grocery Lists ────────────────────────────────────────────────────
     tableSchema({
@@ -45,6 +45,7 @@ export const schema = appSchema({
         { name: 'added_by', type: 'string' },
         { name: 'assigned_to', type: 'string', isOptional: true },
         { name: 'notes', type: 'string', isOptional: true },   // encrypted
+        { name: 'image_url', type: 'string', isOptional: true },
         { name: 'sort_order', type: 'number' },
         { name: 'is_deleted', type: 'boolean' },
         { name: 'deleted_at', type: 'number', isOptional: true },
