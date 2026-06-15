@@ -28,6 +28,7 @@ export interface PriceResult {
   source: PriceSource;
   timestamp: number;
   confidence: ConfidenceLevel;
+  imageUrl?: string;
 }
 
 export interface PriceSource {

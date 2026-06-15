@@ -180,6 +180,7 @@ export class FlippDealsAdapter implements PriceAdapter {
       },
       timestamp: new Date(match.deal.valid_to).getTime(),
       confidence: dealConfidence(match.deal.valid_to),
+      imageUrl: match.deal.image_url ?? undefined,
     };
   }
 
@@ -215,6 +216,7 @@ export class FlippDealsAdapter implements PriceAdapter {
         },
         timestamp: new Date(match.deal.valid_to).getTime(),
         confidence: dealConfidence(match.deal.valid_to),
+        imageUrl: match.deal.image_url ?? undefined,
       });
     }
 

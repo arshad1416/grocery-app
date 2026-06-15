@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import type { GroceryItem } from '../types';
 import type { PriceResult } from '../pricing/types';
+import { emojiForItem } from '../pricing/emoji-map';
 // PriceBadge removed — inline price display replaces it
 import { useActiveTheme } from '../state/useThemeStore';
 import { themeColors } from './groceryTheme';
@@ -144,13 +145,17 @@ const ItemRow = memo(function ItemRow({ item, onToggle, onPress, onDelete, onMov
           </Animated.View>
         </TouchableOpacity>
 
-        {/* Product image thumbnail */}
-        {item.imageUrl && (
+        {/* Product image thumbnail or emoji fallback */}
+        {item.imageUrl ? (
           <Image
             source={{ uri: item.imageUrl }}
             style={styles.itemImage}
             resizeMode="contain"
           />
+        ) : (
+          <View style={styles.emojiFallback}>
+            <Text style={styles.emojiText}>{emojiForItem(item.name)}</Text>
+          </View>
         )}
 
         {/* Item info with strikethrough */}
@@ -278,6 +283,17 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 6,
     marginRight: 8,
+  },
+  emojiFallback: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 8,
+  },
+  emojiText: {
+    fontSize: 28,
+    textAlign: 'center',
   },
   itemInfo: {
     flex: 1,
