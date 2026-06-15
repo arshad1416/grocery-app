@@ -58,6 +58,13 @@ if (
 // ─── Props ──────────────────────────────────────────────────────────────────
 
 type Props = NativeStackScreenProps<RootStackParamList, 'GroceryList'>;
+/** Section shape used by all SectionList variants — includes optional subtotal for route plans. */
+interface ListSection {
+  title: string;
+  data: GroceryItem[];
+  subtotal?: number;
+}
+
 
 // ─── Main Screen ─────────────────────────────────────────────────────────────
 
@@ -127,6 +134,11 @@ export default function GroceryListScreen({ route, navigation }: Props) {
           i.name.toLowerCase().includes(searchQuery.toLowerCase()),
       );
   }, [items, listId, searchQuery]);
+  // Memoize stop proposals once — used by both getItemPrice and routePlanSections
+  const stopProposals = useMemo(
+    () => computeStopProposals(filteredUncheckedItems, perStorePrices, storeNameMap),
+    [filteredUncheckedItems, perStorePrices, storeNameMap],
+  );
 
   // Get the best price for an item: per-store price if a store is selected,
   // or cheapest among stores in the selected route if a route is selected, otherwise flat price
@@ -136,8 +148,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
         return perStorePrices[selectedStoreId][itemId] ?? null;
       }
       if (selectedRouteNumStops) {
-        const proposals = computeStopProposals(filteredUncheckedItems, perStorePrices, storeNameMap);
-        const proposal = proposals.find(p => p.numStops === selectedRouteNumStops);
+        const proposal = stopProposals.find(p => p.numStops === selectedRouteNumStops);
         if (proposal) {
           let bestPriceResult: PriceResult | null = null;
           let cheapestPrice = Infinity;
@@ -153,7 +164,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       }
       return prices[itemId] ?? null;
     },
-    [selectedStoreId, selectedRouteNumStops, perStorePrices, prices, filteredUncheckedItems],
+    [selectedStoreId, selectedRouteNumStops, perStorePrices, prices, stopProposals],
   );
   // Claim-an-item expiry timer — checks every 60s (not 30s), React.memo on ItemRow prevents full re-render
   const [, forceRender] = useState(0);
@@ -240,7 +251,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     }
 
     // Build sections in the order of BUILT_IN_CATEGORIES + custom at end
-    const sections: { title: string; data: GroceryItem[] }[] = [];
+    const sections: ListSection[] = [];
     const builtInSet = new Set(BUILT_IN_CATEGORIES);
 
     for (const cat of BUILT_IN_CATEGORIES) {
@@ -327,7 +338,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       groups[cat].push(item);
     }
 
-    const sections: { title: string; data: GroceryItem[] }[] = [];
+    const sections: ListSection[] = [];
 
     for (const cat of STORE_PLAN_CATEGORY_ORDER) {
       if (groups[cat]) {
@@ -355,10 +366,8 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   // ─── Route-plan sections — grouped by store stop for selected route ──────────
   const routePlanSections = useMemo(() => {
     if (!selectedRouteNumStops) return null;
-
     // Get the proposal for this number of stops
-    const proposals = computeStopProposals(filteredUncheckedItems, perStorePrices, storeNameMap);
-    const proposal = proposals.find(p => p.numStops === selectedRouteNumStops);
+    const proposal = stopProposals.find(p => p.numStops === selectedRouteNumStops);
     if (!proposal) return null;
 
     // The stores in the proposal
@@ -409,7 +418,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       }
     }
 
-    const sections: { title: string; data: GroceryItem[]; subtotal?: number }[] = [];
+    const sections: ListSection[] = [];
 
     // Create sections in the order of the stops in the route
     routeStores.forEach((store, idx) => {
@@ -439,7 +448,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     }
 
     return sections;
-  }, [items, listId, searchQuery, gotItExpanded, selectedRouteNumStops, filteredUncheckedItems, perStorePrices]);
+  }, [items, listId, searchQuery, gotItExpanded, selectedRouteNumStops, stopProposals, perStorePrices]);
 
   // Item press → navigate to edit
   const handleItemPress = useCallback(
@@ -621,7 +630,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     },
   ).length;
 
-  const storeIdsWithPrices = getStoreIdsWithPrices();
+
 
   return (
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.bg }]}>
@@ -695,12 +704,17 @@ export default function GroceryListScreen({ route, navigation }: Props) {
         items={filteredUncheckedItems}
         perStorePrices={perStorePrices}
         storeNameMap={storeNameMap}
-        storeIds={storeIdsWithPrices}
         selectedRouteNumStops={selectedRouteNumStops}
         onSelectRouteNumStops={(numStops) => {
           setSelectedRouteNumStops(numStops);
           setSelectedStoreId(null);
         }}
+        fullItems={filteredUncheckedItems.map((item) => ({
+          id: item.id,
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+        }))}
       />
 
       {/* Sectioned list */}
@@ -782,7 +796,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
                 <CategoryHeader
                   category={section.title}
                   count={section.data.length}
-                  subtotal={(section as any).subtotal}
+                  subtotal={section.subtotal}
                 />
               );
             }}

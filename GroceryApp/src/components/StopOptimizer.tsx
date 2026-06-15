@@ -5,19 +5,25 @@
  * < 2 stores have prices.
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import type { PriceResult } from '../pricing/types';
 import { computeStopProposals } from '../pricing/stop-optimizer';
+import { computeTripPlan } from '../pricing/trip-plan';
+import { buildCacheKey, getCachedPlan, setCachedPlan } from '../pricing/trip-plan-cache';
 import { useActiveTheme } from '../state/useThemeStore';
+import MaxStopsStepper from './MaxStopsStepper';
+import TripPlanSheet from './TripPlanSheet';
+import type { TripPlan } from '../pricing/trip-plan';
 
 interface StopOptimizerProps {
   items: { id: string; quantity: number }[];
   perStorePrices: Record<string, Record<string, PriceResult>>;
   storeNameMap: Record<string, string>;
-  storeIds: string[];
   selectedRouteNumStops?: number | null;
   onSelectRouteNumStops?: (numStops: number | null) => void;
+  /** Full item data (name + unit) for trip plan computation */
+  fullItems?: { id: string; name: string; quantity: number; unit: string }[];
 }
 
 const themeColors = {
@@ -55,8 +61,12 @@ export default function StopOptimizer({
   storeNameMap,
   selectedRouteNumStops = null,
   onSelectRouteNumStops,
+  fullItems,
 }: StopOptimizerProps) {
   const [expanded, setExpanded] = useState(false);
+  const [maxStops, setMaxStops] = useState(3);
+  const [tripPlan, setTripPlan] = useState<TripPlan | null>(null);
+  const [showTripSheet, setShowTripSheet] = useState(false);
   const activeTheme = useActiveTheme();
   const theme = themeColors[activeTheme];
 
@@ -66,6 +76,28 @@ export default function StopOptimizer({
   );
 
   if (proposals.length < 2) return null;
+
+  // Trip plan handler
+  const handlePlanTrip = useCallback(() => {
+    const itemsToPlan = fullItems ?? items.map((i) => ({ ...i, name: '', unit: '' }));
+
+    // Check cache first
+    const cacheKey = buildCacheKey(
+      maxStops,
+      itemsToPlan.map((i) => i.id),
+      Object.keys(perStorePrices),
+      Object.fromEntries(itemsToPlan.map((i) => [i.id, i.quantity])),
+    );
+
+    let plan = getCachedPlan(cacheKey);
+    if (!plan) {
+      plan = computeTripPlan(itemsToPlan, perStorePrices, maxStops, undefined, storeNameMap);
+      setCachedPlan(cacheKey, plan);
+    }
+
+    setTripPlan(plan);
+    setShowTripSheet(true);
+  }, [fullItems, items, maxStops, perStorePrices, storeNameMap]);
 
   // Max savings is the savings of the last proposal
   const maxSavings = proposals[proposals.length - 1]?.savingsVsOneStop ?? 0;
@@ -152,8 +184,28 @@ export default function StopOptimizer({
               );
             })}
           </ScrollView>
+          {/* Max stops stepper + Plan My Trip button */}
+          <View style={styles.planSection}>
+            <Text style={[styles.planLabel, { color: theme.secondaryText }]}>
+              Max stops:
+            </Text>
+            <MaxStopsStepper value={maxStops} onChange={setMaxStops} />
+            <TouchableOpacity
+              style={[styles.planButton, { backgroundColor: theme.primary }]}
+              onPress={handlePlanTrip}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.planButtonText}>Plan My Trip</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
+      {/* Trip Plan Sheet */}
+      <TripPlanSheet
+        visible={showTripSheet}
+        plan={tripPlan}
+        onClose={() => setShowTripSheet(false)}
+      />
     </View>
   );
 }
@@ -252,6 +304,29 @@ const styles = StyleSheet.create({
   },
   savingsText: {
     fontSize: 10,
+    fontWeight: '700',
+  },
+  planSection: {
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingBottom: 12,
+    paddingTop: 4,
+    gap: 10,
+  },
+  planLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  planButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    borderRadius: 10,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+  },
+  planButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '700',
   },
 });

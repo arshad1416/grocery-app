@@ -19,6 +19,8 @@ import type { PriceResult, SubmittedPrice } from './types';
 import { priceRegistry } from './registry';
 import { crowdsourcedAdapter } from './crowdsourced';
 import { getSettings } from '../config/settings';
+import { computeTripPlan, type TripPlan } from './trip-plan';
+import { buildCacheKey, getCachedPlan, setCachedPlan } from './trip-plan-cache';
 
 // ─── State Shape ────────────────────────────────────────────────────────────
 
@@ -67,6 +69,19 @@ export interface PriceState {
     items: { id: string; name: string }[],
     storeIds: string[],
   ) => Promise<void>;
+
+  // ─── Trip Plan State ──────────────────────────────────────────────────
+  /** Current trip plan (computed after prices load) */
+  tripPlan: TripPlan | null;
+  /** Max stops for trip planning */
+  maxStops: number;
+  /** Set max stops and recompute plan */
+  setMaxStops: (maxStops: number) => void;
+  /** Precompute trip plan from current prices */
+  precomputeTripPlan: (
+    items: { id: string; name: string; quantity: number; unit: string }[],
+    storeNameMap: Record<string, string>,
+  ) => void;
 }
 
 // ─── Store ──────────────────────────────────────────────────────────────────
@@ -79,6 +94,8 @@ export const usePriceStore = create<PriceState>((set, get) => ({
   error: null,
   priceTimestamps: {},
   isRefreshing: false,
+  tripPlan: null,
+  maxStops: 3,
 
   loadPrices: async (items, defaultStoreId) => {
     try {
@@ -276,5 +293,34 @@ export const usePriceStore = create<PriceState>((set, get) => ({
     } finally {
       set({ isRefreshing: false });
     }
+  },
+
+  setMaxStops: (maxStops: number) => {
+    set({ maxStops, tripPlan: null }); // Reset plan so it's recomputed
+  },
+
+  precomputeTripPlan: (items, storeNameMap) => {
+    const { perStorePrices, maxStops } = get();
+    const storeIds = Object.keys(perStorePrices);
+    if (storeIds.length === 0 || items.length === 0) {
+      set({ tripPlan: null });
+      return;
+    }
+
+    // Check cache
+    const cacheKey = buildCacheKey(
+      maxStops,
+      items.map((i) => i.id),
+      storeIds,
+      Object.fromEntries(items.map((i) => [i.id, i.quantity])),
+    );
+
+    let plan = getCachedPlan(cacheKey);
+    if (!plan) {
+      plan = computeTripPlan(items, perStorePrices, maxStops, undefined, storeNameMap);
+      setCachedPlan(cacheKey, plan);
+    }
+
+    set({ tripPlan: plan });
   },
 }));
