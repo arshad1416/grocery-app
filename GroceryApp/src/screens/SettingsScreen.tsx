@@ -581,6 +581,22 @@ export default function SettingsScreen({ navigation }: Props) {
         </TouchableOpacity>
       </View>
 
+      {/* ── Privacy ──────────────────────────────────────────────────────── */}
+      <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Privacy</Text>
+        <Text style={[styles.sectionDescription, { color: theme.secondaryText }]}>
+          View how StopHop handles your data, manage privacy controls, and access legal documents.
+        </Text>
+        <TouchableOpacity
+          style={[styles.securityButton, { backgroundColor: '#6366F1' }]}
+          onPress={() => navigation.navigate('Privacy')}
+        >
+          <Text style={styles.securityButtonText}>
+            🔒 Privacy Settings
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       {/* ── Pricing Subsystem ──────────────────────────────────────────── */}
       <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
         <Text style={[styles.sectionTitle, { color: theme.text }]}>Pricing</Text>

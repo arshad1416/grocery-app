@@ -125,13 +125,14 @@ function App() {
         const deepLinks = await import('./src/navigation/deepLinks');
 
         // 3. Dynamically import all screens at once
-        const [Home, GroceryList, ItemEdit, Pairing, Settings, Recovery] = await Promise.all([
+        const [Home, GroceryList, ItemEdit, Pairing, Settings, Recovery, Privacy] = await Promise.all([
           import('./src/screens/HomeScreen'),
           import('./src/screens/GroceryListScreen'),
           import('./src/screens/ItemEditScreen'),
           import('./src/screens/PairingScreen'),
           import('./src/screens/SettingsScreen'),
           import('./src/screens/RecoveryScreen'),
+          import('./src/screens/PrivacyScreen'),
         ]);
 
         setScreens({
@@ -141,6 +142,7 @@ function App() {
           Pairing: Pairing.default,
           Settings: Settings.default,
           Recovery: Recovery.default,
+          Privacy: Privacy.default,
           linkingConfig: deepLinks.linkingConfig,
         });
         setReady(true);
@@ -175,6 +177,7 @@ function App() {
             <Stack.Screen name="ItemEdit" component={Screens.ItemEdit} />
             <Stack.Screen name="Pairing" component={Screens.Pairing} />
             <Stack.Screen name="Settings" component={Screens.Settings} />
+            <Stack.Screen name="Privacy" component={Screens.Privacy} />
             <Stack.Screen name="Recovery" component={Screens.Recovery} />
           </Stack.Navigator>
         </NavigationContainer>

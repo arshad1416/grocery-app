@@ -223,6 +223,11 @@ function buildNotificationText(payload: NotificationPayload): { title: string; b
         title: 'Item Removed',
         body: `"${truncatedItem}" was removed from ${truncatedList}`,
       };
+    case 'list_deleted':
+      return {
+        title: 'List Deleted',
+        body: `"${truncatedList}" was deleted`,
+      };
     default:
       return {
         title: 'List Updated',

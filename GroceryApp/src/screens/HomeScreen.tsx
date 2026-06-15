@@ -3,6 +3,12 @@
  *
  * Shows existing grocery lists (or empty state) and provides quick access to
  * the main screens.
+ *
+ * Features:
+ *  - Swipe-to-delete on list cards (SwipeableListCard)
+ *  - Long-press context menu for delete/share (ContextMenu)
+ *  - Delete confirmation modal (DeleteConfirmationModal)
+ *  - Undo toast after deletion (UndoToast)
  */
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
@@ -14,6 +20,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  GestureResponderEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -24,6 +31,10 @@ import type { GroceryList } from '../types';
 import type { RootStackParamList } from '../navigation/deepLinks';
 import { useShareInvite } from '../hooks/useShareInvite';
 import { useThemeStore, useActiveTheme } from '../state/useThemeStore';
+import SwipeableListCard from '../components/SwipeableListCard';
+import ContextMenu from '../components/ContextMenu';
+import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
+import UndoToast from '../components/UndoToast';
 
 // ─── Theme Colors ────────────────────────────────────────────────────────────
 
@@ -70,6 +81,8 @@ export default function HomeScreen({ navigation }: Props) {
   const isLoading = useListStore((s) => s.isLoading);
   const loadLists = useListStore((s) => s.loadLists);
   const createList = useListStore((s) => s.createList);
+  const deleteList = useListStore((s) => s.deleteList);
+  const restoreList = useListStore((s) => s.restoreList);
 
   const activeMemberId = useFamilyStore((s) => s.activeMemberId);
   const members = useFamilyStore((s) => s.members);
@@ -78,6 +91,17 @@ export default function HomeScreen({ navigation }: Props) {
 
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Delete flow state
+  const [pendingDelete, setPendingDelete] = useState<GroceryList | null>(null);
+  const [undoList, setUndoList] = useState<GroceryList | null>(null);
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    list: GroceryList | null;
+    position?: { x: number; y: number };
+  }>({ visible: false, list: null });
 
   const { shareInvite } = useShareInvite();
 
@@ -135,6 +159,97 @@ export default function HomeScreen({ navigation }: Props) {
       Alert.alert('Error', message);
     }
   }, [createList, members, navigation]);
+
+  // ─── Delete handlers ────────────────────────────────────────────────────
+
+  /** Called by SwipeableListCard or ContextMenu when user initiates delete */
+  const handleDeleteInitiated = useCallback((list: GroceryList) => {
+    setPendingDelete(list);
+  }, []);
+
+  /** Called when user confirms deletion in the modal */
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!pendingDelete) return;
+    const deletedList = { ...pendingDelete };
+    setUndoList(deletedList);
+    await deleteList(pendingDelete.id);
+    setPendingDelete(null);
+  }, [pendingDelete, deleteList]);
+
+  /** Called when user cancels deletion */
+  const handleDeleteCancel = useCallback(() => {
+    setPendingDelete(null);
+  }, []);
+
+  /** Called when user taps Undo in the toast */
+  const handleUndo = useCallback(async () => {
+    if (!undoList) return;
+    // Restore the list using the dedicated restoreList action
+    // which re-adds to state, Yjs index, and sync manager
+    await restoreList(undoList);
+    setUndoList(null);
+  }, [undoList, restoreList]);
+
+  /** Called when undo toast auto-dismisses */
+  const handleUndoDismiss = useCallback(() => {
+    setUndoList(null);
+  }, []);
+
+  // ─── Context menu handlers ──────────────────────────────────────────────
+
+  /** Called by SwipeableListCard on long-press */
+  const handleLongPress = useCallback(
+    (list: GroceryList, event: GestureResponderEvent) => {
+      const { pageX, pageY } = event.nativeEvent;
+      setContextMenu({
+        visible: true,
+        list,
+        position: { x: pageX - 100, y: pageY - 60 },
+      });
+    },
+    [],
+  );
+
+  const handleContextMenuClose = useCallback(() => {
+    setContextMenu({ visible: false, list: null });
+  }, []);
+
+  const handleContextMenuDelete = useCallback(() => {
+    if (contextMenu.list) {
+      handleDeleteInitiated(contextMenu.list);
+    }
+  }, [contextMenu.list, handleDeleteInitiated]);
+
+  const handleContextMenuShare = useCallback(() => {
+    if (contextMenu.list) {
+      shareInvite(
+        `grocceryapp://invite?token=${encodeURIComponent(
+          JSON.stringify({
+            listId: contextMenu.list.id,
+            listName: contextMenu.list.name,
+            familyId: contextMenu.list.familyId,
+          }),
+        )}`,
+      );
+    }
+  }, [contextMenu.list, shareInvite]);
+
+  // ─── Share from card button (existing) ──────────────────────────────────
+
+  const handleShare = useCallback(
+    (list: GroceryList) => {
+      shareInvite(
+        `grocceryapp://invite?token=${encodeURIComponent(
+          JSON.stringify({
+            listId: list.id,
+            listName: list.name,
+            familyId: list.familyId,
+          }),
+        )}`,
+      );
+    },
+    [shareInvite],
+  );
 
   const activeLists = Object.values(lists).filter(
     (l) => !l.isDeleted,
@@ -221,44 +336,15 @@ export default function HomeScreen({ navigation }: Props) {
           contentContainerStyle={styles.listContent}
         >
           {activeLists.map((list) => (
-            <TouchableOpacity
+            <SwipeableListCard
               key={list.id}
-              style={[styles.listCard, { backgroundColor: theme.cardBg }]}
+              list={list}
               onPress={() => handleListPress(list)}
-            >
-              <View style={styles.listCardInfo}>
-                <Text style={[styles.listCardName, { color: theme.text }]}>{list.name}</Text>
-                {list.description ? (
-                  <Text style={[styles.listCardDesc, { color: theme.secondaryText }]} numberOfLines={1}>
-                    {list.description}
-                  </Text>
-                ) : null}
-                {list.storePreference ? (
-                  <Text style={[styles.listCardStore, { color: theme.secondaryText }]}>
-                    🏪 {list.storePreference}
-                  </Text>
-                ) : null}
-              </View>
-              <View style={styles.listCardActions}>
-                <TouchableOpacity
-                  style={[styles.shareListBtn, { backgroundColor: theme.primary }]}
-                  onPress={() =>
-                    shareInvite(
-                      `grocceryapp://invite?token=${encodeURIComponent(
-                        JSON.stringify({
-                          listId: list.id,
-                          listName: list.name,
-                          familyId: list.familyId,
-                        }),
-                      )}`,
-                    )
-                  }
-                >
-                  <Text style={styles.shareListBtnText}>Share</Text>
-                </TouchableOpacity>
-                <Text style={styles.listCardArrow}>›</Text>
-              </View>
-            </TouchableOpacity>
+              onDelete={() => handleDeleteInitiated(list)}
+              onShare={() => handleShare(list)}
+              onLongPress={(event) => handleLongPress(list, event)}
+              theme={theme}
+            />
           ))}
         </ScrollView>
       )}
@@ -272,6 +358,35 @@ export default function HomeScreen({ navigation }: Props) {
         >
           <Text style={styles.fabText}>+</Text>
         </TouchableOpacity>
+      )}
+
+      {/* Context Menu (long-press) */}
+      <ContextMenu
+        visible={contextMenu.visible}
+        listName={contextMenu.list?.name ?? ''}
+        onDelete={handleContextMenuDelete}
+        onShare={handleContextMenuShare}
+        onClose={handleContextMenuClose}
+        theme={theme}
+        position={contextMenu.position}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        visible={!!pendingDelete}
+        listName={pendingDelete?.name ?? ''}
+        onCancel={handleDeleteCancel}
+        onConfirm={handleDeleteConfirm}
+        theme={theme}
+      />
+
+      {/* Undo Toast */}
+      {undoList && (
+        <UndoToast
+          message={`"${undoList.name}" deleted`}
+          onUndo={handleUndo}
+          onDismiss={handleUndoDismiss}
+        />
       )}
     </View>
   );
@@ -377,57 +492,6 @@ const styles = StyleSheet.create({
   listContent: {
     padding: 12,
     gap: 8,
-  },
-  listCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  listCardInfo: {
-    flex: 1,
-  },
-  listCardName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 2,
-  },
-  listCardDesc: {
-    fontSize: 13,
-    color: '#999',
-  },
-  listCardStore: {
-    fontSize: 12,
-    color: '#888',
-    marginTop: 2,
-  },
-  listCardArrow: {
-    fontSize: 22,
-    color: '#ccc',
-    marginLeft: 8,
-  },
-  listCardActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  shareListBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    backgroundColor: '#2196F3',
-  },
-  shareListBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#fff',
   },
   fab: {
     position: 'absolute',

@@ -192,6 +192,10 @@ export interface AppSettings {
   tursoToken?: string;
   /** Whether the Turso product DB is connected */
   tursoEnabled?: boolean;
+  /** FSA (first 3 chars of postal code) for Flipp deal matching */
+  flippFsa?: string;
+  /** Whether Sentry crash reporting is enabled (default: true) */
+  sentryEnabled?: boolean;
 }
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';

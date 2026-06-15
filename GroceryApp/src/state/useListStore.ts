@@ -30,6 +30,8 @@ export interface ListState {
   createList: (name: string, familyId: string, description?: string) => Promise<GroceryList>;
   updateList: (id: string, changes: Partial<GroceryList>) => Promise<void>;
   deleteList: (id: string) => Promise<void>;
+  /** Restore a soft-deleted list (used by undo after delete) */
+  restoreList: (list: GroceryList) => Promise<void>;
   clearError: () => void;
 }
 
@@ -154,7 +156,7 @@ export const useListStore = create<ListState>((set, get) => ({
     const existing = get().lists[id];
     if (!existing) return;
 
-    // Soft-delete via Yjs
+    // 1. Soft-delete via Yjs
     yjsUpdateListMeta(id, {
       isDeleted: true,
       deletedAt: Date.now(),
@@ -162,19 +164,73 @@ export const useListStore = create<ListState>((set, get) => ({
       syncStatus: 'deleted',
     });
 
+    // 2. Remove from lists index
+    const indexDoc = getDoc('__lists_index__');
+    indexDoc.transact(() => {
+      const indexMap = indexDoc.getMap('listIds');
+      indexMap.delete(id);
+    });
+
+    // 3. Unregister from sync
+    syncManager.unregisterList(id);
+
+    // 4. Send family notification
+    try {
+      const { sendFamilyNotification } = await import('../notifications/NotificationManager');
+      const encryptionKey = syncManager.getEncryptionKey();
+      if (encryptionKey) {
+        await sendFamilyNotification(
+          'list_deleted',
+          id,
+          existing.name,
+          id,              // listId as "itemId" for list-level events
+          existing.name,   // list name as "itemName"
+          'list',          // category
+          encryptionKey,
+        );
+      }
+    } catch {
+      // Notifications are best-effort — non-critical
+    }
+
+    // 5. Update local state
+    set((state) => {
+      const { [id]: _, ...remaining } = state.lists;
+      return { lists: remaining };
+    });
+  },
+
+  restoreList: async (list) => {
+    const restored: GroceryList = {
+      ...list,
+      isDeleted: false,
+      deletedAt: null,
+      isActive: true,
+      syncStatus: 'updated',
+      updatedAt: Date.now(),
+    };
+
+    // 1. Un-delete via Yjs
+    yjsUpdateListMeta(list.id, {
+      isDeleted: false,
+      deletedAt: null,
+      isActive: true,
+      syncStatus: 'updated',
+    });
+
+    // 2. Re-register in the lists index
+    const indexDoc = getDoc('__lists_index__');
+    indexDoc.transact(() => {
+      const indexMap = indexDoc.getMap('listIds');
+      indexMap.set(list.id, true);
+    });
+
+    // 3. Re-register for sync
+    syncManager.registerList(list.id);
+
+    // 4. Re-add to local state
     set((state) => ({
-      lists: {
-        ...state.lists,
-        [id]: {
-          ...existing,
-          isActive: false,
-          isDeleted: true,
-          deletedAt: Date.now(),
-          syncStatus: 'deleted' as SyncStatus,
-          version: existing.version + 1,
-          updatedAt: Date.now(),
-        },
-      },
+      lists: { ...state.lists, [list.id]: restored },
     }));
   },
 

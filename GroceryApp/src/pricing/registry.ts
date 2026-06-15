@@ -16,6 +16,7 @@ import { scrapingAdapter } from './scraping';
 import { crowdsourcedAdapter } from './crowdsourced';
 import { cloudFlyerAdapter } from './cloud-flyer';
 import { flyerScanAdapter } from './flyer-scan';
+import { flippDealsAdapter } from './flipp-deals-adapter';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -32,6 +33,7 @@ class PriceRegistry {
     this.registerAdapter(crowdsourcedAdapter);
     this.registerAdapter(cloudFlyerAdapter);
     this.registerAdapter(flyerScanAdapter);
+    this.registerAdapter(flippDealsAdapter);
     this.seedMockPrices();
   }
 

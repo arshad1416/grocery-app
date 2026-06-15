@@ -10,7 +10,43 @@ export type NotificationEventType =
   | 'item_added'
   | 'item_checked'
   | 'item_unchecked'
-  | 'item_deleted';
+  | 'item_deleted'
+  | 'list_deleted'
+  | 'voice_item_added'
+  | 'voice_item_checked';
+
+/** Voice assistant command source */
+export type VoiceAssistantSource = 'alexa' | 'google' | 'home_assistant' | 'siri' | 'unknown';
+
+/** Voice assistant action type */
+export type VoiceAction = 'add' | 'read' | 'check';
+
+/** Voice item payload — sent from voice assistant via relay WebSocket */
+export interface VoiceItemPayload {
+  /** The action to perform */
+  action: VoiceAction;
+  /** Generated item ID (for add actions) */
+  itemId?: string;
+  /** Target list ID */
+  listId: string;
+  /** Target list name (optional, null = primary list) */
+  listName: string | null;
+  /** Item details (for add actions) */
+  item?: {
+    id: string;
+    name: string;
+    quantity: number;
+    unit: string;
+    isChecked: boolean;
+    category: string;
+  };
+  /** Item name to check off (for check actions) */
+  itemName?: string;
+  /** Source voice assistant */
+  source: VoiceAssistantSource;
+  /** Timestamp of the voice command (ms since epoch) */
+  timestamp: number;
+}
 
 /** The notification payload — encrypted end-to-end before sending over the wire */
 export interface NotificationPayload {

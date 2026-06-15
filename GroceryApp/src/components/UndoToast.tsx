@@ -6,6 +6,10 @@
  *  - onUndo: called when user taps Undo
  *  - duration: auto-dismiss timeout in ms (default 5000)
  *  - onDismiss: called when toast disappears (auto or manual)
+ *
+ * Fixes applied:
+ * - Stale closure: PanResponder uses refs for dismiss/onUndo callbacks
+ * - Toast properly animates in/out with dark theme support
  */
 
 import React, { useEffect, useRef, useCallback } from 'react';
@@ -14,7 +18,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  View,
   PanResponder,
 } from 'react-native';
 
@@ -36,7 +39,52 @@ export default function UndoToast({
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const panY = useRef(new Animated.Value(0)).current;
 
-  // Slide in on mount
+  // Refs for callbacks to avoid stale closures in PanResponder
+  const onDismissRef = useRef(onDismiss);
+  const onUndoRef = useRef(onUndo);
+
+  useEffect(() => { onDismissRef.current = onDismiss; }, [onDismiss]);
+  useEffect(() => { onUndoRef.current = onUndo; }, [onUndo]);
+
+  const dismiss = useCallback(() => {
+    if (dismissTimer.current) clearTimeout(dismissTimer.current);
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: 100,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      onDismissRef.current();
+    });
+  }, [slideAnim, opacityAnim]);
+
+  const handleUndo = useCallback(() => {
+    if (dismissTimer.current) clearTimeout(dismissTimer.current);
+    onUndoRef.current();
+    // Animate out immediately
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: 100,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacityAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      onDismissRef.current();
+    });
+  }, [slideAnim, opacityAnim]);
+
+  // Slide in on mount + auto-dismiss timer
   useEffect(() => {
     Animated.parallel([
       Animated.spring(slideAnim, {
@@ -63,45 +111,7 @@ export default function UndoToast({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const dismiss = useCallback(() => {
-    if (dismissTimer.current) clearTimeout(dismissTimer.current);
-    Animated.parallel([
-      Animated.timing(slideAnim, {
-        toValue: 100,
-        duration: 250,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacityAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      onDismiss();
-    });
-  }, [slideAnim, opacityAnim, onDismiss]);
-
-  const handleUndo = useCallback(() => {
-    if (dismissTimer.current) clearTimeout(dismissTimer.current);
-    onUndo();
-    // Animate out immediately
-    Animated.parallel([
-      Animated.timing(slideAnim, {
-        toValue: 100,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacityAnim, {
-        toValue: 0,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      onDismiss();
-    });
-  }, [slideAnim, opacityAnim, onUndo, onDismiss]);
-
-  // Swipe to dismiss
+  // Swipe to dismiss — uses refs for stale closure safety
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: () => true,
@@ -112,7 +122,23 @@ export default function UndoToast({
       },
       onPanResponderRelease: (_, gesture) => {
         if (gesture.dy < -40) {
-          dismiss();
+          // Use dismiss via a timeout to avoid stale closure;
+          // we call dismissRef pattern indirectly through the timer
+          if (dismissTimer.current) clearTimeout(dismissTimer.current);
+          Animated.parallel([
+            Animated.timing(slideAnim, {
+              toValue: 100,
+              duration: 250,
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacityAnim, {
+              toValue: 0,
+              duration: 200,
+              useNativeDriver: true,
+            }),
+          ]).start(() => {
+            onDismissRef.current();
+          });
         } else {
           Animated.spring(panY, {
             toValue: 0,

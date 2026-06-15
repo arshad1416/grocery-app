@@ -22,6 +22,7 @@ export type RootStackParamList = {
   ItemEdit: { listId: string; itemId?: string };
   Pairing: undefined;
   Settings: undefined;
+  Privacy: undefined;
   Invite: { token: string };
   Recovery: { mode: 'show' | 'recover' } | undefined;
 };
