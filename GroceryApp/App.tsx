@@ -154,6 +154,7 @@ function App() {
           Settings: Settings.default,
           Recovery: Recovery.default,
           Privacy: Privacy.default,
+          Invite: Pairing.default, // Invite links → PairingScreen wrapper
           linkingConfig: deepLinks.linkingConfig,
         });
         setReady(true);
@@ -190,6 +191,7 @@ function App() {
             <Stack.Screen name="Settings" component={Screens.Settings} />
             <Stack.Screen name="Privacy" component={Screens.Privacy} />
             <Stack.Screen name="Recovery" component={Screens.Recovery} />
+            <Stack.Screen name="Invite" component={Screens.Invite} />
           </Stack.Navigator>
         </NavigationContainer>
         <StatusBar style="light" />
