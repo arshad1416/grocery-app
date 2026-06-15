@@ -87,7 +87,7 @@ export async function cleanProductName(rawName: string): Promise<CleanedResult> 
         Authorization: `Bearer ${aiKey}`,
       },
       body: JSON.stringify({
-        model: 'mimo-v2.5-pro',
+        model: 'deepseek-v4-flash',
         messages: [
           {
             role: 'system',
