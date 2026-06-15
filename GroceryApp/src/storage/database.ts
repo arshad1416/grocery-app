@@ -39,7 +39,7 @@ import SQLiteAdapter from '@nozbe/watermelondb/adapters/sqlite';
 
 import { schema } from './schema';
 import { migrations } from './migrations';
-import { GroceryListModel, GroceryItemModel, FamilyMemberModel } from './models';
+import { GroceryListModel, GroceryItemModel, FamilyMemberModel, NotificationModel } from './models';
 
 // ─── Lazy Singleton ──────────────────────────────────────────────────────────
 // The database is created lazily (not at module evaluation time) so that any
@@ -82,6 +82,7 @@ export function getDatabase(): Database {
       GroceryListModel,
       GroceryItemModel,
       FamilyMemberModel,
+      NotificationModel,
     ],
   });
 
@@ -97,5 +98,5 @@ export function getDatabaseInitError(): Error | null {
   return _initError;
 }
 
-export { GroceryListModel, GroceryItemModel, FamilyMemberModel };
+export { GroceryListModel, GroceryItemModel, FamilyMemberModel, NotificationModel };
 export type { TableName } from './schema';

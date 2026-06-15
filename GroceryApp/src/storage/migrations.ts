@@ -48,5 +48,9 @@ export const migrations = schemaMigrations({
         }),
       ],
     },
+    // v3 → v4: Add notifications table for family notification system
+    // The notifications table is created via schema — WatermelonDB handles
+    // new table creation automatically when the schema version increments.
+    // No addColumns needed for existing tables.
   ],
 });

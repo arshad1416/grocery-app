@@ -80,3 +80,19 @@ export class FamilyMemberModel extends Model {
   @field('joined_at') joinedAt: number;
   @field('updated_at') updatedAt: number;
 }
+
+// ─── Notification Model ────────────────────────────────────────────────────
+
+export class NotificationModel extends Model {
+  static table = 'notifications' as const;
+
+  @field('event_type') eventType: string;
+  @field('timestamp') timestamp: number;
+  @field('sender_device_id') senderDeviceId: string;
+  @field('list_id') listId: string;
+  @field('list_name') listName: string;
+  @field('item_id') itemId: string;
+  @field('item_name') itemName: string;
+  @field('item_category') itemCategory: string;
+  @field('is_read') isRead: boolean;
+}

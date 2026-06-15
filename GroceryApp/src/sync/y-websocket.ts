@@ -84,6 +84,8 @@ export class YjsWebSocketClient {
   onRemoteUpdate?: (listId: string, update: Uint8Array) => void;
   /** Called when the offline queue is drained */
   onQueueDrained?: () => void;
+  /** Called when a notification message is received from the relay */
+  onNotification?: (listId: string, payload: EncryptedData, senderDeviceId: string) => void;
 
   constructor(config: WebSocketConfig) {
     this.config = config;
@@ -259,6 +261,25 @@ export class YjsWebSocketClient {
   }
 
   /**
+   * Send an encrypted notification to the relay server.
+   * Notifications are best-effort — if offline, the notification is dropped.
+   */
+  sendNotification(listId: string, encryptedPayload: EncryptedData): void {
+    if (this.state !== 'connected' || !this.ws) {
+      console.warn('YjsWebSocket: offline, notification dropped (non-critical)');
+      return; // Notifications are best-effort — don't queue
+    }
+
+    this.sendMessage({
+      type: 'notification',
+      familyId: this.config.familyId,
+      deviceId: this.config.deviceId,
+      listId,
+      payload: encryptedPayload,
+    });
+  }
+
+  /**
    * Flush all queued updates to the relay server.
    */
   private flushOfflineQueue(): void {
@@ -321,6 +342,12 @@ export class YjsWebSocketClient {
       }
       case 'ack': {
         // Server acknowledged — nothing to do
+        break;
+      }
+      case 'notification': {
+        if (data.listId && data.payload) {
+          this.onNotification?.(data.listId, data.payload, data.deviceId ?? '');
+        }
         break;
       }
       case 'error': {
@@ -434,7 +461,7 @@ export class YjsWebSocketClient {
 // ─── Relay Message Types ─────────────────────────────────────────────────────
 
 interface RelayMessage {
-  type: 'auth' | 'auth_ack' | 'identity' | 'update' | 'ack' | 'error';
+  type: 'auth' | 'auth_ack' | 'identity' | 'update' | 'ack' | 'error' | 'notification';
   familyId?: string;
   deviceId?: string;
   listId?: string;

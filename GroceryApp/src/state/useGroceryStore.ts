@@ -99,6 +99,27 @@ export const useGroceryStore = create<GroceryState>((set, get) => ({
       items: { ...state.items, [newItem.id]: newItem },
     }));
 
+    // Fire family notification (best-effort, non-blocking)
+    try {
+      const { sendFamilyNotification } = await import('../notifications/NotificationManager');
+      const { getListMeta } = await import('../sync/yjs-adapter');
+      const encryptionKey = syncManager.getEncryptionKey();
+      if (encryptionKey) {
+        const listName = (getListMeta(listId).get('name') as string) || 'Grocery List';
+        sendFamilyNotification(
+          'item_added',
+          listId,
+          listName,
+          newItem.id,
+          newItem.name,
+          newItem.category,
+          encryptionKey,
+        ).catch(() => {}); // fire-and-forget
+      }
+    } catch {
+      // Notification system not available — non-critical
+    }
+
     return newItem;
   },
 
@@ -130,7 +151,30 @@ export const useGroceryStore = create<GroceryState>((set, get) => ({
   toggleChecked: async (id) => {
     const item = get().items[id];
     if (!item) return;
-    await get().updateItem(id, { isChecked: !item.isChecked });
+    const wasChecked = item.isChecked;
+    await get().updateItem(id, { isChecked: !wasChecked });
+
+    // Fire family notification (best-effort, non-blocking)
+    try {
+      const { sendFamilyNotification } = await import('../notifications/NotificationManager');
+      const { getListMeta } = await import('../sync/yjs-adapter');
+      const encryptionKey = syncManager.getEncryptionKey();
+      if (encryptionKey) {
+        const listId = item.listId || get().activeListId || '';
+        const listName = (getListMeta(listId).get('name') as string) || 'Grocery List';
+        sendFamilyNotification(
+          wasChecked ? 'item_unchecked' : 'item_checked',
+          listId,
+          listName,
+          id,
+          item.name,
+          item.category,
+          encryptionKey,
+        ).catch(() => {}); // fire-and-forget
+      }
+    } catch {
+      // Notification system not available — non-critical
+    }
   },
 
   deleteItem: async (id) => {
@@ -156,6 +200,27 @@ export const useGroceryStore = create<GroceryState>((set, get) => ({
         },
       },
     }));
+
+    // Fire family notification (best-effort, non-blocking)
+    try {
+      const { sendFamilyNotification } = await import('../notifications/NotificationManager');
+      const { getListMeta } = await import('../sync/yjs-adapter');
+      const encryptionKey = syncManager.getEncryptionKey();
+      if (encryptionKey) {
+        const listName = (getListMeta(listId).get('name') as string) || 'Grocery List';
+        sendFamilyNotification(
+          'item_deleted',
+          listId,
+          listName,
+          id,
+          existing.name,
+          existing.category,
+          encryptionKey,
+        ).catch(() => {}); // fire-and-forget
+      }
+    } catch {
+      // Notification system not available — non-critical
+    }
   },
 
   reorderItem: async (id, direction, listId) => {

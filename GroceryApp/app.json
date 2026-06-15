@@ -14,7 +14,14 @@
         "react-native-libsodium",
         {}
       ],
-      "./plugins/withLibcxxPickFirst.js"
+      "./plugins/withLibcxxPickFirst.js",
+      [
+        "expo-notifications",
+        {
+          "color": "#10B981",
+          "defaultChannel": "stophop-family"
+        }
+      ]
     ],
     "ios": {
       "supportsTablet": true,

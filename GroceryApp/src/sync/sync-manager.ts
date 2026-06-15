@@ -26,6 +26,7 @@ import {
   loadListsFromDB,
 } from '../storage/hydrate';
 import type { GroceryItem, GroceryList } from '../types';
+import type { EncryptedData } from '../types';
 
 // ─── Callbacks ───────────────────────────────────────────────────────────────
 
@@ -64,6 +65,9 @@ export class SyncManager {
     };
     this.wsClient.onRemoteUpdate = (listId, update) => {
       this.applyRemoteUpdate(listId, update);
+    };
+    this.wsClient.onNotification = (listId, payload, senderDeviceId) => {
+      this.handleIncomingNotification(listId, payload, senderDeviceId);
     };
 
     await this.wsClient.init();
@@ -136,7 +140,37 @@ export class SyncManager {
     return this.wsClient;
   }
 
+  /**
+   * Send a notification to all paired family members.
+   * The payload is already encrypted by the caller.
+   */
+  sendNotification(listId: string, encryptedPayload: EncryptedData): void {
+    if (!this.wsClient) {
+      console.warn('SyncManager: no WebSocket client, notification dropped');
+      return;
+    }
+    this.wsClient.sendNotification(listId, encryptedPayload);
+  }
+
   // ─── Remote Update Handling ────────────────────────────────────────────
+
+  /**
+   * Handle an incoming notification from the relay server.
+   * Decrypts and displays the notification locally.
+   */
+  private async handleIncomingNotification(
+    listId: string,
+    encryptedPayload: EncryptedData,
+    _senderDeviceId: string,
+  ): Promise<void> {
+    try {
+      if (!this.encryptionKey) return;
+      const { handleIncomingNotification } = await import('../notifications/NotificationManager');
+      await handleIncomingNotification(listId, encryptedPayload, this.encryptionKey);
+    } catch (err) {
+      console.warn('SyncManager: failed to handle incoming notification', err);
+    }
+  }
 
   /**
    * Apply a decrypted remote update to a Yjs document.
@@ -201,6 +235,14 @@ export class SyncManager {
    */
   isReady(): boolean {
     return this.ready;
+  }
+
+  /**
+   * Get the current encryption key (for notification encryption).
+   * Returns null if not yet initialized.
+   */
+  getEncryptionKey(): Uint8Array | null {
+    return this.encryptionKey;
   }
 }
 

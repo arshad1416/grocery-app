@@ -11,7 +11,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const schema = appSchema({
-  version: 3,
+  version: 4,
   tables: [
     // ─── Grocery Lists ────────────────────────────────────────────────────
     tableSchema({
@@ -73,7 +73,23 @@ export const schema = appSchema({
         { name: 'updated_at', type: 'number' },
       ],
     }),
+
+    // ─── Notifications ──────────────────────────────────────────────────
+    tableSchema({
+      name: 'notifications',
+      columns: [
+        { name: 'event_type', type: 'string' },
+        { name: 'timestamp', type: 'number' },
+        { name: 'sender_device_id', type: 'string' },
+        { name: 'list_id', type: 'string' },
+        { name: 'list_name', type: 'string' },
+        { name: 'item_id', type: 'string' },
+        { name: 'item_name', type: 'string' },
+        { name: 'item_category', type: 'string' },
+        { name: 'is_read', type: 'boolean' },
+      ],
+    }),
   ],
 });
 
-export type TableName = 'grocery_lists' | 'grocery_items' | 'family_members';
+export type TableName = 'grocery_lists' | 'grocery_items' | 'family_members' | 'notifications';
