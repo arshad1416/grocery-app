@@ -677,8 +677,8 @@ export default function GroceryListScreen({ route, navigation }: Props) {
           : `${totalItems} items`}
       </Text>
 
-      {/* Find Prices button — shown when no prices loaded or prices are stale */}
-      {(!hasPrices || hasStalePrices) && !priceLoading && (
+      {/* Find Prices button — always visible when not loading */}
+      {!priceLoading && (
         <TouchableOpacity
           style={[styles.findPricesBtn, { backgroundColor: theme.primary + '18', borderColor: theme.primary }]}
           onPress={handleRefreshPrices}

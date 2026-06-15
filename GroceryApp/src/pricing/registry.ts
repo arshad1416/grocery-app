@@ -38,6 +38,8 @@ class PriceRegistry {
     this.seedMockPrices();
   }
 
+  private seedPromise: Promise<void> | null = null;
+
   private seedMockPrices() {
     const stores = [
       { id: 'no-frills', name: 'No Frills' },
@@ -51,13 +53,19 @@ class PriceRegistry {
       { name: 'Apples', unit: 'pcs', quantity: 6, prices: { 'no-frills': 1.99, 'loblaws': 3.49, 'freshco': 2.29, 'metro': 2.99, 'walmart': 2.49, 'food-basics': 2.09 } },
       { name: 'Bananas', unit: 'bunch', quantity: 1, prices: { 'no-frills': 1.19, 'loblaws': 1.79, 'freshco': 1.25, 'metro': 1.49, 'walmart': 1.29, 'food-basics': 1.15 } },
       { name: 'Milk', unit: 'L', quantity: 1, prices: { 'no-frills': 3.89, 'loblaws': 4.49, 'freshco': 3.95, 'metro': 4.29, 'walmart': 3.99, 'food-basics': 3.79 } },
+      { name: 'Tomatoes', unit: 'pcs', quantity: 4, prices: { 'no-frills': 2.49, 'loblaws': 3.99, 'freshco': 2.69, 'metro': 3.49, 'walmart': 2.79, 'food-basics': 2.39 } },
+      { name: 'Carrots', unit: 'bag', quantity: 1, prices: { 'no-frills': 1.97, 'loblaws': 2.99, 'freshco': 2.00, 'metro': 2.49, 'walmart': 1.97, 'food-basics': 1.88 } },
+      { name: 'Potatoes', unit: 'lb', quantity: 5, prices: { 'no-frills': 3.99, 'loblaws': 5.49, 'freshco': 4.29, 'metro': 4.99, 'walmart': 3.97, 'food-basics': 3.79 } },
+      { name: 'Onions', unit: 'pcs', quantity: 3, prices: { 'no-frills': 1.49, 'loblaws': 2.49, 'freshco': 1.59, 'metro': 1.99, 'walmart': 1.57, 'food-basics': 1.39 } },
+      { name: 'Avocados', unit: 'pcs', quantity: 2, prices: { 'no-frills': 2.00, 'loblaws': 3.49, 'freshco': 2.25, 'metro': 2.99, 'walmart': 2.47, 'food-basics': 1.98 } },
     ];
 
+    const promises: Promise<void>[] = [];
     for (const store of stores) {
       for (const item of items) {
         const price = (item.prices as any)[store.id];
         if (price !== undefined) {
-          crowdsourcedAdapter.submitPrice({
+          promises.push(crowdsourcedAdapter.submitPrice({
             itemName: item.name,
             storeId: store.id,
             storeName: store.name,
@@ -65,10 +73,11 @@ class PriceRegistry {
             unit: item.unit,
             quantity: item.quantity,
             submittedBy: 'system-seed',
-          }).catch(() => {});
+          }).catch(() => {}));
         }
       }
     }
+    this.seedPromise = Promise.all(promises).then(() => {});
   }
 
   /**
@@ -94,6 +103,7 @@ class PriceRegistry {
     itemName: string,
     storeId: string,
   ): Promise<PriceResult | null> {
+    if (this.seedPromise) await this.seedPromise;
     const enabled = this.getEnabledMap();
     const normalizedName = normalizeForLookup(itemName);
     for (const adapter of this.adapters) {
@@ -114,6 +124,7 @@ class PriceRegistry {
     items: string[],
     storeId: string,
   ): Promise<Map<string, PriceResult>> {
+    if (this.seedPromise) await this.seedPromise;
     const results = new Map<string, PriceResult>();
     const enabled = this.getEnabledMap();
     const normalizedNames = items.map(normalizeForLookup);

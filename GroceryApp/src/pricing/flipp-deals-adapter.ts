@@ -137,7 +137,8 @@ export class FlippDealsAdapter implements PriceAdapter {
 
   isAvailable(): boolean {
     const settings = getSettings();
-    return !!(settings.tursoEnabled && settings.tursoUrl && settings.tursoToken && settings.flyerScanEnabled);
+    // Available if Turso is fully configured, or if flyer scan is enabled (will use crowd-sourced fallback)
+    return !!(settings.flyerScanEnabled || (settings.tursoEnabled && settings.tursoUrl && settings.tursoToken));
   }
 
   /**
