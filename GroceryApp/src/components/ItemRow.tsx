@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import type { GroceryItem } from '../types';
 import type { PriceResult } from '../pricing/types';
-import PriceBadge from './PriceBadge';
+// PriceBadge removed — inline price display replaces it
 import { useActiveTheme } from '../state/useThemeStore';
 import { themeColors } from './groceryTheme';
 
@@ -183,15 +183,24 @@ const ItemRow = memo(function ItemRow({ item, onToggle, onPress, onDelete, onMov
           ) : null}
         </View>
 
-        {/* Price badge */}
-        <PriceBadge price={price ?? null} isLoading={priceLoading} />
-
-        {/* Quantity + Unit */}
+        {/* Quantity + Unit (middle) */}
         <View style={[styles.quantityBadge, { backgroundColor: isDark ? '#334155' : '#f0f0f0' }]}>
           <Text style={[styles.quantityText, { color: theme.secondaryText }]}>
             {item.quantity} {item.unit}
           </Text>
         </View>
+
+        {/* Price + Store name (right) */}
+        {price && !priceLoading ? (
+          <View style={styles.priceRightContainer}>
+            <Text style={[styles.priceRightText, { color: isDark ? '#34D399' : '#2E7D32' }]}>
+              ${price.price.toFixed(2)}
+            </Text>
+            <Text style={[styles.priceStoreName, { color: theme.secondaryText }]} numberOfLines={1}>
+              {price.source.storeName}
+            </Text>
+          </View>
+        ) : null}
       </TouchableOpacity>
     </View>
   );
@@ -309,5 +318,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     fontWeight: '600',
+  },
+  priceRightContainer: {
+    alignItems: 'flex-end',
+    marginLeft: 10,
+    minWidth: 50,
+  },
+  priceRightText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  priceStoreName: {
+    fontSize: 10,
+    marginTop: 1,
   },
 });

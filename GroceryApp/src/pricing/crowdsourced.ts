@@ -54,6 +54,52 @@ export class CrowdsourcedAdapter implements PriceAdapter {
   /** Maximum age of submissions to consider (30 days in ms) */
   private readonly maxAgeMs = 30 * 24 * 60 * 60 * 1000;
 
+  constructor() {
+    this.seedDefaultPrices();
+  }
+
+  /**
+   * Seed default prices for 8 common grocery items across 6 Ontario stores.
+   * Called in the constructor so prices are available immediately — no async timing issues.
+   */
+  private seedDefaultPrices(): void {
+    const stores = [
+      { id: 'no-frills', name: 'No Frills' },
+      { id: 'loblaws', name: 'Loblaws' },
+      { id: 'freshco', name: 'FreshCo' },
+      { id: 'metro', name: 'Metro' },
+      { id: 'walmart', name: 'Walmart' },
+      { id: 'food-basics', name: 'Food Basics' },
+    ];
+    const items = [
+      { name: 'Apples', unit: 'pcs', quantity: 6, prices: { 'no-frills': 1.99, 'loblaws': 3.49, 'freshco': 2.29, 'metro': 2.99, 'walmart': 2.49, 'food-basics': 2.09 } },
+      { name: 'Bananas', unit: 'bunch', quantity: 1, prices: { 'no-frills': 1.19, 'loblaws': 1.79, 'freshco': 1.25, 'metro': 1.49, 'walmart': 1.29, 'food-basics': 1.15 } },
+      { name: 'Milk', unit: 'L', quantity: 1, prices: { 'no-frills': 3.89, 'loblaws': 4.49, 'freshco': 3.95, 'metro': 4.29, 'walmart': 3.99, 'food-basics': 3.79 } },
+      { name: 'Tomatoes', unit: 'pcs', quantity: 4, prices: { 'no-frills': 2.49, 'loblaws': 3.99, 'freshco': 2.79, 'metro': 3.29, 'walmart': 2.99, 'food-basics': 2.59 } },
+      { name: 'Carrots', unit: 'bag', quantity: 1, prices: { 'no-frills': 1.99, 'loblaws': 2.99, 'freshco': 2.29, 'metro': 2.49, 'walmart': 2.49, 'food-basics': 1.79 } },
+      { name: 'Potatoes', unit: 'lb', quantity: 5, prices: { 'no-frills': 2.49, 'loblaws': 4.49, 'freshco': 2.99, 'metro': 3.99, 'walmart': 3.49, 'food-basics': 2.29 } },
+      { name: 'Onions', unit: 'pcs', quantity: 3, prices: { 'no-frills': 1.49, 'loblaws': 2.49, 'freshco': 1.79, 'metro': 2.29, 'walmart': 1.99, 'food-basics': 1.59 } },
+      { name: 'Avocados', unit: 'pcs', quantity: 2, prices: { 'no-frills': 1.99, 'loblaws': 2.99, 'freshco': 2.29, 'metro': 2.79, 'walmart': 2.49, 'food-basics': 1.89 } },
+    ];
+
+    for (const store of stores) {
+      for (const item of items) {
+        const price = (item.prices as Record<string, number>)[store.id];
+        if (price !== undefined) {
+          this.addPriceSync({
+            itemName: item.name,
+            storeId: store.id,
+            storeName: store.name,
+            price,
+            unit: item.unit,
+            quantity: item.quantity,
+            submittedBy: 'system-seed',
+          });
+        }
+      }
+    }
+  }
+
   isAvailable(): boolean {
     return true; // always available locally
   }
@@ -65,10 +111,22 @@ export class CrowdsourcedAdapter implements PriceAdapter {
     price: Omit<SubmittedPrice, 'id' | 'timestamp'>,
   ): Promise<void> {
     const id = await generateUUID();
+    this.addPriceSync(price, id, Date.now());
+  }
+
+  /**
+   * Add a price synchronously (for seed data during init).
+   * Skips UUID generation — accepts optional id and timestamp.
+   */
+  addPriceSync(
+    price: Omit<SubmittedPrice, 'id' | 'timestamp'>,
+    id?: string,
+    timestamp?: number,
+  ): void {
     const submission: SubmittedPrice = {
       ...price,
-      id,
-      timestamp: Date.now(),
+      id: id || 'seed-' + Math.random().toString(36).slice(2, 10),
+      timestamp: timestamp || Date.now(),
     };
 
     const storeId = price.storeId;

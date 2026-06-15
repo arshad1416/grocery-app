@@ -197,26 +197,30 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   // Load available stores from price sources
   useEffect(() => {
     Promise.all([
-      flippDealsAdapter.getAvailableStores(),
-      crowdsourcedAdapter.getAvailableStores(),
+      flippDealsAdapter.getAvailableStores().catch(() => [] as { storeId: string; storeName: string }[]),
+      crowdsourcedAdapter.getAvailableStores().catch(() => [] as { storeId: string; storeName: string }[]),
     ]).then(([flippStores, crowdStores]) => {
       const all = [...flippStores, ...crowdStores];
       const seen = new Set<string>();
-      setAvailableStores(all.filter(s => {
+      const unique = all.filter(s => {
         if (seen.has(s.storeId)) return false;
         seen.add(s.storeId);
         return true;
-      }));
-    });
+      });
+      console.log(`[stores] Loaded ${unique.length} stores: ${unique.map(s => s.storeId).join(',')}`);
+      setAvailableStores(unique);
+    }).catch(err => console.warn('[stores] Failed to load stores:', err));
   }, []);
 
   // Load prices for visible items across all available stores
   useEffect(() => {
     const storeIds = availableStores.map(s => s.storeId);
-    if (storeIds.length === 0) return;
+    console.log(`[prices] Effect running with ${storeIds.length} stores, items keys: ${Object.keys(items || {}).length}`);
+    if (storeIds.length === 0 || !items || Object.keys(items).length === 0) return;
     const visibleItems = Object.values(items).filter(
       (item) => !item.isDeleted && item.listId === listId,
     );
+    console.log(`[prices] visibleItems: ${visibleItems.length}, listId: ${listId}`);
     // Skip items with fresh prices (< 1 hour old)
     const FRESHNESS_THRESHOLD = 60 * 60 * 1000; // 1 hour
     const staleItems = visibleItems.filter((item) => {
@@ -224,10 +228,11 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       return !ts || Date.now() - ts > FRESHNESS_THRESHOLD;
     });
     if (staleItems.length > 0) {
+      console.log(`[prices] Calling loadPricesForAllStores with ${staleItems.length} items, ${storeIds.length} stores`);
       loadPricesForAllStores(
         staleItems.map((item) => ({ id: item.id, name: item.name })),
         storeIds,
-      ).catch(() => {});
+      ).catch(err => console.warn('[prices] loadPricesForAllStores failed:', err));
     }
 
   }, [Object.keys(items).length, listId, loadPricesForAllStores, isFocused, availableStores]);
