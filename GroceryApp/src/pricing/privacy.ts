@@ -39,7 +39,7 @@ export function normalizeForLookup(name: string): string {
  * Local adapters can use plaintext; remote adapters should use hashes.
  */
 export function adapterRequiresHash(adapterId: string): boolean {
-  const localAdapters = new Set(['crowdsourced', 'flyer-scan']);
+  const localAdapters = new Set(['crowdsourced', 'flyer-scan', 'flipp-deals']);
   return !localAdapters.has(adapterId);
 }
 

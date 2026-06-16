@@ -21,6 +21,7 @@ import {
 } from 'react-native';
 import { useActiveTheme } from '../state/useThemeStore';
 import type { TripPlan } from '../pricing/trip-plan';
+import { navigateToStore } from '../utils/storeNavigation';
 
 interface TripPlanSheetProps {
   visible: boolean;
@@ -153,9 +154,12 @@ export default function TripPlanSheet({
                   <Text style={[styles.stopLabel, { color: theme.primary }]}>
                     Stop {idx + 1}
                   </Text>
-                  <Text style={[styles.stopStore, { color: theme.text }]}>
-                    {stop.storeName}
-                  </Text>
+                  <TouchableOpacity onPress={() => navigateToStore(stop.storeName)} style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                    <Text style={[styles.stopStore, { color: theme.primary }]}>
+                      {stop.storeName}
+                    </Text>
+                    <Text style={{ fontSize: 14, marginLeft: 4, color: theme.primary }}>📍</Text>
+                  </TouchableOpacity>
                 </View>
 
                 {stop.items.map((item, itemIdx) => (

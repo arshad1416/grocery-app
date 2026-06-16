@@ -196,6 +196,7 @@ export interface AppSettings {
   flippFsa?: string;
   /** Whether Sentry crash reporting is enabled (default: true) */
   sentryEnabled?: boolean;
+  navigationApp?: 'google' | 'apple';
 }
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
