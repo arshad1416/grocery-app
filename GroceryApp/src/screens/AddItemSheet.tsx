@@ -115,44 +115,7 @@ const QUICK_ITEMS: Record<string, QuickItem[]> = {
 
 const CATEGORY_TABS = [...BUILT_IN_CATEGORIES];
 
-// ─── Theme Colors ────────────────────────────────────────────────────────────
-
-const themeColors = {
-  light: {
-    bg: '#F8FAFC',
-    cardBg: '#FFFFFF',
-    text: '#0F172A',
-    secondaryText: '#64748B',
-    border: '#E2E8F0',
-    primary: '#10B981',
-    inputBg: '#F1F5F9',
-    headerBg: '#FFFFFF',
-    btnText: '#FFFFFF',
-    tabActiveBg: '#10B981',
-    tabInactiveBg: '#F1F5F9',
-    tabActiveText: '#FFFFFF',
-    tabInactiveText: '#64748B',
-    modalOverlay: 'rgba(15, 23, 42, 0.4)',
-    voiceBtnBg: '#3B82F6',
-  },
-  dark: {
-    bg: '#0B0F19',
-    cardBg: '#1E293B',
-    text: '#F8FAFC',
-    secondaryText: '#94A3B8',
-    border: '#334155',
-    primary: '#10B981',
-    inputBg: '#0B0F19',
-    headerBg: '#1E293B',
-    btnText: '#FFFFFF',
-    tabActiveBg: '#10B981',
-    tabInactiveBg: '#0B0F19',
-    tabActiveText: '#FFFFFF',
-    tabInactiveText: '#94A3B8',
-    modalOverlay: 'rgba(0, 0, 0, 0.7)',
-    voiceBtnBg: '#3B82F6',
-  },
-};
+import { themeColors } from '../components/groceryTheme';
 
 // ─── Main Component ─────────────────────────────────────────────────────────
 

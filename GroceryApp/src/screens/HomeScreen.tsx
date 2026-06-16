@@ -21,6 +21,7 @@ import {
   ActivityIndicator,
   Alert,
   GestureResponderEvent,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -35,33 +36,8 @@ import SwipeableListCard from '../components/SwipeableListCard';
 import ContextMenu from '../components/ContextMenu';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import UndoToast from '../components/UndoToast';
-
-// ─── Theme Colors ────────────────────────────────────────────────────────────
-
-const themeColors = {
-  light: {
-    bg: '#F8FAFC',
-    cardBg: '#FFFFFF',
-    text: '#0F172A',
-    secondaryText: '#64748B',
-    border: '#E2E8F0',
-    primary: '#10B981',
-    headerBg: '#FFFFFF',
-    btnBg: '#F1F5F9',
-    btnText: '#475569',
-  },
-  dark: {
-    bg: '#0B0F19',
-    cardBg: '#1E293B',
-    text: '#F8FAFC',
-    secondaryText: '#94A3B8',
-    border: '#334155',
-    primary: '#10B981',
-    headerBg: '#1E293B',
-    btnBg: '#334155',
-    btnText: '#F8FAFC',
-  },
-};
+import { themeColors } from '../components/groceryTheme';
+import { Feather, Ionicons } from '@expo/vector-icons';
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -264,32 +240,34 @@ export default function HomeScreen({ navigation }: Props) {
           <TouchableOpacity
             onPress={() => navigation.navigate('Pairing')}
             style={[styles.headerBtn, { backgroundColor: theme.btnBg }]}
+            activeOpacity={0.7}
           >
-            <Text style={[styles.headerBtnText, { color: theme.btnText }]}>Pair</Text>
+            <Feather name="users" size={18} color={theme.btnText} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => navigation.navigate('Settings')}
             style={[styles.headerBtn, { backgroundColor: theme.btnBg }]}
+            activeOpacity={0.7}
           >
-            <Text style={[styles.headerBtnText, { color: theme.btnText }]}>Settings</Text>
+            <Feather name="settings" size={18} color={theme.btnText} />
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Sync indicator */}
-      <View style={[styles.syncBar, { backgroundColor: isDark ? '#1E293B' : '#FAFAFA' }]}>
+      <View style={[styles.syncBar, { backgroundColor: isDark ? '#111C15' : '#E8EFE5' }]}>
         <View
           style={[
             styles.syncDot,
             {
               backgroundColor:
                 syncState === 'syncing'
-                  ? '#FF9800'
+                  ? theme.accent
                   : syncState === 'error'
-                    ? '#f44336'
+                    ? '#EF4444'
                     : syncState === 'offline'
                       ? '#999'
-                      : '#10B981',
+                      : theme.primary,
             },
           ]}
         />
@@ -352,11 +330,11 @@ export default function HomeScreen({ navigation }: Props) {
       {/* FAB for new list */}
       {activeLists.length > 0 && (
         <TouchableOpacity
-          style={[styles.fab, { backgroundColor: theme.primary }]}
+          style={[styles.fab, { backgroundColor: theme.primary, shadowColor: theme.primary }]}
           onPress={handleCreateList}
           activeOpacity={0.8}
         >
-          <Text style={styles.fabText}>+</Text>
+          <Ionicons name="add" size={30} color="#fff" />
         </TouchableOpacity>
       )}
 
@@ -397,54 +375,56 @@ export default function HomeScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
   },
   title: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: 'bold',
-    color: '#333',
+    fontFamily: Platform.OS === 'ios' ? 'Outfit-Bold' : 'sans-serif-medium',
+    letterSpacing: -0.5,
   },
   headerRight: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 12,
   },
   headerBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: '#f0f0f0',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   headerBtnText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#555',
   },
   syncBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    backgroundColor: '#fafafa',
-    gap: 6,
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    gap: 8,
   },
   syncDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   syncText: {
-    fontSize: 11,
-    color: '#999',
+    fontSize: 12,
+    fontWeight: '600',
   },
   loadingRow: {
     flexDirection: 'row',
@@ -455,7 +435,6 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 14,
-    color: '#999',
   },
   emptyContainer: {
     flex: 1,
@@ -466,20 +445,21 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#999',
     marginBottom: 4,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: '#bbb',
     textAlign: 'center',
     marginBottom: 20,
   },
   createBtn: {
-    backgroundColor: '#4CAF50',
     paddingVertical: 12,
     paddingHorizontal: 28,
-    borderRadius: 10,
+    borderRadius: 12,
+    elevation: 3,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
   },
   createBtnText: {
     color: '#fff',
@@ -490,8 +470,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    padding: 12,
-    gap: 8,
+    padding: 16,
+    gap: 12,
   },
   fab: {
     position: 'absolute',
@@ -500,12 +480,10 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#4CAF50',
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 6,
-    shadowColor: '#4CAF50',
-    shadowOffset: { width: 0, height: 3 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
   },

@@ -82,30 +82,7 @@ const PERMISSION_INFO: Record<PermissionType, PermissionInfo> = {
 
 // ─── Theme Colors ────────────────────────────────────────────────────────────
 
-const themeColors = {
-  light: {
-    overlay: 'rgba(0, 0, 0, 0.5)',
-    card: '#FFFFFF',
-    text: '#0F172A',
-    secondaryText: '#64748B',
-    primary: '#10B981',
-    primaryText: '#FFFFFF',
-    border: '#E2E8F0',
-    noteBg: '#F0FDF4',
-    noteBorder: '#BBF7D0',
-  },
-  dark: {
-    overlay: 'rgba(0, 0, 0, 0.7)',
-    card: '#1E293B',
-    text: '#F8FAFC',
-    secondaryText: '#94A3B8',
-    primary: '#10B981',
-    primaryText: '#FFFFFF',
-    border: '#334155',
-    noteBg: '#064E3B',
-    noteBorder: '#065F46',
-  },
-};
+import { themeColors } from './groceryTheme';
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
