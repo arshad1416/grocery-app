@@ -23,6 +23,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import type { GroceryItem, GroceryCategory } from '../types';
 import type { PriceResult } from '../pricing/types';
 import { BUILT_IN_CATEGORIES, STORE_PLAN_CATEGORY_ORDER } from '../types';
@@ -675,20 +676,21 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.bg }]}>
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Text style={[styles.backText, { color: theme.primary }]}>← Back</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7}>
+          <Feather name="arrow-left" size={22} color={theme.primary} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: theme.text }]}>{listName}</Text>
         <View style={styles.headerRight}>
           <SyncIndicator />
-          <TouchableOpacity onPress={handleSettings} style={styles.settingsBtn}>
-            <Text style={[styles.settingsIcon, { color: theme.text }]}>⚙</Text>
+          <TouchableOpacity onPress={handleSettings} style={styles.settingsBtn} activeOpacity={0.7}>
+            <Feather name="settings" size={22} color={theme.text} />
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Search bar */}
       <View style={[styles.searchContainer, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+        <Feather name="search" size={18} color={isDark ? '#8BA093' : '#6B7F73'} style={styles.searchIcon} />
         <TextInput
           style={[styles.searchInput, { color: theme.text, backgroundColor: theme.cardBg }]}
           placeholder="Search items..."
@@ -697,14 +699,15 @@ export default function GroceryListScreen({ route, navigation }: Props) {
           onChangeText={setSearchQuery}
           autoCapitalize="none"
           autoCorrect={false}
-          clearButtonMode="while-editing"
+          clearButtonMode="never"
         />
         {searchQuery.length > 0 && (
           <TouchableOpacity
             style={styles.clearSearch}
             onPress={() => setSearchQuery('')}
+            activeOpacity={0.7}
           >
-            <Text style={styles.clearSearchText}>✕</Text>
+            <Feather name="x-circle" size={18} color={theme.secondaryText} />
           </TouchableOpacity>
         )}
       </View>
@@ -719,11 +722,13 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       {/* Find Prices button — always visible when not loading */}
       {!priceLoading && (
         <TouchableOpacity
-          style={[styles.findPricesBtn, { backgroundColor: theme.primary + '18', borderColor: theme.primary }]}
+          style={[styles.findPricesBtn, { backgroundColor: theme.primary + '18', borderColor: theme.border }]}
           onPress={handleRefreshPrices}
+          activeOpacity={0.7}
         >
-          <Text style={[styles.findPricesText, { color: theme.primary }]}>
-            {hasPrices ? '↻ Refresh Prices' : '🔍 Find Prices'}
+          <Feather name={hasPrices ? 'refresh-cw' : 'search'} size={14} color={theme.primary} />
+          <Text style={[styles.findPricesText, { color: theme.primary, marginLeft: 6 }]}>
+            {hasPrices ? 'Refresh Prices' : 'Find Prices'}
           </Text>
         </TouchableOpacity>
       )}
@@ -981,27 +986,27 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   settingsBtn: {
-    padding: 4,
+    padding: 6,
   },
   settingsIcon: {
     fontSize: 20,
+  },
+  searchIcon: {
+    marginLeft: 12,
   },
   searchContainer: {
     margin: 12,
     marginBottom: 4,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#ddd',
   },
   searchInput: {
     flex: 1,
-    paddingHorizontal: 14,
+    paddingHorizontal: 10,
     paddingVertical: 10,
     fontSize: 15,
-    color: '#333',
   },
   clearSearch: {
     paddingHorizontal: 10,
@@ -1067,6 +1072,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
     alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   findPricesText: {
     fontSize: 13,

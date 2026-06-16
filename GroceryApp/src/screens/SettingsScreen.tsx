@@ -46,32 +46,7 @@ import ContributeConsentModal from '../components/ContributeConsentModal';
 import { useShareInvite } from '../hooks/useShareInvite';
 import { useThemeStore, useActiveTheme } from '../state/useThemeStore';
 
-// ─── Theme Colors ────────────────────────────────────────────────────────────
-
-const themeColors = {
-  light: {
-    bg: '#F8FAFC',
-    cardBg: '#FFFFFF',
-    text: '#0F172A',
-    secondaryText: '#64748B',
-    border: '#E2E8F0',
-    primary: '#10B981',
-    headerBg: '#FFFFFF',
-    segmentedBg: '#F1F5F9',
-    segmentActiveBg: '#10B981',
-  },
-  dark: {
-    bg: '#0B0F19',
-    cardBg: '#1E293B',
-    text: '#F8FAFC',
-    secondaryText: '#94A3B8',
-    border: '#334155',
-    primary: '#10B981',
-    headerBg: '#1E293B',
-    segmentedBg: '#0B0F19',
-    segmentActiveBg: '#10B981',
-  },
-};
+import { themeColors } from '../components/groceryTheme';
 
 // ─── Segmented Control ───────────────────────────────────────────────────────
 

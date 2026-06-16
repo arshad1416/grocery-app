@@ -16,28 +16,7 @@ interface MaxStopsStepperProps {
   onChange: (value: number) => void;
 }
 
-const themeColors = {
-  light: {
-    text: '#0F172A',
-    secondaryText: '#64748B',
-    border: '#E2E8F0',
-    primary: '#10B981',
-    activeBg: '#10B981',
-    activeText: '#FFFFFF',
-    inactiveBg: '#F1F5F9',
-    disabledText: '#CBD5E1',
-  },
-  dark: {
-    text: '#F8FAFC',
-    secondaryText: '#94A3B8',
-    border: '#334155',
-    primary: '#10B981',
-    activeBg: '#10B981',
-    activeText: '#FFFFFF',
-    inactiveBg: '#1E293B',
-    disabledText: '#475569',
-  },
-};
+import { themeColors } from './groceryTheme';
 
 export default function MaxStopsStepper({
   value,

@@ -29,32 +29,7 @@ import type { AppSettings } from '../types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/deepLinks';
 
-// ─── Theme Colors ────────────────────────────────────────────────────────────
-
-const themeColors = {
-  light: {
-    bg: '#F8FAFC',
-    cardBg: '#FFFFFF',
-    text: '#0F172A',
-    secondaryText: '#64748B',
-    border: '#E2E8F0',
-    primary: '#10B981',
-    danger: '#EF4444',
-    warning: '#F59E0B',
-    info: '#3B82F6',
-  },
-  dark: {
-    bg: '#0B0F19',
-    cardBg: '#1E293B',
-    text: '#F8FAFC',
-    secondaryText: '#94A3B8',
-    border: '#334155',
-    primary: '#10B981',
-    danger: '#EF4444',
-    warning: '#F59E0B',
-    info: '#3B82F6',
-  },
-};
+import { themeColors } from '../components/groceryTheme';
 
 // ─── Section Component ───────────────────────────────────────────────────────
 

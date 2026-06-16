@@ -29,42 +29,7 @@ interface TripPlanSheetProps {
   onClose: () => void;
 }
 
-const themeColors = {
-  light: {
-    bg: '#F8FAFC',
-    cardBg: '#FFFFFF',
-    text: '#0F172A',
-    secondaryText: '#64748B',
-    border: '#E2E8F0',
-    primary: '#10B981',
-    savingsBg: '#DEF7EC',
-    savingsText: '#03543F',
-    overlay: 'rgba(0,0,0,0.4)',
-    stopBg: '#F1F5F9',
-    subtotalBg: '#E2E8F0',
-    unassignedBg: '#FEF3C7',
-    unassignedBorder: '#F59E0B',
-    unassignedText: '#92400E',
-    divider: '#E2E8F0',
-  },
-  dark: {
-    bg: '#0B0F19',
-    cardBg: '#1E293B',
-    text: '#F8FAFC',
-    secondaryText: '#94A3B8',
-    border: '#334155',
-    primary: '#10B981',
-    savingsBg: '#0B2518',
-    savingsText: '#34D399',
-    overlay: 'rgba(0,0,0,0.6)',
-    stopBg: '#0F172A',
-    subtotalBg: '#334155',
-    unassignedBg: '#422006',
-    unassignedBorder: '#F59E0B',
-    unassignedText: '#FCD34D',
-    divider: '#334155',
-  },
-};
+import { themeColors } from './groceryTheme';
 
 export default function TripPlanSheet({
   visible,

@@ -17,6 +17,7 @@ import { emojiForItem } from '../pricing/emoji-map';
 // PriceBadge removed — inline price display replaces it
 import { useActiveTheme } from '../state/useThemeStore';
 import { themeColors } from './groceryTheme';
+import { Feather } from '@expo/vector-icons';
 
 export interface ItemRowProps {
   item: GroceryItem;
@@ -104,15 +105,17 @@ const ItemRow = memo(function ItemRow({ item, onToggle, onPress, onLongPress, on
             style={[styles.reorderBtn, isFirst && styles.reorderBtnDisabled]}
             onPress={() => onMoveUp(item.id)}
             disabled={isFirst}
+            activeOpacity={0.6}
           >
-            <Text style={[styles.reorderBtnText, { color: theme.secondaryText }, isFirst && styles.reorderBtnTextDisabled]}>▲</Text>
+            <Feather name="chevron-up" size={16} color={isFirst ? theme.disabledText : theme.secondaryText} />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.reorderBtn, isLast && styles.reorderBtnDisabled]}
             onPress={() => onMoveDown(item.id)}
             disabled={isLast}
+            activeOpacity={0.6}
           >
-            <Text style={[styles.reorderBtnText, { color: theme.secondaryText }, isLast && styles.reorderBtnTextDisabled]}>▼</Text>
+            <Feather name="chevron-down" size={16} color={isLast ? theme.disabledText : theme.secondaryText} />
           </TouchableOpacity>
         </View>
       ) : (
@@ -143,9 +146,10 @@ const ItemRow = memo(function ItemRow({ item, onToggle, onPress, onLongPress, on
             },
           ]}
           onPress={handleCheckToggle}
+          activeOpacity={0.8}
         >
           <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-            {item.isChecked && <Text style={styles.checkmark}>✓</Text>}
+            {item.isChecked && <Feather name="check" size={14} color="#fff" />}
           </Animated.View>
         </TouchableOpacity>
 

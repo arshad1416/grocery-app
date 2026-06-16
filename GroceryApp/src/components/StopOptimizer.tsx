@@ -27,34 +27,7 @@ interface StopOptimizerProps {
   fullItems?: { id: string; name: string; quantity: number; unit: string }[];
 }
 
-const themeColors = {
-  light: {
-    bg: '#F8FAFC',
-    cardBg: '#FFFFFF',
-    text: '#0F172A',
-    secondaryText: '#64748B',
-    border: '#E2E8F0',
-    primary: '#10B981',
-    savingsBg: '#DEF7EC',
-    savingsText: '#03543F',
-    bestValueBorder: '#10B981',
-    bestValueBg: '#DEF7EC',
-    bestValueText: '#03543F',
-  },
-  dark: {
-    bg: '#0B0F19',
-    cardBg: '#1E293B',
-    text: '#F8FAFC',
-    secondaryText: '#94A3B8',
-    border: '#334155',
-    primary: '#10B981',
-    savingsBg: '#0B2518',
-    savingsText: '#34D399',
-    bestValueBorder: '#10B981',
-    bestValueBg: '#0B2518',
-    bestValueText: '#34D399',
-  },
-};
+import { themeColors } from './groceryTheme';
 
 export default function StopOptimizer({
   items,
