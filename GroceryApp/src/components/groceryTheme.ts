@@ -1,134 +1,204 @@
 /**
  * Shared theme constants for GroceryListScreen and all other screens/components.
- * Centralized for a beautiful, organic "Fresh Grocery" visual identity.
+ * Antigravity Redesign — neon-green glassmorphism (dark) + warm cream/sage (light).
  */
 
 export const themeColors = {
   light: {
     // Core brand & background colors
-    bg: '#F4F6F3',               // Soft organic sage-white backdrop
-    cardBg: '#FFFFFF',           // Crisp pure white for cards
-    text: '#1C2E24',             // Deep pine/avocado dark text
-    secondaryText: '#6B7F73',    // Muted leaf-gray text
-    border: '#E1EADF',           // Soft warm natural border
-    primary: '#16A34A',          // Fresh Leaf Green
-    headerBg: '#FFFFFF',         // White for clean header
-    inputBg: '#E8EFE5',          // Sage-tinted light input fill
-    divider: '#E1EADF',
-    accent: '#F59E0B',           // Sunny Amber accent
-    danger: '#EF4444',
-    warning: '#F59E0B',
-    info: '#3B82F6',
+    bg: '#FDF8F0',               // Warm cream/off-white
+    cardBg: '#FFFFFF',           // Pure white cards
+    text: '#1A1A1A',             // Near-black primary text
+    secondaryText: '#6B7B6F',    // Sage-gray secondary
+    border: 'rgba(0, 0, 0, 0.06)', // Very subtle border
+    primary: '#7CB342',          // Sage/olive green
+    headerBg: '#FFFFFF',         // White header
+    inputBg: '#F5F0E8',          // Warm tinted input
+    divider: 'rgba(0, 0, 0, 0.06)',
+    accent: '#FF8F00',           // Amber/orange for badges
+    danger: '#E53935',           // Red for delete
+    warning: '#FF8F00',
+    info: '#1E88E5',             // Blue for info
 
     // Component-specific colors
-    btnBg: '#E8EFE5',            // Sage button background
-    btnText: '#1C2E24',          // Pine text for buttons
-    segmentedBg: '#E8EFE5',
-    segmentActiveBg: '#16A34A',
-    
-    tabActiveBg: '#16A34A',
-    tabInactiveBg: '#E8EFE5',
+    btnBg: '#F5F0E8',            // Warm button background
+    btnText: '#1A1A1A',          // Dark text for buttons
+    segmentedBg: '#F5F0E8',
+    segmentActiveBg: '#7CB342',
+
+    tabActiveBg: '#7CB342',
+    tabInactiveBg: '#F5F0E8',
     tabActiveText: '#FFFFFF',
-    tabInactiveText: '#6B7F73',
-    modalOverlay: 'rgba(28, 46, 36, 0.4)',
-    voiceBtnBg: '#3B82F6',
+    tabInactiveText: '#9CA89E',
+    modalOverlay: 'rgba(26, 26, 26, 0.4)',
+    voiceBtnBg: '#1E88E5',
 
     // Stop Optimizer & Pricing
-    savingsBg: '#D1FAE5',
-    savingsText: '#065F46',
-    bestValueBorder: '#16A34A',
-    bestValueBg: '#D1FAE5',
-    bestValueText: '#065F46',
+    savingsBg: 'rgba(124, 179, 66, 0.12)',
+    savingsText: '#4A7C59',
+    bestValueBorder: '#7CB342',
+    bestValueBg: 'rgba(124, 179, 66, 0.12)',
+    bestValueText: '#4A7C59',
 
     // Trip Plan Sheet
-    overlay: 'rgba(28, 46, 36, 0.4)',
-    stopBg: '#E8EFE5',
-    subtotalBg: '#DCE6DA',
-    unassignedBg: '#FEF3C7',
-    unassignedBorder: '#F59E0B',
+    overlay: 'rgba(26, 26, 26, 0.4)',
+    stopBg: '#F5F0E8',
+    subtotalBg: '#E8E3DB',
+    unassignedBg: 'rgba(255, 143, 0, 0.1)',
+    unassignedBorder: '#FF8F00',
     unassignedText: '#92400E',
 
     // Stepper
-    activeBg: '#16A34A',
+    activeBg: '#7CB342',
     activeText: '#FFFFFF',
-    inactiveBg: '#E8EFE5',
-    disabledText: '#A3B3A9',
+    inactiveBg: '#F5F0E8',
+    disabledText: '#9CA89E',
 
     // Permission Modal
     card: '#FFFFFF',
     primaryText: '#FFFFFF',
-    noteBg: '#F0FDF4',
-    noteBorder: '#BBF7D0',
+    noteBg: 'rgba(124, 179, 66, 0.08)',
+    noteBorder: 'rgba(124, 179, 66, 0.2)',
 
-    // Pill selectors (from old theme, mapped to new design)
-    pillUnselectedBg: '#FFFFFF',
-    pillUnselectedBorder: '#D2DEC9',
-    pillSelectedBg: '#16A34A',
-    pillCheapestBg: '#D1FAE5',
-    pillCheapestBorder: '#16A34A',
+    // Pill selectors
+    pillUnselectedBg: '#F5F0E8',
+    pillUnselectedBorder: 'rgba(0, 0, 0, 0.08)',
+    pillSelectedBg: '#7CB342',
+    pillCheapestBg: 'rgba(124, 179, 66, 0.12)',
+    pillCheapestBorder: '#7CB342',
+
+    // Store cards
+    storeCardBg: '#FFFFFF',
+    storeCardBorder: 'rgba(0, 0, 0, 0.08)',
+    storeCardShadow: { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8 },
+
+    // Bottom nav
+    navBg: '#FFFFFF',
+    navActive: '#7CB342',
+    navInactive: '#9CA89E',
+    navBorder: 'rgba(0, 0, 0, 0.06)',
+
+    // Checkbox
+    checkBg: '#7CB342',
+    checkBorder: '#D2DEC9',
+    checkIcon: '#FFFFFF',
+
+    // Quantity buttons
+    qtyBtnBg: '#F5F0E8',
+    qtyBtnText: '#1A1A1A',
+    qtyBtnBorder: 'rgba(0, 0, 0, 0.08)',
+
+    // Category pills
+    pillBg: '#F5F0E8',
+    pillText: '#6B7B6F',
+    pillActiveBg: '#7CB342',
+    pillActiveText: '#FFFFFF',
+
+    // Glassmorphism (light mode — no real glass, just white cards)
+    glassOpacity: 0,
+    blur: 0,
+
+    // Neon glow (not used in light mode, but defined for type compat)
+    primaryGlow: 'rgba(124, 179, 66, 0.3)',
+    primaryDim: 'rgba(124, 179, 66, 0.12)',
   },
   dark: {
     // Core brand & background colors
-    bg: '#080D09',               // Midnight Forest / Deep Pine Black
-    cardBg: '#111C15',           // Deep Sage Dark Card
-    text: '#F0FDF4',             // Pale mint text
-    secondaryText: '#8BA093',    // Sage-gray secondary text
-    border: '#1E2D23',           // Dark natural pine border
-    primary: '#22C55E',          // Vibrant Minty Green
-    headerBg: '#111C15',         // Integrated dark sage header
-    inputBg: '#18271E',          // Sage dark input field
-    divider: '#1E2D23',
-    accent: '#FACC15',           // Warm Golden Yellow accent
-    danger: '#EF4444',
-    warning: '#FACC15',          // Warm Golden Yellow for warning in dark mode
-    info: '#3B82F6',
+    bg: '#0B0F12',               // Deep charcoal/black
+    cardBg: 'rgba(255, 255, 255, 0.06)', // Frosted glass cards
+    text: '#FFFFFF',             // Pure white primary text
+    secondaryText: '#8A9BA8',    // Cool gray secondary
+    border: 'rgba(0, 230, 118, 0.15)', // Neon green subtle border
+    primary: '#00E676',          // Neon green (main accent)
+    headerBg: '#0B0F12',         // Same as bg, seamless
+    inputBg: 'rgba(255, 255, 255, 0.08)', // Glass input fields
+    divider: 'rgba(255, 255, 255, 0.06)',
+    accent: '#FFD740',           // Amber/gold for warnings/badges
+    danger: '#FF5252',           // Red for delete
+    warning: '#FFD740',
+    info: '#448AFF',             // Blue for info
 
     // Component-specific colors
-    btnBg: '#1E2D23',            // Dark sage button background
-    btnText: '#F0FDF4',          // Mint text for buttons
-    segmentedBg: '#18271E',
-    segmentActiveBg: '#22C55E',
+    btnBg: 'rgba(255, 255, 255, 0.08)',
+    btnText: '#FFFFFF',
+    segmentedBg: 'rgba(255, 255, 255, 0.06)',
+    segmentActiveBg: '#00E676',
 
-    tabActiveBg: '#22C55E',
-    tabInactiveBg: '#18271E',
-    tabActiveText: '#FFFFFF',
-    tabInactiveText: '#8BA093',
+    tabActiveBg: '#00E676',
+    tabInactiveBg: 'rgba(255, 255, 255, 0.06)',
+    tabActiveText: '#0B0F12',
+    tabInactiveText: '#5A6B78',
     modalOverlay: 'rgba(0, 0, 0, 0.75)',
-    voiceBtnBg: '#3B82F6',
+    voiceBtnBg: '#448AFF',
 
     // Stop Optimizer & Pricing
-    savingsBg: '#0B2518',
-    savingsText: '#34D399',
-    bestValueBorder: '#22C55E',
-    bestValueBg: '#0B2518',
-    bestValueText: '#34D399',
+    savingsBg: 'rgba(0, 230, 118, 0.1)',
+    savingsText: '#00E676',
+    bestValueBorder: '#00E676',
+    bestValueBg: 'rgba(0, 230, 118, 0.1)',
+    bestValueText: '#00E676',
 
     // Trip Plan Sheet
     overlay: 'rgba(0, 0, 0, 0.75)',
-    stopBg: '#18271E',
-    subtotalBg: '#243A2C',
-    unassignedBg: '#422006',
-    unassignedBorder: '#F59E0B',
-    unassignedText: '#FCD34D',
+    stopBg: 'rgba(255, 255, 255, 0.06)',
+    subtotalBg: 'rgba(255, 255, 255, 0.04)',
+    unassignedBg: 'rgba(255, 215, 64, 0.1)',
+    unassignedBorder: '#FFD740',
+    unassignedText: '#FFD740',
 
     // Stepper
-    activeBg: '#22C55E',
-    activeText: '#FFFFFF',
-    inactiveBg: '#18271E',
-    disabledText: '#3B4E43',
+    activeBg: '#00E676',
+    activeText: '#0B0F12',
+    inactiveBg: 'rgba(255, 255, 255, 0.08)',
+    disabledText: '#3A4A50',
 
     // Permission Modal
-    card: '#111C15',
+    card: 'rgba(255, 255, 255, 0.06)',
     primaryText: '#FFFFFF',
-    noteBg: '#064E3B',
-    noteBorder: '#065F46',
+    noteBg: 'rgba(0, 230, 118, 0.08)',
+    noteBorder: 'rgba(0, 230, 118, 0.2)',
 
-    // Pill selectors (from old theme, mapped to new design)
-    pillUnselectedBg: '#111C15',
-    pillUnselectedBorder: '#1E2D23',
-    pillSelectedBg: '#22C55E',
-    pillCheapestBg: '#0B2518',
-    pillCheapestBorder: '#22C55E',
+    // Pill selectors
+    pillUnselectedBg: 'rgba(255, 255, 255, 0.06)',
+    pillUnselectedBorder: 'rgba(0, 230, 118, 0.1)',
+    pillSelectedBg: '#00E676',
+    pillCheapestBg: 'rgba(0, 230, 118, 0.1)',
+    pillCheapestBorder: 'rgba(0, 230, 118, 0.3)',
+
+    // Store cards
+    storeCardBg: 'rgba(255, 255, 255, 0.04)',
+    storeCardBorder: 'rgba(0, 230, 118, 0.1)',
+    storeCardShadow: { shadowColor: '#00E676', shadowOpacity: 0.15, shadowRadius: 12 },
+
+    // Bottom nav
+    navBg: 'rgba(11, 15, 18, 0.95)',
+    navActive: '#00E676',
+    navInactive: '#5A6B78',
+    navBorder: 'rgba(255, 255, 255, 0.08)',
+
+    // Checkbox
+    checkBg: '#00E676',
+    checkBorder: '#5A6B78',
+    checkIcon: '#0B0F12',
+
+    // Quantity buttons
+    qtyBtnBg: 'rgba(255, 255, 255, 0.08)',
+    qtyBtnText: '#FFFFFF',
+    qtyBtnBorder: 'rgba(255, 255, 255, 0.12)',
+
+    // Category pills
+    pillBg: 'rgba(0, 230, 118, 0.1)',
+    pillText: '#00E676',
+    pillActiveBg: '#00E676',
+    pillActiveText: '#0B0F12',
+
+    // Glassmorphism
+    glassOpacity: 0.06,
+    blur: 20,
+
+    // Neon glow
+    primaryGlow: 'rgba(0, 230, 118, 0.3)',
+    primaryDim: 'rgba(0, 230, 118, 0.12)',
   },
 };
 
@@ -147,7 +217,7 @@ export const CATEGORY_COLORS: Record<string, string> = {
 
 export function getCategoryColor(category: string): string {
   if (category.toLowerCase().startsWith('stop ')) {
-    return '#16A34A';
+    return '#7CB342';
   }
   return CATEGORY_COLORS[category.toLowerCase()] ?? '#4B5563';
 }

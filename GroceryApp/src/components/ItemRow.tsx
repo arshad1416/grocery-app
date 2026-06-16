@@ -1,23 +1,23 @@
 /**
- * ItemRow — Renders a single grocery item with check, name, price badge, and quantity.
+ * ItemRow — Renders a single grocery item with check, emoji, name, quantity stepper, and price.
+ * Antigravity redesign: Ionicons, neon green checkbox glow (dark), warm sage (light).
  */
 
-import React, { memo, useCallback, useEffect, useRef } from 'react';
+import React, { memo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   Animated,
-  Image,
 } from 'react-native';
 import type { GroceryItem } from '../types';
 import type { PriceResult } from '../pricing/types';
 import { emojiForItem } from '../pricing/emoji-map';
-// PriceBadge removed — inline price display replaces it
 import { useActiveTheme } from '../state/useThemeStore';
 import { themeColors } from './groceryTheme';
-import { Feather } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
+import QuantityStepper from './QuantityStepper';
 
 export interface ItemRowProps {
   item: GroceryItem;
@@ -33,16 +33,28 @@ export interface ItemRowProps {
   priceLoading?: boolean;
   onClaim?: (id: string) => void;
   onUnclaim?: (id: string) => void;
-  /** Display name of the claiming device (for UI rendering). */
   claimerName?: string;
-  /** Whether the claim has expired */
   claimExpired?: boolean;
+  onQuantityChange?: (id: string, delta: number) => void;
 }
 
-const ItemRow = memo(function ItemRow({ item, onToggle, onPress, onLongPress, onDelete, onMoveUp, onMoveDown, isFirst, isLast, price, priceLoading }: ItemRowProps) {
+const ItemRow = memo(function ItemRow({
+  item,
+  onToggle,
+  onPress,
+  onLongPress,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+  isFirst,
+  isLast,
+  price,
+  priceLoading,
+  onQuantityChange,
+}: ItemRowProps) {
   const isClaimed = !!item.claimedBy && !!item.claimedAt;
   const claimExpired = isClaimed && item.claimedAt
-    ? Date.now() - item.claimedAt >= 30 * 60 * 1000 // 30 min
+    ? Date.now() - item.claimedAt >= 30 * 60 * 1000
     : false;
   const activeTheme = useActiveTheme();
   const theme = activeTheme === 'dark' ? themeColors.dark : themeColors.light;
@@ -50,20 +62,9 @@ const ItemRow = memo(function ItemRow({ item, onToggle, onPress, onLongPress, on
 
   // Scale animation for checkbox
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  // Strikethrough width animation (0 → 1 over the text)
   const strikeAnim = useRef(new Animated.Value(item.isChecked ? 1 : 0)).current;
 
-  // Keep strikeAnim in sync if item.isChecked changes externally
-  useEffect(() => {
-    Animated.timing(strikeAnim, {
-      toValue: item.isChecked ? 1 : 0,
-      duration: 200,
-      useNativeDriver: false,
-    }).start();
-  }, [item.isChecked, strikeAnim]);
-
   const handleCheckToggle = useCallback(() => {
-    // Bounce scale animation
     Animated.sequence([
       Animated.spring(scaleAnim, {
         toValue: 1.2,
@@ -79,7 +80,6 @@ const ItemRow = memo(function ItemRow({ item, onToggle, onPress, onLongPress, on
       }),
     ]).start();
 
-    // Strikethrough animation — interpolate to new value
     const targetValue = item.isChecked ? 0 : 1;
     Animated.timing(strikeAnim, {
       toValue: targetValue,
@@ -97,211 +97,146 @@ const ItemRow = memo(function ItemRow({ item, onToggle, onPress, onLongPress, on
   });
 
   return (
-    <View style={styles.itemRowContainer}>
-      {/* Reorder buttons — only show when both handlers are provided */}
-      {onMoveUp && onMoveDown ? (
-        <View style={styles.reorderButtons}>
-          <TouchableOpacity
-            style={[styles.reorderBtn, isFirst && styles.reorderBtnDisabled]}
-            onPress={() => onMoveUp(item.id)}
-            disabled={isFirst}
-            activeOpacity={0.6}
-          >
-            <Feather name="chevron-up" size={16} color={isFirst ? theme.disabledText : theme.secondaryText} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.reorderBtn, isLast && styles.reorderBtnDisabled]}
-            onPress={() => onMoveDown(item.id)}
-            disabled={isLast}
-            activeOpacity={0.6}
-          >
-            <Feather name="chevron-down" size={16} color={isLast ? theme.disabledText : theme.secondaryText} />
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={[styles.reorderButtons, styles.reorderButtonsHidden]} />
-      )}
-      {/* Main item row */}
+    <TouchableOpacity
+      style={[
+        styles.itemRow,
+        item.isChecked && styles.itemRowChecked,
+        {
+          backgroundColor: isDark ? 'rgba(255, 255, 255, 0.03)' : '#FFFFFF',
+          borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
+        },
+      ]}
+      onPress={() => onPress(item)}
+      onLongPress={() => {
+        if (onLongPress) onLongPress(item.id, item.name);
+        else onDelete?.(item.id, item.name);
+      }}
+      activeOpacity={0.7}
+    >
+      {/* Animated Checkbox */}
       <TouchableOpacity
         style={[
-          styles.itemRow,
-          item.isChecked && styles.itemRowChecked,
-          { backgroundColor: theme.cardBg, borderBottomColor: theme.border },
+          styles.checkbox,
+          {
+            borderColor: item.isChecked
+              ? isDark ? '#00E676' : '#7CB342'
+              : isDark ? '#5A6B78' : '#D2DEC9',
+            backgroundColor: item.isChecked
+              ? isDark ? '#00E676' : '#7CB342'
+              : 'transparent',
+          },
+          item.isChecked && isDark && styles.checkboxGlow,
         ]}
-        onPress={() => onPress(item)}
-        onLongPress={() => {
-          if (onLongPress) onLongPress(item.id, item.name);
-          else onDelete?.(item.id, item.name);
-        }}
-        activeOpacity={0.7}
+        onPress={handleCheckToggle}
+        activeOpacity={0.8}
       >
-        {/* Animated Checkbox */}
-        <TouchableOpacity
-          style={[
-            styles.checkbox,
-            item.isChecked && styles.checkboxChecked,
-            {
-              borderColor: item.isChecked ? theme.primary : theme.border,
-              backgroundColor: item.isChecked ? theme.primary : 'transparent',
-            },
-          ]}
-          onPress={handleCheckToggle}
-          activeOpacity={0.8}
-        >
-          <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-            {item.isChecked && <Feather name="check" size={14} color="#fff" />}
-          </Animated.View>
-        </TouchableOpacity>
+        <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+          {item.isChecked && (
+            <Ionicons name="checkmark" size={14} color={isDark ? '#0B0F12' : '#FFFFFF'} />
+          )}
+        </Animated.View>
+      </TouchableOpacity>
 
-        {/* Product image thumbnail or emoji fallback */}
-        {item.imageUrl ? (
-          <Image
-            source={{ uri: item.imageUrl }}
-            style={styles.itemImage}
-            resizeMode="contain"
-          />
-        ) : (
-          <View style={styles.emojiFallback}>
-            <Text style={styles.emojiText}>{emojiForItem(item.name)}</Text>
-          </View>
-        )}
+      {/* Emoji icon */}
+      <View style={styles.emojiContainer}>
+        <Text style={styles.emojiText}>{emojiForItem(item.name)}</Text>
+      </View>
 
-        {/* Item info with strikethrough */}
-        <View style={styles.itemInfo}>
-          <View style={styles.itemNameContainer}>
-            <Text
+      {/* Item info */}
+      <View style={styles.itemInfo}>
+        <View style={styles.itemNameContainer}>
+          <Text
+            style={[
+              styles.itemName,
+              item.isChecked && styles.itemNameChecked,
+              { color: theme.text },
+            ]}
+            numberOfLines={1}
+          >
+            {item.name}
+          </Text>
+          {item.isChecked && (
+            <Animated.View
               style={[
-                styles.itemName,
-                item.isChecked && styles.itemNameChecked,
-                { color: theme.text },
+                styles.strikethrough,
+                { width: strikeWidth, backgroundColor: theme.secondaryText },
               ]}
-              numberOfLines={1}
-            >
-              {item.name}
-            </Text>
-            {item.isChecked && (
-              <Animated.View
-                style={[
-                  styles.strikethrough,
-                  { width: strikeWidth, backgroundColor: theme.secondaryText },
-                ]}
-                pointerEvents="none"
-              />
-            )}
-          </View>
-          {item.notes ? (
-            <Text style={[styles.itemNotes, { color: theme.secondaryText }]} numberOfLines={1}>
-              {item.notes}
-            </Text>
-          ) : null}
+              pointerEvents="none"
+            />
+          )}
         </View>
+        {item.notes ? (
+          <Text style={[styles.itemNotes, { color: theme.secondaryText }]} numberOfLines={1}>
+            {item.notes}
+          </Text>
+        ) : null}
+      </View>
 
-        {/* Quantity + Unit (middle) */}
-        <View style={[styles.quantityBadge, { backgroundColor: isDark ? '#334155' : '#f0f0f0' }]}>
+      {/* Quantity stepper or badge */}
+      {onQuantityChange ? (
+        <QuantityStepper
+          quantity={item.quantity}
+          unit={item.unit}
+          onIncrement={() => onQuantityChange(item.id, 1)}
+          onDecrement={() => onQuantityChange(item.id, -1)}
+        />
+      ) : (
+        <View style={[styles.quantityBadge, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F5F0E8' }]}>
           <Text style={[styles.quantityText, { color: theme.secondaryText }]}>
             {item.quantity} {item.unit}
           </Text>
         </View>
+      )}
 
-        {/* Price + Store name (right) */}
-        {price && !priceLoading ? (
-          <View style={styles.priceRightContainer}>
-            <Text style={[styles.priceRightText, { color: isDark ? '#34D399' : '#2E7D32' }]}>
-              ${price.price.toFixed(2)}
-            </Text>
-            <Text style={[styles.priceStoreName, { color: theme.secondaryText }]} numberOfLines={1}>
-              {price.source.storeName}
-            </Text>
-          </View>
-        ) : null}
-      </TouchableOpacity>
-    </View>
+      {/* Price */}
+      {price && !priceLoading ? (
+        <View style={styles.priceContainer}>
+          <Text style={[styles.priceText, { color: isDark ? '#00E676' : '#4A7C59' }]}>
+            ${price.price.toFixed(2)}
+          </Text>
+        </View>
+      ) : null}
+    </TouchableOpacity>
   );
 });
 
 export default ItemRow;
 
 const styles = StyleSheet.create({
-  itemRowContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 12,
-  },
-  reorderButtons: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 2,
-  },
-  reorderButtonsHidden: {
-    opacity: 0,
-    pointerEvents: 'none',
-  },
-  reorderBtn: {
-    width: 24,
-    height: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  reorderBtnDisabled: {
-    opacity: 0.2,
-  },
-  reorderBtnText: {
-    fontSize: 10,
-    color: '#999',
-  },
-  reorderBtnTextDisabled: {
-    color: '#ddd',
-  },
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginHorizontal: 0,
-    backgroundColor: '#fff',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    flex: 1,
   },
   itemRowChecked: {
-    opacity: 0.6,
+    opacity: 0.5,
   },
   checkbox: {
     width: 24,
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#ccc',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
   },
-  checkboxChecked: {
-    backgroundColor: '#4CAF50',
-    borderColor: '#4CAF50',
+  checkboxGlow: {
+    shadowColor: '#00E676',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
   },
-  checkmark: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  itemImage: {
-    width: 32,
-    height: 32,
-    borderRadius: 6,
-    marginRight: 8,
-  },
-  emojiFallback: {
-    width: 40,
-    height: 40,
+  emojiContainer: {
+    width: 36,
+    height: 36,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 8,
+    marginRight: 10,
   },
   emojiText: {
-    fontSize: 28,
-    textAlign: 'center',
+    fontSize: 24,
   },
   itemInfo: {
     flex: 1,
@@ -313,47 +248,38 @@ const styles = StyleSheet.create({
   },
   itemName: {
     fontSize: 15,
-    color: '#333',
     fontWeight: '500',
   },
   itemNameChecked: {
-    color: '#999',
+    opacity: 0.6,
   },
   strikethrough: {
     position: 'absolute',
     left: 0,
     top: '50%',
     height: 1.5,
-    backgroundColor: '#999',
     borderRadius: 1,
   },
   itemNotes: {
     fontSize: 12,
-    color: '#999',
     marginTop: 2,
   },
   quantityBadge: {
-    backgroundColor: '#f0f0f0',
     borderRadius: 12,
     paddingHorizontal: 10,
     paddingVertical: 4,
+    marginRight: 8,
   },
   quantityText: {
     fontSize: 12,
-    color: '#666',
     fontWeight: '600',
   },
-  priceRightContainer: {
+  priceContainer: {
     alignItems: 'flex-end',
-    marginLeft: 10,
     minWidth: 50,
   },
-  priceRightText: {
+  priceText: {
     fontSize: 14,
     fontWeight: '700',
-  },
-  priceStoreName: {
-    fontSize: 10,
-    marginTop: 1,
   },
 });

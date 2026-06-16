@@ -1,14 +1,7 @@
 /**
- * Home Screen — entry point with navigation to lists, pairing, and settings.
- *
- * Shows existing grocery lists (or empty state) and provides quick access to
- * the main screens.
- *
- * Features:
- *  - Swipe-to-delete on list cards (SwipeableListCard)
- *  - Long-press context menu for delete/share (ContextMenu)
- *  - Delete confirmation modal (DeleteConfirmationModal)
- *  - Undo toast after deletion (UndoToast)
+ * Home Screen — Antigravity redesign.
+ * Entry point with bottom tab navigation, search bar, store-style list cards,
+ * glassmorphism design, and all existing features (swipe-to-delete, context menu, etc.).
  */
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
@@ -36,14 +29,13 @@ import SwipeableListCard from '../components/SwipeableListCard';
 import ContextMenu from '../components/ContextMenu';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import UndoToast from '../components/UndoToast';
+import GlassCard from '../components/GlassCard';
+import SearchBar from '../components/SearchBar';
+import BottomTabBar, { type TabName } from '../components/BottomTabBar';
 import { themeColors } from '../components/groceryTheme';
-import { Feather, Ionicons } from '@expo/vector-icons';
-
-// ─── Props ──────────────────────────────────────────────────────────────────
+import { Ionicons } from '@expo/vector-icons';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
-
-// ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export default function HomeScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
@@ -67,6 +59,8 @@ export default function HomeScreen({ navigation }: Props) {
 
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<TabName>('home');
 
   // Delete flow state
   const [pendingDelete, setPendingDelete] = useState<GroceryList | null>(null);
@@ -81,7 +75,6 @@ export default function HomeScreen({ navigation }: Props) {
 
   const { shareInvite } = useShareInvite();
 
-  // Guard against stale async state on unmount / rapid re-mount
   const abortedRef = useRef(false);
 
   const doLoadLists = useCallback(() => {
@@ -123,7 +116,6 @@ export default function HomeScreen({ navigation }: Props) {
   );
 
   const handleCreateList = useCallback(async () => {
-    // Use the first active member's familyId, or use a placeholder
     const firstMember = Object.values(members).find((m) => m.isActive);
     const familyId = firstMember?.familyId ?? 'default-family';
 
@@ -136,14 +128,11 @@ export default function HomeScreen({ navigation }: Props) {
     }
   }, [createList, members, navigation]);
 
-  // ─── Delete handlers ────────────────────────────────────────────────────
-
-  /** Called by SwipeableListCard or ContextMenu when user initiates delete */
+  // Delete handlers
   const handleDeleteInitiated = useCallback((list: GroceryList) => {
     setPendingDelete(list);
   }, []);
 
-  /** Called when user confirms deletion in the modal */
   const handleDeleteConfirm = useCallback(async () => {
     if (!pendingDelete) return;
     const deletedList = { ...pendingDelete };
@@ -152,28 +141,21 @@ export default function HomeScreen({ navigation }: Props) {
     setPendingDelete(null);
   }, [pendingDelete, deleteList]);
 
-  /** Called when user cancels deletion */
   const handleDeleteCancel = useCallback(() => {
     setPendingDelete(null);
   }, []);
 
-  /** Called when user taps Undo in the toast */
   const handleUndo = useCallback(async () => {
     if (!undoList) return;
-    // Restore the list using the dedicated restoreList action
-    // which re-adds to state, Yjs index, and sync manager
     await restoreList(undoList);
     setUndoList(null);
   }, [undoList, restoreList]);
 
-  /** Called when undo toast auto-dismisses */
   const handleUndoDismiss = useCallback(() => {
     setUndoList(null);
   }, []);
 
-  // ─── Context menu handlers ──────────────────────────────────────────────
-
-  /** Called by SwipeableListCard on long-press */
+  // Context menu handlers
   const handleLongPress = useCallback(
     (list: GroceryList, event: GestureResponderEvent) => {
       const { pageX, pageY } = event.nativeEvent;
@@ -210,8 +192,6 @@ export default function HomeScreen({ navigation }: Props) {
     }
   }, [contextMenu.list, shareInvite]);
 
-  // ─── Share from card button (existing) ──────────────────────────────────
-
   const handleShare = useCallback(
     (list: GroceryList) => {
       shareInvite(
@@ -227,50 +207,62 @@ export default function HomeScreen({ navigation }: Props) {
     [shareInvite],
   );
 
+  const handleTabPress = useCallback((tab: TabName) => {
+    setActiveTab(tab);
+    if (tab === 'lists') {
+      // Already on home/lists view
+    } else if (tab === 'account') {
+      navigation.navigate('Settings');
+    }
+    // Other tabs: scan, deals — placeholder for future
+  }, [navigation]);
+
   const activeLists = Object.values(lists).filter(
     (l) => !l.isDeleted,
   );
 
+  // Filter lists by search
+  const filteredLists = searchQuery.trim()
+    ? activeLists.filter((l) =>
+        l.name.toLowerCase().includes(searchQuery.toLowerCase()),
+      )
+    : activeLists;
+
+  const syncDotColor =
+    syncState === 'syncing'
+      ? theme.accent
+      : syncState === 'error'
+        ? '#EF4444'
+        : syncState === 'offline'
+          ? '#999'
+          : theme.primary;
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.bg }]}>
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <Text style={[styles.title, { color: theme.text }]}>StopHop</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity
             onPress={() => navigation.navigate('Pairing')}
-            style={[styles.headerBtn, { backgroundColor: theme.btnBg }]}
+            style={[styles.iconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F5F0E8' }]}
             activeOpacity={0.7}
           >
-            <Feather name="users" size={18} color={theme.btnText} />
+            <Ionicons name="people-outline" size={18} color={theme.text} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => navigation.navigate('Settings')}
-            style={[styles.headerBtn, { backgroundColor: theme.btnBg }]}
+            style={[styles.iconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F5F0E8' }]}
             activeOpacity={0.7}
           >
-            <Feather name="settings" size={18} color={theme.btnText} />
+            <Ionicons name="settings-outline" size={18} color={theme.text} />
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Sync indicator */}
-      <View style={[styles.syncBar, { backgroundColor: isDark ? '#111C15' : '#E8EFE5' }]}>
-        <View
-          style={[
-            styles.syncDot,
-            {
-              backgroundColor:
-                syncState === 'syncing'
-                  ? theme.accent
-                  : syncState === 'error'
-                    ? '#EF4444'
-                    : syncState === 'offline'
-                      ? '#999'
-                      : theme.primary,
-            },
-          ]}
-        />
+      <View style={styles.syncBar}>
+        <View style={[styles.syncDot, { backgroundColor: syncDotColor }]} />
         <Text style={[styles.syncText, { color: theme.secondaryText }]}>
           {syncState === 'syncing'
             ? 'Syncing...'
@@ -282,6 +274,9 @@ export default function HomeScreen({ navigation }: Props) {
         </Text>
       </View>
 
+      {/* Search bar */}
+      <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search lists..." />
+
       {/* Body */}
       {!loaded || isLoading ? (
         <View style={styles.loadingRow}>
@@ -290,7 +285,8 @@ export default function HomeScreen({ navigation }: Props) {
         </View>
       ) : loadError ? (
         <View style={styles.emptyContainer}>
-          <Text style={[styles.emptyTitle, { color: '#f44336' }]}>Something went wrong</Text>
+          <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
+          <Text style={[styles.emptyTitle, { color: '#EF4444', marginTop: 12 }]}>Something went wrong</Text>
           <Text style={[styles.emptySubtitle, { color: theme.secondaryText }]}>
             {loadError}
           </Text>
@@ -298,22 +294,29 @@ export default function HomeScreen({ navigation }: Props) {
             <Text style={styles.createBtnText}>Retry</Text>
           </TouchableOpacity>
         </View>
-      ) : activeLists.length === 0 ? (
+      ) : filteredLists.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={[styles.emptyTitle, { color: theme.secondaryText }]}>No grocery lists yet</Text>
-          <Text style={[styles.emptySubtitle, { color: theme.secondaryText }]}>
-            Create your first list to get started
+          <Ionicons name="cart-outline" size={48} color={theme.secondaryText} />
+          <Text style={[styles.emptyTitle, { color: theme.text, marginTop: 12 }]}>
+            {searchQuery ? 'No matching lists' : 'No grocery lists yet'}
           </Text>
-          <TouchableOpacity style={[styles.createBtn, { backgroundColor: theme.primary }]} onPress={handleCreateList}>
-            <Text style={styles.createBtnText}>Create List</Text>
-          </TouchableOpacity>
+          <Text style={[styles.emptySubtitle, { color: theme.secondaryText }]}>
+            {searchQuery ? 'Try a different search' : 'Create your first list to get started'}
+          </Text>
+          {!searchQuery && (
+            <TouchableOpacity style={[styles.createBtn, { backgroundColor: theme.primary }]} onPress={handleCreateList}>
+              <Ionicons name="add" size={18} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={styles.createBtnText}>Create List</Text>
+            </TouchableOpacity>
+          )}
         </View>
       ) : (
         <ScrollView
           style={styles.listScroll}
           contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
         >
-          {activeLists.map((list) => (
+          {filteredLists.map((list) => (
             <SwipeableListCard
               key={list.id}
               list={list}
@@ -324,19 +327,24 @@ export default function HomeScreen({ navigation }: Props) {
               theme={theme}
             />
           ))}
+
+          {/* Create list button at bottom */}
+          <TouchableOpacity
+            style={[styles.createListCard, {
+              borderColor: isDark ? 'rgba(0, 230, 118, 0.15)' : 'rgba(124, 179, 66, 0.3)',
+              backgroundColor: isDark ? 'rgba(0, 230, 118, 0.05)' : 'rgba(124, 179, 66, 0.06)',
+            }]}
+            onPress={handleCreateList}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="add-circle-outline" size={24} color={theme.primary} />
+            <Text style={[styles.createListText, { color: theme.primary }]}>New List</Text>
+          </TouchableOpacity>
         </ScrollView>
       )}
 
-      {/* FAB for new list */}
-      {activeLists.length > 0 && (
-        <TouchableOpacity
-          style={[styles.fab, { backgroundColor: theme.primary, shadowColor: theme.primary }]}
-          onPress={handleCreateList}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="add" size={30} color="#fff" />
-        </TouchableOpacity>
-      )}
+      {/* Bottom Tab Bar */}
+      <BottomTabBar activeTab={activeTab} onTabPress={handleTabPress} />
 
       {/* Context Menu (long-press) */}
       <ContextMenu
@@ -370,8 +378,6 @@ export default function HomeScreen({ navigation }: Props) {
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -381,8 +387,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
+    paddingBottom: 12,
   },
   title: {
     fontSize: 28,
@@ -392,41 +397,33 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 10,
   },
-  headerBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  iconBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  headerBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
   },
   syncBar: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 8,
-    gap: 8,
+    paddingBottom: 4,
+    gap: 6,
   },
   syncDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
   syncText: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '500',
   },
   loadingRow: {
+    flex: 1,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
@@ -443,9 +440,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   emptyTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '600',
     marginBottom: 4,
+    textAlign: 'center',
   },
   emptySubtitle: {
     fontSize: 14,
@@ -453,13 +451,11 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   createBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingVertical: 12,
-    paddingHorizontal: 28,
+    paddingHorizontal: 24,
     borderRadius: 12,
-    elevation: 3,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
   },
   createBtnText: {
     color: '#fff',
@@ -471,26 +467,21 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: 16,
-    gap: 12,
+    gap: 10,
+    paddingBottom: 16,
   },
-  fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
+  createListCard: {
+    flexDirection: 'row',
     alignItems: 'center',
-    elevation: 6,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    gap: 8,
   },
-  fabText: {
-    fontSize: 28,
-    color: '#fff',
-    fontWeight: '300',
-    lineHeight: 30,
+  createListText: {
+    fontSize: 15,
+    fontWeight: '600',
   },
 });
