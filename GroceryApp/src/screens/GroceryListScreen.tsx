@@ -1,15 +1,13 @@
 /**
- * GroceryListScreen — main list view.
- *
- * Displays items grouped by category, with check-off, reorder, search,
- * FAB add button, and sync indicator.
+ * GroceryListScreen — Antigravity redesign.
+ * Main list view with search bar, category pills, store card row,
+ * items grouped by category with quantity steppers, and bottom tab bar.
  */
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
@@ -19,11 +17,12 @@ import {
   Platform,
   UIManager,
   RefreshControl,
+  ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useIsFocused } from '@react-navigation/native';
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import type { GroceryItem, GroceryCategory } from '../types';
 import type { PriceResult } from '../pricing/types';
 import { BUILT_IN_CATEGORIES, STORE_PLAN_CATEGORY_ORDER } from '../types';
@@ -49,6 +48,12 @@ import StoreTotalBar from '../components/StoreTotalBar';
 import type { StoreTotal } from '../components/StoreTotalBar';
 import { themeColors } from '../components/groceryTheme';
 
+// New Antigravity components
+import SearchBar from '../components/SearchBar';
+import CategoryPill from '../components/CategoryPill';
+import StoreCard from '../components/StoreCard';
+import BottomTabBar, { type TabName } from '../components/BottomTabBar';
+
 // Enable LayoutAnimation on Android
 if (
   Platform.OS === 'android' &&
@@ -57,18 +62,12 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// ─── Props ──────────────────────────────────────────────────────────────────
-
 type Props = NativeStackScreenProps<RootStackParamList, 'GroceryList'>;
-/** Section shape used by all SectionList variants — includes optional subtotal for route plans. */
 interface ListSection {
   title: string;
   data: GroceryItem[];
   subtotal?: number;
 }
-
-
-// ─── Main Screen ─────────────────────────────────────────────────────────────
 
 export default function GroceryListScreen({ route, navigation }: Props) {
   const { listId } = route.params;
@@ -117,6 +116,8 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   const [selectedRouteNumStops, setSelectedRouteNumStops] = useState<number | null>(null);
   const [availableStores, setAvailableStores] = useState<{ storeId: string; storeName: string }[]>([]);
   const [priceSummaryItem, setPriceSummaryItem] = useState<{ id: string; name: string } | null>(null);
+  const [activeCategory, setActiveCategory] = useState<string>('All');
+  const [activeTab, setActiveTab] = useState<TabName>('lists');
 
   // Build dynamic store name map from available stores
   const storeNameMap = useMemo(() => {
@@ -137,14 +138,12 @@ export default function GroceryListScreen({ route, navigation }: Props) {
           i.name.toLowerCase().includes(searchQuery.toLowerCase()),
       );
   }, [items, listId, searchQuery]);
-  // Memoize stop proposals once — used by both getItemPrice and routePlanSections
+
   const stopProposals = useMemo(
     () => computeStopProposals(filteredUncheckedItems, perStorePrices, storeNameMap),
     [filteredUncheckedItems, perStorePrices, storeNameMap],
   );
 
-  // Get the best price for an item: per-store price if a store is selected,
-  // or cheapest among stores in the selected route if a route is selected, otherwise flat price
   const getItemPrice = useCallback(
     (itemId: string) => {
       if (selectedStoreId && perStorePrices[selectedStoreId]?.[itemId]) {
@@ -169,7 +168,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     },
     [selectedStoreId, selectedRouteNumStops, perStorePrices, prices, stopProposals],
   );
-  // Claim-an-item expiry timer — checks every 60s (not 30s), React.memo on ItemRow prevents full re-render
+
   const [, forceRender] = useState(0);
   useEffect(() => {
     const timer = setInterval(() => {
@@ -178,13 +177,11 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     return () => clearInterval(timer);
   }, []);
 
-  // Load items and list name on mount
   useEffect(() => {
     loadItems(listId).catch((err: Error) => {
       Alert.alert('Error', err.message);
     });
 
-    // Load list name from Yjs metadata
     try {
       const meta = getListMeta(listId);
       const name = meta.get('name') as string | undefined;
@@ -196,7 +193,6 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     }
   }, [listId, loadItems]);
 
-  // Load available stores from price sources
   useEffect(() => {
     Promise.all([
       flippDealsAdapter.getAvailableStores().catch(() => [] as { storeId: string; storeName: string }[]),
@@ -209,57 +205,61 @@ export default function GroceryListScreen({ route, navigation }: Props) {
         seen.add(s.storeId);
         return true;
       });
-      console.log(`[stores] Loaded ${unique.length} stores: ${unique.map(s => s.storeId).join(',')}`);
       setAvailableStores(unique);
     }).catch(err => console.warn('[stores] Failed to load stores:', err));
   }, []);
 
-  // Load prices for visible items across all available stores
   useEffect(() => {
     const storeIds = availableStores.map(s => s.storeId);
-    console.log(`[prices] Effect running with ${storeIds.length} stores, items keys: ${Object.keys(items || {}).length}`);
     if (storeIds.length === 0 || !items || Object.keys(items).length === 0) return;
     const visibleItems = Object.values(items).filter(
       (item) => !item.isDeleted && item.listId === listId,
     );
-    console.log(`[prices] visibleItems: ${visibleItems.length}, listId: ${listId}`);
-    // Skip items with fresh prices (< 1 hour old)
-    const FRESHNESS_THRESHOLD = 60 * 60 * 1000; // 1 hour
+    const FRESHNESS_THRESHOLD = 60 * 60 * 1000;
     const staleItems = visibleItems.filter((item) => {
       const ts = priceTimestamps[item.id];
       return !ts || Date.now() - ts > FRESHNESS_THRESHOLD;
     });
     if (staleItems.length > 0) {
-      console.log(`[prices] Calling loadPricesForAllStores with ${staleItems.length} items, ${storeIds.length} stores`);
       loadPricesForAllStores(
         staleItems.map((item) => ({ id: item.id, name: item.name })),
         storeIds,
       ).catch(err => console.warn('[prices] loadPricesForAllStores failed:', err));
     }
-
   }, [Object.keys(items).length, listId, loadPricesForAllStores, isFocused, availableStores]);
 
-  // Filtered and grouped items — unchecked stay in categories, checked go to "Got It"
+  // Available categories from items
+  const availableCategories = useMemo(() => {
+    const cats = new Set<string>();
+    Object.values(items)
+      .filter((i) => !i.isDeleted && i.listId === listId && !i.isChecked)
+      .forEach((i) => cats.add(i.category || 'other'));
+    const builtIn = [...BUILT_IN_CATEGORIES] as string[];
+    return ['All', ...builtIn.filter(c => cats.has(c)), ...Array.from(cats).filter(c => !builtIn.includes(c)).sort()];
+  }, [items, listId]);
+
+  // Grouped sections
   const groupedSections = useMemo(() => {
     const allItems = Object.values(items).filter(
       (item) => !item.isDeleted && item.listId === listId,
     );
 
-    // Filter by search
     const filtered = searchQuery.trim()
       ? allItems.filter((item) =>
           item.name.toLowerCase().includes(searchQuery.toLowerCase()),
         )
       : allItems;
 
-    // Sort by sortOrder
-    filtered.sort((a, b) => a.sortOrder - b.sortOrder);
+    // Filter by active category
+    const categoryFiltered = activeCategory === 'All'
+      ? filtered
+      : filtered.filter((item) => (item.category || 'other') === activeCategory);
 
-    // Split into unchecked and checked
-    const unchecked = filtered.filter((item) => !item.isChecked);
-    const checked = filtered.filter((item) => item.isChecked);
+    categoryFiltered.sort((a, b) => a.sortOrder - b.sortOrder);
 
-    // Group unchecked by category
+    const unchecked = categoryFiltered.filter((item) => !item.isChecked);
+    const checked = categoryFiltered.filter((item) => item.isChecked);
+
     const groups: Record<string, GroceryItem[]> = {};
     for (const item of unchecked) {
       const cat = item.category || 'other';
@@ -267,7 +267,6 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       groups[cat].push(item);
     }
 
-    // Build sections in the order of BUILT_IN_CATEGORIES + custom at end
     const sections: ListSection[] = [];
     const builtInSet = new Set(BUILT_IN_CATEGORIES);
 
@@ -278,12 +277,10 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       }
     }
 
-    // Remaining custom categories
     for (const cat of Object.keys(groups).sort()) {
       sections.push({ title: cat, data: groups[cat] });
     }
 
-    // Add "Got It" section at the bottom if there are checked items
     if (checked.length > 0) {
       sections.push({
         title: '__got_it__',
@@ -292,9 +289,9 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     }
 
     return sections;
-  }, [items, listId, searchQuery, gotItExpanded]);
+  }, [items, listId, searchQuery, gotItExpanded, activeCategory]);
 
-  // ─── Store totals — weighted total per store ───────────────────────────────
+  // Store totals
   const storeTotals = useMemo(() => {
     const allItems = Object.values(items).filter(
       (item) => !item.isDeleted && item.listId === listId && !item.isChecked,
@@ -328,7 +325,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     return totals;
   }, [items, listId, perStorePrices, getStoreIdsWithPrices]);
 
-  // ─── Store-plan sections — grouped by category for selected store ──────────
+  // Store-plan sections
   const storePlanSections = useMemo(() => {
     if (!selectedStoreId) return null;
 
@@ -347,7 +344,6 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     const unchecked = filtered.filter((item) => !item.isChecked);
     const checked = filtered.filter((item) => item.isChecked);
 
-    // Group unchecked by category, using STORE_PLAN_CATEGORY_ORDER
     const groups: Record<string, GroceryItem[]> = {};
     for (const item of unchecked) {
       const cat = item.category || 'other';
@@ -364,12 +360,10 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       }
     }
 
-    // Remaining custom categories
     for (const cat of Object.keys(groups).sort()) {
       sections.push({ title: cat, data: groups[cat] });
     }
 
-    // Add "Got It" section at the bottom if there are checked items
     if (checked.length > 0) {
       sections.push({
         title: '__got_it__',
@@ -380,18 +374,15 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     return sections;
   }, [items, listId, searchQuery, gotItExpanded, selectedStoreId]);
 
-  // ─── Route-plan sections — grouped by store stop for selected route ──────────
+  // Route-plan sections
   const routePlanSections = useMemo(() => {
     if (!selectedRouteNumStops) return null;
-    // Get the proposal for this number of stops
     const proposal = stopProposals.find(p => p.numStops === selectedRouteNumStops);
     if (!proposal) return null;
 
-    // The stores in the proposal
     const routeStores = proposal.stores;
     const storeIds = routeStores.map(s => s.storeId);
 
-    // Filter items
     const allItems = Object.values(items).filter(
       (item) => !item.isDeleted && item.listId === listId,
     );
@@ -405,7 +396,6 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     const unchecked = filtered.filter((item) => !item.isChecked);
     const checked = filtered.filter((item) => item.isChecked);
 
-    // Map each item to the cheapest store amongst the stores in the route
     const storeGroups: Record<string, GroceryItem[]> = {};
     const storeSubtotals: Record<string, number> = {};
 
@@ -437,7 +427,6 @@ export default function GroceryListScreen({ route, navigation }: Props) {
 
     const sections: ListSection[] = [];
 
-    // Create sections in the order of the stops in the route
     routeStores.forEach((store, idx) => {
       const data = storeGroups[store.storeId];
       if (data && data.length > 0) {
@@ -456,7 +445,6 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       });
     }
 
-    // Add "Got It" section at the bottom if there are checked items
     if (checked.length > 0) {
       sections.push({
         title: '__got_it__',
@@ -467,15 +455,12 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     return sections;
   }, [items, listId, searchQuery, gotItExpanded, selectedRouteNumStops, stopProposals, perStorePrices]);
 
-  // Item press → show price summary on first tap, navigate to edit on second tap
   const handleItemPress = useCallback(
     (item: GroceryItem) => {
       if (priceSummaryItem?.id === item.id) {
-        // Same item tapped again → navigate to edit
         setPriceSummaryItem(null);
         navigation.navigate('ItemEdit', { listId, itemId: item.id });
       } else {
-        // First tap → show price summary banner
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setPriceSummaryItem({ id: item.id, name: item.name });
       }
@@ -483,18 +468,15 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     [navigation, listId, priceSummaryItem],
   );
 
-  // Toggle check with animation + toast
   const [togglingItems, setTogglingItems] = useState<Set<string>>(new Set());
   const handleToggle = useCallback(
     (id: string) => {
       const item = items[id];
       if (!item) return;
 
-      // Guard against rapid spam-clicks
       if (togglingItems.has(id)) return;
       setTogglingItems((prev) => new Set(prev).add(id));
 
-      // If checking off (not un-checking), show toast + animation
       if (!item.isChecked) {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       }
@@ -511,7 +493,6 @@ export default function GroceryListScreen({ route, navigation }: Props) {
           });
         });
 
-      // Show toast when checking off
       if (!item.isChecked) {
         setToastState({
           visible: true,
@@ -523,7 +504,6 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     [items, toggleChecked, togglingItems],
   );
 
-  // Undo check — un-check the item
   const handleUndo = useCallback(() => {
     if (!toastState) return;
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -533,12 +513,10 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     setToastState(null);
   }, [toastState, toggleChecked]);
 
-  // Dismiss toast
   const handleDismissToast = useCallback(() => {
     setToastState(null);
   }, []);
 
-  // Long-press → show Edit/Delete context menu
   const handleItemLongPress = useCallback(
     (id: string, name: string) => {
       Alert.alert(name, 'What would you like to do?', [
@@ -572,7 +550,6 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     [deleteItem, navigation, listId],
   );
 
-  // Claim-an-item
   const handleClaim = useCallback(
     (id: string) => {
       claimItem(id);
@@ -587,7 +564,6 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     [unclaimItem],
   );
 
-  // Reorder handlers
   const handleMoveUp = useCallback(
     (id: string) => {
       reorderItem(id, 'up', listId).catch((err: Error) => {
@@ -606,12 +582,10 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     [reorderItem, listId],
   );
 
-  // Settings nav
   const handleSettings = useCallback(() => {
     navigation.navigate('Settings');
   }, [navigation]);
 
-  // Pull-to-refresh — force re-fetch all prices
   const handleRefreshPrices = useCallback(() => {
     const storeIds = availableStores.map(s => s.storeId);
     if (storeIds.length === 0) return;
@@ -626,7 +600,31 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     }
   }, [items, listId, availableStores, refreshAllPrices]);
 
-  // Check if any prices have been loaded (for "Find Prices" button)
+  const handleQuantityChange = useCallback(
+    (id: string, delta: number) => {
+      const item = items[id];
+      if (!item) return;
+      const newQty = Math.max(1, item.quantity + delta);
+      // Update quantity via the store
+      const { updateItem } = useGroceryStore.getState();
+      if (updateItem) {
+        updateItem(id, { quantity: newQty }).catch((err: Error) => {
+          Alert.alert('Error', err.message);
+        });
+      }
+    },
+    [items],
+  );
+
+  const handleTabPress = useCallback((tab: TabName) => {
+    setActiveTab(tab);
+    if (tab === 'home') {
+      navigation.goBack();
+    } else if (tab === 'account') {
+      navigation.navigate('Settings');
+    }
+  }, [navigation]);
+
   const hasPrices = Object.keys(priceTimestamps).length > 0;
   const hasStalePrices = Object.values(items)
     .filter((item) => !item.isDeleted && item.listId === listId)
@@ -644,6 +642,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   if (error) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: theme.bg }]}>
+        <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity
           style={[styles.retryButton, { backgroundColor: theme.primary }]}
@@ -662,7 +661,6 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   const checkedItemsCount = Object.values(items).filter(
     (i) => {
       if (i.isDeleted || i.listId !== listId || !i.isChecked) return false;
-      // Apply search filter if active — match what the section list shows
       if (searchQuery.trim()) {
         return i.name.toLowerCase().includes(searchQuery.toLowerCase());
       }
@@ -670,78 +668,75 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     },
   ).length;
 
-
-
   return (
-    <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.bg }]}>
+    <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7}>
-          <Feather name="arrow-left" size={22} color={theme.primary} />
+          <Ionicons name="chevron-back" size={24} color={theme.primary} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: theme.text }]}>{listName}</Text>
         <View style={styles.headerRight}>
           <SyncIndicator />
           <TouchableOpacity onPress={handleSettings} style={styles.settingsBtn} activeOpacity={0.7}>
-            <Feather name="settings" size={22} color={theme.text} />
+            <Ionicons name="settings-outline" size={22} color={theme.text} />
           </TouchableOpacity>
         </View>
       </View>
 
       {/* Search bar */}
-      <View style={[styles.searchContainer, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
-        <Feather name="search" size={18} color={isDark ? '#8BA093' : '#6B7F73'} style={styles.searchIcon} />
-        <TextInput
-          style={[styles.searchInput, { color: theme.text, backgroundColor: theme.cardBg }]}
-          placeholder="Search items..."
-          placeholderTextColor={isDark ? '#475569' : '#999'}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          autoCapitalize="none"
-          autoCorrect={false}
-          clearButtonMode="never"
-        />
-        {searchQuery.length > 0 && (
-          <TouchableOpacity
-            style={styles.clearSearch}
-            onPress={() => setSearchQuery('')}
-            activeOpacity={0.7}
-          >
-            <Feather name="x-circle" size={18} color={theme.secondaryText} />
-          </TouchableOpacity>
-        )}
+      <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search groceries..." />
+
+      {/* Category pills */}
+      <View style={styles.categoryPillContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoryPillScroll}
+        >
+          {availableCategories.map((cat) => (
+            <CategoryPill
+              key={cat}
+              label={cat === 'All' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1)}
+              isActive={activeCategory === cat}
+              onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setActiveCategory(cat);
+              }}
+            />
+          ))}
+        </ScrollView>
       </View>
 
-      {/* Item count */}
-      <Text style={[styles.countText, { color: theme.secondaryText }]}>
-        {searchQuery
-          ? `${groupedSections.reduce((s, sec) => s + sec.data.length, 0)} results`
-          : `${totalItems} items`}
-      </Text>
-
-      {/* Find Prices button — always visible when not loading */}
-      {!priceLoading && (
-        <TouchableOpacity
-          style={[styles.findPricesBtn, { backgroundColor: theme.primary + '18', borderColor: theme.border }]}
-          onPress={handleRefreshPrices}
-          activeOpacity={0.7}
-        >
-          <Feather name={hasPrices ? 'refresh-cw' : 'search'} size={14} color={theme.primary} />
-          <Text style={[styles.findPricesText, { color: theme.primary, marginLeft: 6 }]}>
-            {hasPrices ? 'Refresh Prices' : 'Find Prices'}
-          </Text>
-        </TouchableOpacity>
+      {/* Store card row — horizontal scroll */}
+      {storeTotals.length > 0 && (
+        <View style={styles.storeCardRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.storeCardScroll}
+          >
+            {storeTotals.map((st) => (
+              <StoreCard
+                key={st.storeId}
+                storeName={st.storeName}
+                storeId={st.storeId}
+                total={st.total}
+                itemCount={Object.values(items).filter(i => !i.isDeleted && i.listId === listId && !i.isChecked).length}
+                isSelected={selectedStoreId === st.storeId}
+                onPress={() => {
+                  if (selectedStoreId === st.storeId) {
+                    setSelectedStoreId(null);
+                  } else {
+                    setSelectedStoreId(st.storeId);
+                    setSelectedRouteNumStops(null);
+                  }
+                }}
+              />
+            ))}
+          </ScrollView>
+        </View>
       )}
-
-      {/* Store total bar */}
-      <StoreTotalBar
-        storeTotals={storeTotals}
-        selectedStoreId={selectedStoreId}
-        onSelectStore={(storeId) => {
-          setSelectedStoreId(storeId);
-          setSelectedRouteNumStops(null);
-        }}
-      />
 
       {/* Stop optimizer */}
       <StopOptimizer
@@ -761,7 +756,21 @@ export default function GroceryListScreen({ route, navigation }: Props) {
         }))}
       />
 
-      {/* Price summary banner — shows when an item is tapped */}
+      {/* Find Prices button */}
+      {!priceLoading && (
+        <TouchableOpacity
+          style={[styles.findPricesBtn, { backgroundColor: isDark ? 'rgba(0, 230, 118, 0.08)' : 'rgba(124, 179, 66, 0.1)' }]}
+          onPress={handleRefreshPrices}
+          activeOpacity={0.7}
+        >
+          <Ionicons name={hasPrices ? 'refresh' : 'search'} size={14} color={theme.primary} />
+          <Text style={[styles.findPricesText, { color: theme.primary }]}>
+            {hasPrices ? 'Refresh Prices' : 'Find Prices'}
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Price summary banner */}
       {priceSummaryItem && (() => {
         const priceEntries = availableStores
           .map((store) => {
@@ -770,7 +779,10 @@ export default function GroceryListScreen({ route, navigation }: Props) {
           })
           .filter(Boolean);
         return (
-          <View style={[styles.priceSummaryBanner, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+          <View style={[styles.priceSummaryBanner, {
+            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#FFFFFF',
+            borderColor: isDark ? 'rgba(0, 230, 118, 0.15)' : 'rgba(0, 0, 0, 0.06)',
+          }]}>
             <Text style={[styles.priceSummaryName, { color: theme.text }]}>
               {priceSummaryItem.name}
             </Text>
@@ -791,7 +803,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
               }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
-              <Text style={[styles.priceSummaryDismissText, { color: theme.secondaryText }]}>✕</Text>
+              <Ionicons name="close" size={16} color={theme.secondaryText} />
             </TouchableOpacity>
           </View>
         );
@@ -809,7 +821,8 @@ export default function GroceryListScreen({ route, navigation }: Props) {
         if (activeSections.length === 0) {
           return (
             <View style={styles.emptyContainer}>
-              <Text style={[styles.emptyTitle, { color: theme.secondaryText }]}>
+              <Ionicons name="cart-outline" size={48} color={theme.secondaryText} />
+              <Text style={[styles.emptyTitle, { color: theme.text, marginTop: 12 }]}>
                 {searchQuery ? 'No results' : 'List is empty'}
               </Text>
               <Text style={[styles.emptySubtitle, { color: theme.secondaryText }]}>
@@ -844,6 +857,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
                     isLast={index === section.data.length - 1}
                     price={getItemPrice(item.id)}
                     priceLoading={itemLoading[item.id] ?? false}
+                    onQuantityChange={handleQuantityChange}
                   />
                 );
               }
@@ -859,6 +873,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
                   isLast={index === section.data.length - 1}
                   price={getItemPrice(item.id)}
                   priceLoading={itemLoading[item.id] ?? false}
+                  onQuantityChange={handleQuantityChange}
                 />
               );
             }}
@@ -899,12 +914,18 @@ export default function GroceryListScreen({ route, navigation }: Props) {
 
       {/* FAB Add button */}
       <TouchableOpacity
-        style={[styles.fab, { backgroundColor: theme.primary }]}
+        style={[styles.fab, {
+          backgroundColor: theme.primary,
+          shadowColor: isDark ? '#00E676' : '#7CB342',
+        }]}
         onPress={() => setShowAddSheet(true)}
         activeOpacity={0.8}
       >
-        <Text style={styles.fabText}>+</Text>
+        <Ionicons name="add" size={28} color={isDark ? '#0B0F12' : '#FFFFFF'} />
       </TouchableOpacity>
+
+      {/* Bottom Tab Bar */}
+      <BottomTabBar activeTab={activeTab} onTabPress={handleTabPress} />
 
       {/* Add Item Sheet */}
       <AddItemSheet
@@ -919,36 +940,31 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
   },
   loadingText: {
     marginTop: 12,
     fontSize: 16,
-    color: '#666',
   },
   errorText: {
     fontSize: 16,
-    color: '#f44336',
+    color: '#EF4444',
+    marginTop: 12,
     marginBottom: 16,
     textAlign: 'center',
     paddingHorizontal: 32,
   },
   retryButton: {
-    backgroundColor: '#4CAF50',
     paddingVertical: 10,
     paddingHorizontal: 24,
-    borderRadius: 8,
+    borderRadius: 12,
   },
   retryText: {
     color: '#fff',
@@ -960,25 +976,17 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    paddingBottom: 8,
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
-    color: '#333',
     flex: 1,
     marginLeft: 8,
   },
   backBtn: {
     paddingRight: 4,
-  },
-  backText: {
-    fontSize: 16,
-    color: '#4CAF50',
-    fontWeight: '600',
+    padding: 4,
   },
   headerRight: {
     flexDirection: 'row',
@@ -988,42 +996,21 @@ const styles = StyleSheet.create({
   settingsBtn: {
     padding: 6,
   },
-  settingsIcon: {
-    fontSize: 20,
+  categoryPillContainer: {
+    paddingVertical: 4,
   },
-  searchIcon: {
-    marginLeft: 12,
+  categoryPillScroll: {
+    paddingHorizontal: 16,
+    gap: 0,
   },
-  searchContainer: {
-    margin: 12,
-    marginBottom: 4,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  searchInput: {
-    flex: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    fontSize: 15,
-  },
-  clearSearch: {
-    paddingHorizontal: 10,
+  storeCardRow: {
     paddingVertical: 8,
   },
-  clearSearchText: {
-    fontSize: 14,
-    color: '#999',
-  },
-  countText: {
-    fontSize: 12,
-    color: '#999',
+  storeCardScroll: {
     paddingHorizontal: 16,
-    marginBottom: 4,
   },
   listContent: {
-    paddingBottom: 80,
+    paddingBottom: 140,
   },
   emptyContainer: {
     flex: 1,
@@ -1034,46 +1021,37 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#999',
     marginBottom: 4,
+    textAlign: 'center',
   },
   emptySubtitle: {
     fontSize: 14,
-    color: '#bbb',
     textAlign: 'center',
   },
   fab: {
     position: 'absolute',
-    bottom: 24,
+    bottom: 80,
     right: 20,
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#4CAF50',
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 6,
-    shadowColor: '#4CAF50',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.3,
     shadowRadius: 6,
-  },
-  fabText: {
-    fontSize: 28,
-    color: '#fff',
-    fontWeight: '300',
-    lineHeight: 30,
   },
   findPricesBtn: {
     marginHorizontal: 16,
     marginBottom: 8,
     paddingVertical: 8,
     paddingHorizontal: 14,
-    borderRadius: 8,
-    borderWidth: 1,
+    borderRadius: 10,
     alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
   },
   findPricesText: {
     fontSize: 13,
@@ -1086,7 +1064,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     paddingHorizontal: 14,
     paddingVertical: 10,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
   },
   priceSummaryName: {
@@ -1101,9 +1079,5 @@ const styles = StyleSheet.create({
   priceSummaryDismiss: {
     marginLeft: 8,
     padding: 4,
-  },
-  priceSummaryDismissText: {
-    fontSize: 14,
-    fontWeight: '600',
   },
 });

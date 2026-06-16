@@ -73,6 +73,7 @@ import { NavigationContainer, createNavigationContainerRef } from '@react-naviga
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import ErrorBoundary from './src/components/ErrorBoundary';
+import { useActiveTheme } from './src/state/useThemeStore';
 
 const Stack = createNativeStackNavigator();
 const navigationRef = createNavigationContainerRef();
@@ -81,7 +82,7 @@ function LoadingView() {
   return (
     <SafeAreaProvider>
       <View style={styles.centered}>
-        <ActivityIndicator size="large" color="#4CAF50" />
+        <ActivityIndicator size="large" color="#7CB342" />
         <Text style={styles.loadingText}>Loading StopHop...</Text>
       </View>
     </SafeAreaProvider>
@@ -90,6 +91,7 @@ function LoadingView() {
 
 function App() {
   const [ready, setReady] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [Screens, setScreens] = useState<any>(null);
 
@@ -178,6 +180,16 @@ function App() {
     );
   }
 
+  // Show splash screen while loading
+  if (showSplash) {
+    const SplashScreen = require('./src/screens/SplashScreen').default;
+    return (
+      <SafeAreaProvider>
+        <SplashScreen onFinish={() => setShowSplash(false)} />
+      </SafeAreaProvider>
+    );
+  }
+
   if (!ready || !Screens) return <LoadingView />;
 
   return (
@@ -201,10 +213,10 @@ function App() {
 }
 
 const styles = StyleSheet.create({
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0B0F19' },
-  loadingText: { color: '#F8FAFC', fontSize: 16, marginTop: 16 },
-  errorTitle: { color: '#EF4444', fontSize: 24, fontWeight: 'bold', marginBottom: 16 },
-  errorMsg: { color: '#F8FAFC', fontSize: 16, textAlign: 'center' },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FDF8F0' },
+  loadingText: { color: '#1A1A1A', fontSize: 16, marginTop: 16 },
+  errorTitle: { color: '#E53935', fontSize: 24, fontWeight: 'bold', marginBottom: 16 },
+  errorMsg: { color: '#1A1A1A', fontSize: 16, textAlign: 'center', paddingHorizontal: 32 },
 });
 
 export default App;
