@@ -66,54 +66,32 @@ if (!__DEV__) {
   LogBox.ignoreAllLogs(true);
 }
 
-import React, { useEffect, useState, useRef } from 'react';
-import { StyleSheet, View, Text, ActivityIndicator, Animated } from 'react-native';
+import React, { useEffect, useState, Suspense, lazy } from 'react';
+import { StyleSheet, View, Text, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import ErrorBoundary from './src/components/ErrorBoundary';
-import Svg, { Rect, Path } from 'react-native-svg';
 
 const Stack = createNativeStackNavigator();
 const navigationRef = createNavigationContainerRef();
+
+function LoadingView() {
+  return (
+    <SafeAreaProvider>
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color="#4CAF50" />
+        <Text style={styles.loadingText}>Loading StopHop...</Text>
+      </View>
+    </SafeAreaProvider>
+  );
+}
 
 function App() {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [Screens, setScreens] = useState<any>(null);
-
-  // Splash Screen Animations
-  const [splashFinished, setSplashFinished] = useState(false);
-  const splashFade = useRef(new Animated.Value(1)).current;
-  const logoScale = useRef(new Animated.Value(0.85)).current;
-  const logoOpacity = useRef(new Animated.Value(0)).current;
-  const textOpacity = useRef(new Animated.Value(0)).current;
-
-  // Start splash fade-in on mount
-  useEffect(() => {
-    Animated.sequence([
-      Animated.delay(100),
-      Animated.parallel([
-        Animated.spring(logoScale, {
-          toValue: 1,
-          friction: 6,
-          tension: 40,
-          useNativeDriver: true,
-        }),
-        Animated.timing(logoOpacity, {
-          toValue: 1,
-          duration: 600,
-          useNativeDriver: true,
-        }),
-      ]),
-      Animated.timing(textOpacity, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, []);
 
   useEffect(() => {
     async function init() {
@@ -139,7 +117,7 @@ function App() {
           const { initTurso } = await import('./src/services/tursoClient');
           const settings = getSettings();
           const tursoUrl = settings.tursoUrl || 'https://stophop-arshad1416.aws-us-east-1.turso.io';
-          const tursoToken = settings.tursoToken || 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODE1NTE2MDYsImlkIjoiMDE5ZWM5YmEtMTAwMS03ODc3LWEyODItOTg1NWRmYmYwNTMyIiwicmlkIjoiNmZlMGE0ZjMtYjdiYi00NTA1LThiYzUtYzRjMzIyNjMzZTMzIn0.x3DOt5iEFPaz8Yy8TH6XuUuVR9fbwfFPxsyEGqMv_4-rqO075FfwVT3Xxf7gzwmhyQDjklWbarWopNkNlAZOBw';
+          const tursoToken = settings.tursoToken || '***';
           if (tursoUrl && tursoToken) {
             initTurso({ url: tursoUrl, token: tursoToken });
             console.warn('[init] Turso connected successfully');
@@ -189,22 +167,6 @@ function App() {
     init();
   }, []);
 
-  // Fade-out splash when navigation is ready
-  useEffect(() => {
-    if (ready && Screens) {
-      const timer = setTimeout(() => {
-        Animated.timing(splashFade, {
-          toValue: 0,
-          duration: 500,
-          useNativeDriver: true,
-        }).start(() => {
-          setSplashFinished(true);
-        });
-      }, 1000); // 1s presentation time
-      return () => clearTimeout(timer);
-    }
-  }, [ready, Screens]);
-
   if (error) {
     return (
       <SafeAreaProvider>
@@ -216,72 +178,22 @@ function App() {
     );
   }
 
-  return (
-    <SafeAreaProvider style={{ backgroundColor: '#080D09' }}>
-      <ErrorBoundary>
-        {ready && Screens && (
-          <NavigationContainer ref={navigationRef} linking={Screens.linkingConfig}>
-            <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_bottom' }}>
-              <Stack.Screen name="Home" component={Screens.Home} />
-              <Stack.Screen name="GroceryList" component={Screens.GroceryList} />
-              <Stack.Screen name="ItemEdit" component={Screens.ItemEdit} />
-              <Stack.Screen name="Pairing" component={Screens.Pairing} />
-              <Stack.Screen name="Settings" component={Screens.Settings} />
-              <Stack.Screen name="Privacy" component={Screens.Privacy} />
-              <Stack.Screen name="Recovery" component={Screens.Recovery} />
-            </Stack.Navigator>
-          </NavigationContainer>
-        )}
+  if (!ready || !Screens) return <LoadingView />;
 
-        {!splashFinished && (
-          <Animated.View
-            style={[
-              StyleSheet.absoluteFill,
-              styles.splashContainer,
-              { opacity: splashFade }
-            ]}
-            pointerEvents={ready ? "none" : "auto"}
-          >
-            <Animated.View
-              style={[
-                styles.logoWrapper,
-                { opacity: logoOpacity, transform: [{ scale: logoScale }] }
-              ]}
-            >
-              <Svg width={140} height={140} viewBox="0 0 100 100">
-                {/* Shopping bag / cart representation */}
-                <Rect x="24" y="38" width="52" height="46" rx="12" fill="#16A34A" />
-                
-                {/* Handle */}
-                <Path
-                  d="M37 38V28c0-7.2 5.8-13 13-13s13 5.8 13 13v10"
-                  fill="none"
-                  stroke="#F59E0B"
-                  strokeWidth="6.5"
-                  strokeLinecap="round"
-                />
-                
-                {/* Organic Leaf shape decoration inside */}
-                <Path
-                  d="M50 46c0 0 12 3 16 14c-4 12-16 9-16 9s-12-3-16-14c4-12 16-9 16-9z"
-                  fill="#86EFAC"
-                />
-                <Path
-                  d="M34 60c16-2 32 9 32 9"
-                  fill="none"
-                  stroke="#16A34A"
-                  strokeWidth="3.5"
-                  strokeLinecap="round"
-                />
-              </Svg>
-            </Animated.View>
-            
-            <Animated.View style={{ opacity: textOpacity, alignItems: 'center', marginTop: 24 }}>
-              <Text style={styles.splashTitle}>StopHop</Text>
-              <Text style={styles.splashTagline}>Your Intelligent Grocery Path</Text>
-            </Animated.View>
-          </Animated.View>
-        )}
+  return (
+    <SafeAreaProvider>
+      <ErrorBoundary>
+        <NavigationContainer ref={navigationRef} linking={Screens.linkingConfig}>
+          <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+            <Stack.Screen name="Home" component={Screens.Home} />
+            <Stack.Screen name="GroceryList" component={Screens.GroceryList} />
+            <Stack.Screen name="ItemEdit" component={Screens.ItemEdit} />
+            <Stack.Screen name="Pairing" component={Screens.Pairing} />
+            <Stack.Screen name="Settings" component={Screens.Settings} />
+            <Stack.Screen name="Privacy" component={Screens.Privacy} />
+            <Stack.Screen name="Recovery" component={Screens.Recovery} />
+          </Stack.Navigator>
+        </NavigationContainer>
         <StatusBar style="light" />
       </ErrorBoundary>
     </SafeAreaProvider>
@@ -289,32 +201,10 @@ function App() {
 }
 
 const styles = StyleSheet.create({
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#080D09' },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0B0F19' },
+  loadingText: { color: '#F8FAFC', fontSize: 16, marginTop: 16 },
   errorTitle: { color: '#EF4444', fontSize: 24, fontWeight: 'bold', marginBottom: 16 },
   errorMsg: { color: '#F8FAFC', fontSize: 16, textAlign: 'center' },
-  splashContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#080D09',
-  },
-  logoWrapper: {
-    marginBottom: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  splashTitle: {
-    fontSize: 42,
-    fontWeight: 'bold',
-    color: '#F0FDF4',
-    letterSpacing: -1,
-  },
-  splashTagline: {
-    fontSize: 15,
-    color: '#8BA093',
-    marginTop: 8,
-    letterSpacing: 0.5,
-  },
 });
 
 export default App;
