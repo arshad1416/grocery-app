@@ -248,14 +248,20 @@ export default function HomeScreen({ navigation }: Props) {
             style={[styles.iconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F5F0E8' }]}
             activeOpacity={0.7}
           >
-            <Ionicons name="people-outline" size={18} color={theme.text} />
+            <View style={{ justifyContent: 'center', alignItems: 'center' }}>
+              <Ionicons name="people-outline" size={18} color={theme.text} />
+              <Text style={{ position: 'absolute', fontSize: 12, color: theme.text }}>👥</Text>
+            </View>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => navigation.navigate('Settings')}
             style={[styles.iconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F5F0E8' }]}
             activeOpacity={0.7}
           >
-            <Ionicons name="settings-outline" size={18} color={theme.text} />
+            <View style={{ justifyContent: 'center', alignItems: 'center' }}>
+              <Ionicons name="settings-outline" size={18} color={theme.text} />
+              <Text style={{ position: 'absolute', fontSize: 12, color: theme.text }}>⚙</Text>
+            </View>
           </TouchableOpacity>
         </View>
       </View>
@@ -275,7 +281,7 @@ export default function HomeScreen({ navigation }: Props) {
       </View>
 
       {/* Search bar */}
-      <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search lists..." />
+      <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search groceries..." />
 
       {/* Body */}
       {!loaded || isLoading ? (
