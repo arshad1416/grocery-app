@@ -248,7 +248,11 @@ export default function SwipeableListCard({
               </Text>
             ) : null}
           </View>
-          <View style={styles.cardActions}>
+          <Animated.View style={[styles.cardActions, { opacity: translateX.interpolate({
+            inputRange: [-80, 0],
+            outputRange: [0, 1],
+            extrapolate: 'clamp',
+          }) }]}>
             <TouchableOpacity
               style={[styles.shareBtn, { backgroundColor: theme.primary }]}
               onPress={onShare}
@@ -257,7 +261,7 @@ export default function SwipeableListCard({
               <Text style={styles.shareBtnText}>Share</Text>
             </TouchableOpacity>
             <Text style={[styles.cardArrow, { color: theme.secondaryText }]}>›</Text>
-          </View>
+          </Animated.View>
         </TouchableOpacity>
       </Animated.View>
     </View>
