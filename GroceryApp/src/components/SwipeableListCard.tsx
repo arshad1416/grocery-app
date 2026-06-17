@@ -298,6 +298,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   card: {
+    width: '100%',
     borderRadius: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
