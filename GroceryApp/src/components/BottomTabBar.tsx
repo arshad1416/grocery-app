@@ -45,21 +45,15 @@ export default function BottomTabBar({ activeTab, onTabPress }: BottomTabBarProp
         styles.container,
         {
           paddingBottom: Math.max(insets.bottom, 48),
-          backgroundColor: isDark ? 'rgba(11, 15, 18, 0.95)' : '#FFFFFF',
-          borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+          backgroundColor: isDark ? 'rgba(17, 28, 21, 0.95)' : '#FFFFFF',
+          borderTopColor: theme.border,
         },
       ]}
     >
       {TABS.map((tab) => {
         const isActive = activeTab === tab.name;
         const iconName = isActive ? tab.iconFocused : tab.icon;
-        const iconColor = isActive
-          ? isDark
-            ? '#00E676'
-            : '#7CB342'
-          : isDark
-            ? '#5A6B78'
-            : '#9CA89E';
+        const iconColor = isActive ? theme.primary : theme.tabInactiveText;
 
         return (
           <TouchableOpacity
@@ -70,7 +64,7 @@ export default function BottomTabBar({ activeTab, onTabPress }: BottomTabBarProp
           >
             <View style={styles.tabContent}>
               {isActive && isDark && (
-                <View style={[styles.glowDot, { backgroundColor: 'rgba(0, 230, 118, 0.3)' }]} />
+                <View style={[styles.glowDot, { backgroundColor: theme.primary + '4d' }]} />
               )}
               <Ionicons name={iconName as any} size={22} color={iconColor} />
               <Text

@@ -72,7 +72,7 @@ export default function SplashScreen({ onFinish }: SplashScreenProps) {
         </View>
       </Animated.View>
 
-      <Animated.View style={{ opacity: fadeAnim }}>
+      <Animated.View style={{ opacity: fadeAnim, alignItems: 'center' }}>
         <Text style={styles.title}>StopHop</Text>
         <Text style={styles.subtitle}>Your Intelligent Grocery Path</Text>
       </Animated.View>
@@ -83,7 +83,7 @@ export default function SplashScreen({ onFinish }: SplashScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F4F6F3', // Soft organic sage-white backdrop
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -96,7 +96,7 @@ const styles = StyleSheet.create({
   bagBody: {
     width: 100,
     height: 80,
-    backgroundColor: '#FF8F00',
+    backgroundColor: '#C69C6D', // Organic kraft paper bag color
     borderRadius: 12,
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 16,
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderWidth: 3,
-    borderColor: '#FF8F00',
+    borderColor: '#A07C55', // Darker kraft paper handle
     borderBottomWidth: 0,
     borderRadius: 10,
     borderTopLeftRadius: 10,
@@ -124,7 +124,7 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderWidth: 3,
-    borderColor: '#FF8F00',
+    borderColor: '#A07C55',
     borderBottomWidth: 0,
     borderRadius: 10,
     borderTopLeftRadius: 10,

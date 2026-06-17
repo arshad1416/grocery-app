@@ -27,7 +27,7 @@ const STORE_COLORS: Record<string, string> = {
 };
 
 function getStoreColor(storeId: string): string {
-  return STORE_COLORS[storeId.toLowerCase()] ?? '#7CB342';
+  return STORE_COLORS[storeId.toLowerCase()] ?? '#16A34A';
 }
 
 function getStoreInitial(storeName: string): string {
@@ -53,14 +53,14 @@ export default function StoreCard({
         styles.card,
         isSelected
           ? {
-              backgroundColor: isDark ? 'rgba(0, 230, 118, 0.08)' : 'rgba(124, 179, 66, 0.06)',
-              borderColor: isDark ? 'rgba(0, 230, 118, 0.2)' : 'rgba(124, 179, 66, 0.4)',
-              shadowColor: isDark ? '#00E676' : '#7CB342',
+              backgroundColor: theme.bestValueBg,
+              borderColor: theme.bestValueBorder,
+              shadowColor: theme.primary,
               shadowOpacity: isDark ? 0.15 : 0.08,
             }
           : {
-              backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : '#FFFFFF',
-              borderColor: isDark ? 'rgba(0, 230, 118, 0.1)' : 'rgba(0, 0, 0, 0.08)',
+              backgroundColor: theme.cardBg,
+              borderColor: theme.border,
               shadowOpacity: 0,
             },
       ]}
@@ -74,7 +74,7 @@ export default function StoreCard({
           </Text>
         </View>
         {isSelected && (
-          <View style={[styles.selectedDot, { backgroundColor: isDark ? '#00E676' : '#7CB342' }]} />
+          <View style={[styles.selectedDot, { backgroundColor: theme.primary }]} />
         )}
       </View>
       <Text
@@ -87,7 +87,7 @@ export default function StoreCard({
       >
         {storeName}
       </Text>
-      <Text style={[styles.total, { color: isSelected ? (isDark ? '#00E676' : '#7CB342') : theme.secondaryText }]}>
+      <Text style={[styles.total, { color: isSelected ? theme.primary : theme.secondaryText }]}>
         ${total.toFixed(2)}
       </Text>
       <Text style={[styles.itemCount, { color: theme.secondaryText }]}>

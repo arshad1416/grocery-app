@@ -248,20 +248,14 @@ export default function HomeScreen({ navigation }: Props) {
             style={[styles.iconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F5F0E8' }]}
             activeOpacity={0.7}
           >
-            <View style={{ justifyContent: 'center', alignItems: 'center' }}>
-              <Ionicons name="people-outline" size={18} color={theme.text} />
-              <Text style={{ position: 'absolute', fontSize: 12, color: theme.text }}>👥</Text>
-            </View>
+            <Ionicons name="people-outline" size={20} color={theme.text} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => navigation.navigate('Settings')}
             style={[styles.iconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F5F0E8' }]}
             activeOpacity={0.7}
           >
-            <View style={{ justifyContent: 'center', alignItems: 'center' }}>
-              <Ionicons name="settings-outline" size={18} color={theme.text} />
-              <Text style={{ position: 'absolute', fontSize: 12, color: theme.text }}>⚙</Text>
-            </View>
+            <Ionicons name="settings-outline" size={20} color={theme.text} />
           </TouchableOpacity>
         </View>
       </View>
