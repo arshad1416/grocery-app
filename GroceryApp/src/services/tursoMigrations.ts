@@ -76,6 +76,20 @@ export const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_store_prices_item ON store_prices(name_clean, store_id);
     `,
   },
+  {
+    version: 3,
+    name: 'create_store_branding',
+    sql: `
+      CREATE TABLE IF NOT EXISTS store_branding (
+        store_id   TEXT PRIMARY KEY,
+        store_name TEXT NOT NULL,
+        logo_url   TEXT,
+        color      TEXT,
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_store_branding_name ON store_branding(store_name);
+    `,
+  },
 ];
 
 /**
