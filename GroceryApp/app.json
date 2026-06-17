@@ -3,7 +3,7 @@
     "owner": "shiftlogichq",
     "name": "StopHop",
     "slug": "GroceryApp",
-    "version": "1.0.1",
+    "version": "1.29.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
