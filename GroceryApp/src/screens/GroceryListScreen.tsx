@@ -948,16 +948,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
           onPress={() => setShowAddSheet(true)}
           activeOpacity={0.8}
         >
-          <View style={{ justifyContent: 'center', alignItems: 'center' }}>
-            <Ionicons name="add" size={28} color={isDark ? '#0B0F12' : '#FFFFFF'} />
-            <Text style={{
-              position: 'absolute',
-              fontSize: 28,
-              fontWeight: 'bold',
-              color: isDark ? '#0B0F12' : '#FFFFFF',
-              lineHeight: 30,
-            }}>+</Text>
-          </View>
+          <Ionicons name="add" size={28} color={isDark ? '#0B0F12' : '#FFFFFF'} />
         </TouchableOpacity>
       </View>
 

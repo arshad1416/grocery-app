@@ -6,7 +6,7 @@
  *            Add `is_deleted` + `deleted_at` to `grocery_lists` and `family_members`.
  */
 
-import { schemaMigrations, addColumns } from '@nozbe/watermelondb/Schema/migrations';
+import { schemaMigrations, addColumns, createTable } from '@nozbe/watermelondb/Schema/migrations';
 
 export const migrations = schemaMigrations({
   migrations: [
@@ -49,8 +49,24 @@ export const migrations = schemaMigrations({
       ],
     },
     // v3 → v4: Add notifications table for family notification system
-    // The notifications table is created via schema — WatermelonDB handles
-    // new table creation automatically when the schema version increments.
-    // No addColumns needed for existing tables.
+    {
+      toVersion: 4,
+      steps: [
+        createTable({
+          name: 'notifications',
+          columns: [
+            { name: 'event_type', type: 'string' },
+            { name: 'timestamp', type: 'number' },
+            { name: 'sender_device_id', type: 'string' },
+            { name: 'list_id', type: 'string' },
+            { name: 'list_name', type: 'string' },
+            { name: 'item_id', type: 'string' },
+            { name: 'item_name', type: 'string' },
+            { name: 'item_category', type: 'string' },
+            { name: 'is_read', type: 'boolean' },
+          ],
+        }),
+      ],
+    },
   ],
 });

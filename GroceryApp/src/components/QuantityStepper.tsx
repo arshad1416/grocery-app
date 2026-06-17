@@ -31,14 +31,14 @@ export default function QuantityStepper({
         style={[
           styles.btn,
           {
-            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F5F0E8',
-            borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
+            backgroundColor: theme.btnBg,
+            borderColor: theme.border,
           },
         ]}
         onPress={onDecrement}
         activeOpacity={0.6}
       >
-        <Ionicons name="remove" size={16} color={isDark ? '#FFFFFF' : '#1A1A1A'} />
+        <Ionicons name="remove" size={16} color={theme.btnText} />
       </TouchableOpacity>
       <Text style={[styles.qtyText, { color: theme.text }]}>
         {quantity} {unit}
@@ -47,14 +47,14 @@ export default function QuantityStepper({
         style={[
           styles.btn,
           {
-            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F5F0E8',
-            borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
+            backgroundColor: theme.btnBg,
+            borderColor: theme.border,
           },
         ]}
         onPress={onIncrement}
         activeOpacity={0.6}
       >
-        <Ionicons name="add" size={16} color={isDark ? '#FFFFFF' : '#1A1A1A'} />
+        <Ionicons name="add" size={16} color={theme.btnText} />
       </TouchableOpacity>
     </View>
   );

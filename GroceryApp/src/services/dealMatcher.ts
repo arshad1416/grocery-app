@@ -317,7 +317,11 @@ export async function optimizeStoreRun(
   return {
     stores: selected.map((s) => ({
       merchant: s.merchant,
-      items: s.items,
+      items: s.items.map((it) => ({
+        listItemId: it.itemId,
+        itemName: it.itemName,
+        deal: it.deal,
+      })),
       itemCount: s.itemCount,
       estimatedTotal: s.estimatedTotal,
     })),

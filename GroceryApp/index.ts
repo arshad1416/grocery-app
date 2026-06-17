@@ -22,7 +22,7 @@ if (typeof TextDecoder === 'undefined') {
       return out;
     }
   }
-  (global as any).TextDecoder = TextDecoderPolyfill;
+  (globalThis as any).TextDecoder = TextDecoderPolyfill;
 }
 
 if (typeof TextEncoder === 'undefined') {
@@ -53,7 +53,7 @@ if (typeof TextEncoder === 'undefined') {
       return new Uint8Array(arr);
     }
   }
-  (global as any).TextEncoder = TextEncoderPolyfill;
+  (globalThis as any).TextEncoder = TextEncoderPolyfill;
 }
 
 import { AppRegistry } from 'react-native';

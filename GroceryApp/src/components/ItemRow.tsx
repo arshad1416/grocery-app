@@ -97,7 +97,7 @@ const ItemRow = memo(function ItemRow({
   });
 
   return (
-    <TouchableOpacity
+    <View
       style={[
         styles.itemRow,
         item.isChecked && styles.itemRowChecked,
@@ -106,97 +106,106 @@ const ItemRow = memo(function ItemRow({
           borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.04)',
         },
       ]}
-      onPress={() => onPress(item)}
-      onLongPress={() => {
-        if (onLongPress) onLongPress(item.id, item.name);
-        else onDelete?.(item.id, item.name);
-      }}
-      activeOpacity={0.7}
     >
-      {/* Animated Checkbox */}
+      {/* Checkbox Touch Target */}
       <TouchableOpacity
-        style={[
-          styles.checkbox,
-          {
-            borderColor: item.isChecked
-              ? isDark ? '#00E676' : '#7CB342'
-              : isDark ? '#5A6B78' : '#D2DEC9',
-            backgroundColor: item.isChecked
-              ? isDark ? '#00E676' : '#7CB342'
-              : 'transparent',
-          },
-          item.isChecked && isDark && styles.checkboxGlow,
-        ]}
+        style={styles.checkboxTouch}
         onPress={handleCheckToggle}
         activeOpacity={0.8}
       >
-        <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-          {item.isChecked && (
-            <Ionicons name="checkmark" size={14} color={isDark ? '#0B0F12' : '#FFFFFF'} />
-          )}
-        </Animated.View>
+        <View
+          style={[
+            styles.checkbox,
+            {
+              borderColor: item.isChecked
+                ? theme.primary
+                : theme.border,
+              backgroundColor: item.isChecked
+                ? theme.primary
+                : 'transparent',
+            },
+            item.isChecked && isDark && [styles.checkboxGlow, { shadowColor: theme.primary }],
+          ]}
+        >
+          <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+            {item.isChecked && (
+              <Ionicons name="checkmark" size={14} color={isDark ? theme.bg : '#FFFFFF'} />
+            )}
+          </Animated.View>
+        </View>
       </TouchableOpacity>
 
-      {/* Emoji icon */}
-      <View style={styles.emojiContainer}>
-        <Text style={styles.emojiText}>{emojiForItem(item.name)}</Text>
-      </View>
+      {/* Row Content Touch Target */}
+      <TouchableOpacity
+        style={styles.rowContentTouch}
+        onPress={() => onPress(item)}
+        onLongPress={() => {
+          if (onLongPress) onLongPress(item.id, item.name);
+          else onDelete?.(item.id, item.name);
+        }}
+        activeOpacity={0.7}
+      >
+        {/* Emoji icon */}
+        <View style={styles.emojiContainer}>
+          <Text style={styles.emojiText}>{emojiForItem(item.name)}</Text>
+        </View>
 
-      {/* Item info */}
-      <View style={styles.itemInfo}>
-        <View style={styles.itemNameContainer}>
-          <Text
-            style={[
-              styles.itemName,
-              item.isChecked && styles.itemNameChecked,
-              { color: theme.text },
-            ]}
-            numberOfLines={1}
-          >
-            {item.name}
-          </Text>
-          {item.isChecked && (
-            <Animated.View
+        {/* Item info */}
+        <View style={styles.itemInfo}>
+          <View style={styles.itemNameContainer}>
+            <Text
               style={[
-                styles.strikethrough,
-                { width: strikeWidth, backgroundColor: theme.secondaryText },
+                styles.itemName,
+                item.isChecked && styles.itemNameChecked,
+                { color: theme.text },
               ]}
-              pointerEvents="none"
-            />
-          )}
+              numberOfLines={1}
+            >
+              {item.name}
+            </Text>
+            {item.isChecked && (
+              <Animated.View
+                style={[
+                  styles.strikethrough,
+                  { width: strikeWidth, backgroundColor: theme.secondaryText },
+                ]}
+                pointerEvents="none"
+              />
+            )}
+          </View>
+          {item.notes ? (
+            <Text style={[styles.itemNotes, { color: theme.secondaryText }]} numberOfLines={1}>
+              {item.notes}
+            </Text>
+          ) : null}
         </View>
-        {item.notes ? (
-          <Text style={[styles.itemNotes, { color: theme.secondaryText }]} numberOfLines={1}>
-            {item.notes}
-          </Text>
+
+        {/* Quantity stepper or badge */}
+        {onQuantityChange ? (
+          <QuantityStepper
+            quantity={item.quantity}
+            unit={item.unit}
+            onIncrement={() => onQuantityChange(item.id, 1)}
+            onDecrement={() => onQuantityChange(item.id, -1)}
+          />
+        ) : (
+          <View style={[styles.quantityBadge, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F5F0E8' }]}>
+            <Text style={[styles.quantityText, { color: theme.secondaryText }]}>
+              {item.quantity} {item.unit}
+            </Text>
+          </View>
+        )}
+
+        {/* Price */}
+        {price && !priceLoading ? (
+          <View style={styles.priceContainer}>
+            <Text style={[styles.priceText, { color: theme.primary }]}>
+              ${price.price.toFixed(2)}
+            </Text>
+          </View>
         ) : null}
-      </View>
-
-      {/* Quantity stepper or badge */}
-      {onQuantityChange ? (
-        <QuantityStepper
-          quantity={item.quantity}
-          unit={item.unit}
-          onIncrement={() => onQuantityChange(item.id, 1)}
-          onDecrement={() => onQuantityChange(item.id, -1)}
-        />
-      ) : (
-        <View style={[styles.quantityBadge, { backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : '#F5F0E8' }]}>
-          <Text style={[styles.quantityText, { color: theme.secondaryText }]}>
-            {item.quantity} {item.unit}
-          </Text>
-        </View>
-      )}
-
-      {/* Price */}
-      {price && !priceLoading ? (
-        <View style={styles.priceContainer}>
-          <Text style={[styles.priceText, { color: isDark ? '#00E676' : '#4A7C59' }]}>
-            ${price.price.toFixed(2)}
-          </Text>
-        </View>
-      ) : null}
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </View>
   );
 });
 
@@ -206,12 +215,23 @@ const styles = StyleSheet.create({
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
   },
   itemRowChecked: {
     opacity: 0.5,
+  },
+  checkboxTouch: {
+    width: 40,
+    paddingVertical: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  rowContentTouch: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
   },
   checkbox: {
     width: 24,
@@ -220,7 +240,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
   checkboxGlow: {
     shadowColor: '#00E676',

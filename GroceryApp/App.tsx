@@ -21,7 +21,7 @@ if (typeof TextDecoder === 'undefined') {
       return out;
     }
   }
-  (global as any).TextDecoder = TextDecoderPolyfill;
+  (globalThis as any).TextDecoder = TextDecoderPolyfill;
 }
 
 if (typeof TextEncoder === 'undefined') {
@@ -52,7 +52,7 @@ if (typeof TextEncoder === 'undefined') {
       return new Uint8Array(arr);
     }
   }
-  (global as any).TextEncoder = TextEncoderPolyfill;
+  (globalThis as any).TextEncoder = TextEncoderPolyfill;
 }
 
 import { LogBox } from 'react-native';
@@ -74,6 +74,16 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import { useActiveTheme } from './src/state/useThemeStore';
+
+// Static screen imports to avoid chunk loading failures in bare React Native CLI
+import HomeScreen from './src/screens/HomeScreen';
+import GroceryListScreen from './src/screens/GroceryListScreen';
+import ItemEditScreen from './src/screens/ItemEditScreen';
+import PairingScreen from './src/screens/PairingScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
+import RecoveryScreen from './src/screens/RecoveryScreen';
+import PrivacyScreen from './src/screens/PrivacyScreen';
+import { linkingConfig } from './src/navigation/deepLinks';
 
 const Stack = createNativeStackNavigator();
 const navigationRef = createNavigationContainerRef();
@@ -106,6 +116,14 @@ function App() {
         const db = database.getDatabase();
         await db.get('grocery_lists').query().fetchCount();
 
+        // Load vector fonts dynamically
+        const Font = await import('expo-font');
+        const { Ionicons, Feather } = await import('@expo/vector-icons');
+        await Font.loadAsync({
+          ...Ionicons.font,
+          ...Feather.font,
+        });
+
         // Init device identity
         const device = await import('./src/identity/device');
         await device.initDeviceIdentity();
@@ -136,29 +154,15 @@ function App() {
           // Sentry init failure is non-fatal
         }
 
-        // 2. Load navigation config
-        const deepLinks = await import('./src/navigation/deepLinks');
-
-        // 3. Dynamically import all screens at once
-        const [Home, GroceryList, ItemEdit, Pairing, Settings, Recovery, Privacy] = await Promise.all([
-          import('./src/screens/HomeScreen'),
-          import('./src/screens/GroceryListScreen'),
-          import('./src/screens/ItemEditScreen'),
-          import('./src/screens/PairingScreen'),
-          import('./src/screens/SettingsScreen'),
-          import('./src/screens/RecoveryScreen'),
-          import('./src/screens/PrivacyScreen'),
-        ]);
-
         setScreens({
-          Home: Home.default,
-          GroceryList: GroceryList.default,
-          ItemEdit: ItemEdit.default,
-          Pairing: Pairing.default,
-          Settings: Settings.default,
-          Recovery: Recovery.default,
-          Privacy: Privacy.default,
-          linkingConfig: deepLinks.linkingConfig,
+          Home: HomeScreen,
+          GroceryList: GroceryListScreen,
+          ItemEdit: ItemEditScreen,
+          Pairing: PairingScreen,
+          Settings: SettingsScreen,
+          Recovery: RecoveryScreen,
+          Privacy: PrivacyScreen,
+          linkingConfig: linkingConfig,
         });
         setReady(true);
       } catch (err) {

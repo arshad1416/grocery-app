@@ -719,7 +719,7 @@ export default function SettingsScreen({ navigation }: Props) {
 
           <ToggleRow
             label="Flipp Flyer Deals"
-            value={settings.flyerScanEnabled}
+            value={settings.flyerScanEnabled ?? false}
             onValueChange={(v) => handleUpdate({ flyerScanEnabled: v })}
             theme={theme}
           />

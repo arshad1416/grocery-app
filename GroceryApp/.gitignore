@@ -9,3 +9,5 @@ dist/
 *.orig.*
 web-build/
 .DS_Store
+current_screen.png
+window_dump.xml
