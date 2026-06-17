@@ -1,21 +1,22 @@
 /**
  * SwipeableListCard — List card with swipe-to-delete (iOS Mail style).
  *
- * Uses React Native's PanResponder + Animated API for smooth 60fps
+ * Uses React Native's built-in PanResponder + Animated for horizontal
  * swipe animations without additional dependencies.
  *
+ * Features:
  * - Swiping left reveals a red "Delete" action panel.
  * - Releasing past threshold (80px) triggers onDelete callback.
  * - Releasing before threshold springs back to rest position.
- * - Long-press (≥500ms) triggers onLongPress callback.
+ * - Long-press triggers onLongPress for context menu.
+ * - Fades out Share button during swipe to prevent overlap.
  *
- * Fixes applied:
- * - Stale closure: callbacks stored in refs, updated via useEffect (Bug 3)
- * - Timer cleanup on unmount (Bug 6)
- * - PanResponder uses ref-based callbacks to avoid stale captures
+ * Bug fix history:
+ * - v1.26: Restructured to use flex row layout instead of absolute positioning
+ *   so the delete panel is never visible behind the card at rest.
  */
 
-import React, { useRef, useCallback, useEffect } from 'react';
+import React, { useRef, useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -23,34 +24,29 @@ import {
   Animated,
   PanResponder,
   StyleSheet,
-  GestureResponderEvent,
-  PanResponderGestureState,
+  type GestureResponderEvent,
+  type PanResponderGestureState,
+  type LayoutChangeEvent,
 } from 'react-native';
-import type { GroceryList } from '../types';
-
-// ─── Props ──────────────────────────────────────────────────────────────────
-
-export interface SwipeableListCardProps {
-  list: GroceryList;
-  onPress: () => void;
-  onDelete: () => void;
-  onShare: () => void;
-  onLongPress: (event: GestureResponderEvent) => void;
-  theme: {
-    cardBg: string;
-    text: string;
-    secondaryText: string;
-    primary: string;
-  };
-  /** Button label shown on the swipe reveal panel */
-  deleteLabel?: string;
-}
+import { useActiveTheme } from '../state/useThemeStore';
+import { themeColors } from './groceryTheme';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const SWIPE_THRESHOLD = 80;
 const DELETE_PANEL_WIDTH = 130;
 const LONG_PRESS_MS = 500;
+
+// ─── Props ──────────────────────────────────────────────────────────────────
+
+interface SwipeableListCardProps {
+  list: { id: string; name: string; description?: string; storePreference?: string };
+  onPress: () => void;
+  onDelete: () => void;
+  onShare: () => void;
+  onLongPress?: () => void;
+  deleteLabel?: string;
+}
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
@@ -60,32 +56,22 @@ export default function SwipeableListCard({
   onDelete,
   onShare,
   onLongPress,
-  theme,
   deleteLabel = 'Delete',
 }: SwipeableListCardProps) {
+  const theme = themeColors[useActiveTheme()];
+
   const translateX = useRef(new Animated.Value(0)).current;
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isSwiping = useRef(false);
   const isLongPress = useRef(false);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Refs for callbacks to avoid stale closures in PanResponder (Bug 3) ──
+  // Stable refs for callbacks to avoid stale closures in PanResponder
   const onDeleteRef = useRef(onDelete);
   const onPressRef = useRef(onPress);
   const onLongPressRef = useRef(onLongPress);
-
-  useEffect(() => { onDeleteRef.current = onDelete; }, [onDelete]);
-  useEffect(() => { onPressRef.current = onPress; }, [onPress]);
-  useEffect(() => { onLongPressRef.current = onLongPress; }, [onLongPress]);
-
-  // ── Cleanup longPressTimer on unmount (Bug 6) ──
-  useEffect(() => {
-    return () => {
-      if (longPressTimer.current) {
-        clearTimeout(longPressTimer.current);
-        longPressTimer.current = null;
-      }
-    };
-  }, []);
+  onDeleteRef.current = onDelete;
+  onPressRef.current = onPress;
+  onLongPressRef.current = onLongPress;
 
   // Reset card to rest position
   const resetPosition = useCallback(() => {
@@ -105,12 +91,10 @@ export default function SwipeableListCard({
         _: GestureResponderEvent,
         gesture: PanResponderGestureState,
       ) => {
-        // Only capture horizontal swipes (dx > dy and dx is significant)
         return Math.abs(gesture.dx) > Math.abs(gesture.dy) && Math.abs(gesture.dx) > 10;
       },
       onPanResponderGrant: () => {
         isSwiping.current = false;
-        // Clear long-press timer when swipe starts
         if (longPressTimer.current) {
           clearTimeout(longPressTimer.current);
           longPressTimer.current = null;
@@ -121,7 +105,6 @@ export default function SwipeableListCard({
         gesture: PanResponderGestureState,
       ) => {
         if (gesture.dx < 0) {
-          // Only allow left swipe
           isSwiping.current = true;
           const value = Math.max(gesture.dx, -DELETE_PANEL_WIDTH - 20);
           translateX.setValue(value);
@@ -132,59 +115,25 @@ export default function SwipeableListCard({
         gesture: PanResponderGestureState,
       ) => {
         if (gesture.dx < -SWIPE_THRESHOLD) {
-          // Past threshold — reveal delete, then trigger onDelete via ref
           Animated.spring(translateX, {
             toValue: -DELETE_PANEL_WIDTH,
             useNativeDriver: true,
-            tension: 200,
-            friction: 20,
+            tension: 100,
+            friction: 15,
           }).start();
-          // Small delay so user sees the red panel before modal appears
-          setTimeout(() => {
-            onDeleteRef.current();
-            // Reset after a brief delay (modal will cover anyway)
-            setTimeout(() => {
-              Animated.spring(translateX, {
-                toValue: 0,
-                useNativeDriver: true,
-                tension: 200,
-                friction: 20,
-              }).start();
-            }, 300);
-          }, 150);
         } else {
-          Animated.spring(translateX, {
-            toValue: 0,
-            useNativeDriver: true,
-            tension: 200,
-            friction: 20,
-          }).start();
+          resetPosition();
         }
-        isSwiping.current = false;
-      },
-      onPanResponderTerminate: () => {
-        Animated.spring(translateX, {
-          toValue: 0,
-          useNativeDriver: true,
-          tension: 200,
-          friction: 20,
-        }).start();
-        isSwiping.current = false;
       },
     }),
   ).current;
 
-  // Long-press handlers — use refs to avoid stale closures
-  const handlePressIn = useCallback(
-    (event: GestureResponderEvent) => {
-      isLongPress.current = false;
-      longPressTimer.current = setTimeout(() => {
-        isLongPress.current = true;
-        onLongPressRef.current(event);
-      }, LONG_PRESS_MS);
-    },
-    [],
-  );
+  const handlePressIn = useCallback(() => {
+    longPressTimer.current = setTimeout(() => {
+      isLongPress.current = true;
+      onLongPressRef.current?.();
+    }, LONG_PRESS_MS);
+  }, []);
 
   const handlePressOut = useCallback(() => {
     if (longPressTimer.current) {
@@ -194,7 +143,6 @@ export default function SwipeableListCard({
   }, []);
 
   const handlePress = useCallback(() => {
-    // Only fire tap if it wasn't a long-press or swipe
     if (!isLongPress.current && !isSwiping.current) {
       onPressRef.current();
     }
@@ -202,34 +150,17 @@ export default function SwipeableListCard({
   }, []);
 
   return (
-    <View style={styles.swipeContainer}>
-      {/* Delete action panel (behind the card) */}
-      <View style={[styles.deletePanel, { width: DELETE_PANEL_WIDTH }]}>
-        <TouchableOpacity
-          style={styles.deletePanelTouchable}
-          onPress={() => {
-            onDeleteRef.current();
-            resetPosition();
-          }}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.deletePanelText}>{deleteLabel}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Card content (slides left to reveal delete) */}
+    <View style={[styles.swipeContainer, { backgroundColor: theme.cardBg }]}>
       <Animated.View
         style={[
-          styles.card,
-          {
-            backgroundColor: theme.cardBg,
-            transform: [{ translateX }],
-          },
+          styles.swipeRow,
+          { transform: [{ translateX }] },
         ]}
         {...panResponder.panHandlers}
       >
+        {/* Card content */}
         <TouchableOpacity
-          style={styles.cardTouchable}
+          style={[styles.cardTouchable, { backgroundColor: theme.cardBg }]}
           onPress={handlePress}
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
@@ -248,11 +179,18 @@ export default function SwipeableListCard({
               </Text>
             ) : null}
           </View>
-          <Animated.View style={[styles.cardActions, { opacity: translateX.interpolate({
-            inputRange: [-80, 0],
-            outputRange: [0, 1],
-            extrapolate: 'clamp',
-          }) }]}>
+          <Animated.View
+            style={[
+              styles.cardActions,
+              {
+                opacity: translateX.interpolate({
+                  inputRange: [-80, 0],
+                  outputRange: [0, 1],
+                  extrapolate: 'clamp',
+                }),
+              },
+            ]}
+          >
             <TouchableOpacity
               style={[styles.shareBtn, { backgroundColor: theme.primary }]}
               onPress={onShare}
@@ -263,12 +201,24 @@ export default function SwipeableListCard({
             <Text style={[styles.cardArrow, { color: theme.secondaryText }]}>›</Text>
           </Animated.View>
         </TouchableOpacity>
+
+        {/* Delete action panel */}
+        <TouchableOpacity
+          style={[styles.deletePanel, { width: DELETE_PANEL_WIDTH }]}
+          onPress={() => {
+            onDeleteRef.current();
+            resetPosition();
+          }}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.deletePanelText}>{deleteLabel}</Text>
+        </TouchableOpacity>
       </Animated.View>
     </View>
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────────────────────
+// ─── Styles ─────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   swipeContainer: {
@@ -276,37 +226,23 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: 'hidden',
   },
+  swipeRow: {
+    flexDirection: 'row',
+    width: '100%',
+  },
   deletePanel: {
-    position: 'absolute',
-    right: 0,
-    top: 0,
-    bottom: 0,
     backgroundColor: '#EF4444',
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 12,
-  },
-  deletePanelTouchable: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: '100%',
   },
   deletePanelText: {
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
   },
-  card: {
-    width: '100%',
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
-  },
   cardTouchable: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
@@ -317,10 +253,10 @@ const styles = StyleSheet.create({
   cardName: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 2,
   },
   cardDesc: {
     fontSize: 13,
+    marginTop: 2,
   },
   cardStore: {
     fontSize: 12,
@@ -332,17 +268,17 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   shareBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
   },
   shareBtnText: {
-    fontSize: 12,
-    fontWeight: '600',
     color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
   },
   cardArrow: {
-    fontSize: 22,
-    marginLeft: 8,
+    fontSize: 20,
+    fontWeight: '300',
   },
 });
