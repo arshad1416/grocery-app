@@ -146,6 +146,11 @@ function App() {
           console.warn('[init] Turso init failed:', e);
         }
 
+        // Fire-and-forget: fetch remote store branding from Turso
+        import('./src/pricing/store-branding')
+          .then(({ fetchStoreBranding }) => fetchStoreBranding())
+          .catch(() => {});
+
         // Init Sentry (respects user's sentryEnabled opt-out)
         try {
           const { initSentry } = await import('./src/services/sentry');
