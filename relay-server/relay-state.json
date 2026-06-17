@@ -1,0 +1,12 @@
+{
+  "enrolledDevices": {},
+  "familyDeviceTokens": {},
+  "usedInviteSignatures": [],
+  "oauthTokens": {
+    "9fcd99f9257950cffb45e73f25652fcd53cc9ba91b0bba23e04dfe744825c487": {
+      "familyId": "family-test-uuid-999",
+      "encryptedMasterKey": "base64-encrypted-key-for-jest",
+      "expiresAt": 1813266532811
+    }
+  }
+}

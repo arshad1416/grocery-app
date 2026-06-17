@@ -409,3 +409,44 @@ export async function setMasterKey(key: Uint8Array): Promise<void> {
 export async function clearMasterKey(): Promise<void> {
   await secureStoreProxy.deleteItemAsync(SECURE_STORE_KEY_ALIAS);
 }
+
+/**
+ * Encrypt the family master key with the voice assistant's RSA public key.
+ */
+export async function encryptMasterKeyWithAssistantPublicKey(
+  masterKey: Uint8Array,
+  publicKeyPem: string,
+): Promise<string> {
+  const webcrypto = require('isomorphic-webcrypto');
+  await ensureReady();
+  
+  // 1. Strip headers and base64 decode SPKI DER bytes
+  const base64 = publicKeyPem
+    .replace(/-----BEGIN [\w ]+-----/g, '')
+    .replace(/-----END [\w ]+-----/g, '')
+    .replace(/\s/g, '');
+  
+  const derBytes = base64ToUint8Array(base64);
+
+  // 2. Import SPKI public key
+  const importedKey = await webcrypto.subtle.importKey(
+    'spki',
+    derBytes.buffer.slice(derBytes.byteOffset, derBytes.byteOffset + derBytes.byteLength),
+    {
+      name: 'RSA-OAEP',
+      hash: { name: 'SHA-256' },
+    },
+    true,
+    ['encrypt']
+  );
+
+  // 3. Encrypt the master key
+  const ciphertextBuffer = await webcrypto.subtle.encrypt(
+    { name: 'RSA-OAEP' },
+    importedKey,
+    masterKey
+  );
+
+  // 4. Return as base64 string
+  return uint8ArrayToBase64(new Uint8Array(ciphertextBuffer));
+}
