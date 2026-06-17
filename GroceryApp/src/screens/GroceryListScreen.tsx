@@ -235,6 +235,10 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       .filter((i) => !i.isDeleted && i.listId === listId && !i.isChecked)
       .forEach((i) => cats.add(i.category || 'other'));
     const builtIn = [...BUILT_IN_CATEGORIES] as string[];
+    // When list is empty, show All + all built-in categories so pills are visible
+    if (cats.size === 0) {
+      return ['All', 'produce', 'dairy', 'meat', 'bakery', 'frozen'];
+    }
     return ['All', ...builtIn.filter(c => cats.has(c)), ...Array.from(cats).filter(c => !builtIn.includes(c)).sort()];
   }, [items, listId]);
 
@@ -687,6 +691,53 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       {/* Search bar */}
       <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search groceries..." />
 
+      {/* Store card row — horizontal scroll */}
+      {(storeTotals.length > 0 || availableStores.length > 0) && (
+        <View style={styles.storeCardRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.storeCardScroll}
+          >
+            {storeTotals.length > 0 ? storeTotals.map((st) => (
+              <StoreCard
+                key={st.storeId}
+                storeName={st.storeName}
+                storeId={st.storeId}
+                total={st.total}
+                itemCount={Object.values(items).filter(i => !i.isDeleted && i.listId === listId && !i.isChecked).length}
+                isSelected={selectedStoreId === st.storeId}
+                onPress={() => {
+                  if (selectedStoreId === st.storeId) {
+                    setSelectedStoreId(null);
+                  } else {
+                    setSelectedStoreId(st.storeId);
+                    setSelectedRouteNumStops(null);
+                  }
+                }}
+              />
+            )) : availableStores.map((s) => (
+              <StoreCard
+                key={s.storeId}
+                storeName={s.storeName}
+                storeId={s.storeId}
+                total={0}
+                itemCount={Object.values(items).filter(i => !i.isDeleted && i.listId === listId && !i.isChecked).length}
+                isSelected={selectedStoreId === s.storeId}
+                onPress={() => {
+                  if (selectedStoreId === s.storeId) {
+                    setSelectedStoreId(null);
+                  } else {
+                    setSelectedStoreId(s.storeId);
+                    setSelectedRouteNumStops(null);
+                  }
+                }}
+              />
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       {/* Category pills */}
       <View style={styles.categoryPillContainer}>
         <ScrollView
@@ -707,36 +758,6 @@ export default function GroceryListScreen({ route, navigation }: Props) {
           ))}
         </ScrollView>
       </View>
-
-      {/* Store card row — horizontal scroll */}
-      {storeTotals.length > 0 && (
-        <View style={styles.storeCardRow}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.storeCardScroll}
-          >
-            {storeTotals.map((st) => (
-              <StoreCard
-                key={st.storeId}
-                storeName={st.storeName}
-                storeId={st.storeId}
-                total={st.total}
-                itemCount={Object.values(items).filter(i => !i.isDeleted && i.listId === listId && !i.isChecked).length}
-                isSelected={selectedStoreId === st.storeId}
-                onPress={() => {
-                  if (selectedStoreId === st.storeId) {
-                    setSelectedStoreId(null);
-                  } else {
-                    setSelectedStoreId(st.storeId);
-                    setSelectedRouteNumStops(null);
-                  }
-                }}
-              />
-            ))}
-          </ScrollView>
-        </View>
-      )}
 
       {/* Stop optimizer */}
       <StopOptimizer
@@ -921,7 +942,16 @@ export default function GroceryListScreen({ route, navigation }: Props) {
         onPress={() => setShowAddSheet(true)}
         activeOpacity={0.8}
       >
-        <Ionicons name="add" size={28} color={isDark ? '#0B0F12' : '#FFFFFF'} />
+        <View style={{ justifyContent: 'center', alignItems: 'center' }}>
+          <Ionicons name="add" size={28} color={isDark ? '#0B0F12' : '#FFFFFF'} />
+          <Text style={{
+            position: 'absolute',
+            fontSize: 28,
+            fontWeight: 'bold',
+            color: isDark ? '#0B0F12' : '#FFFFFF',
+            lineHeight: 30,
+          }}>+</Text>
+        </View>
       </TouchableOpacity>
 
       {/* Bottom Tab Bar */}
@@ -1030,13 +1060,14 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    bottom: 80,
+    bottom: 180,
     right: 20,
     width: 56,
     height: 56,
     borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 999,
     elevation: 6,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.3,
