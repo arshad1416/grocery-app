@@ -1044,7 +1044,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   listContent: {
-    paddingBottom: 140,
+    paddingBottom: 160,
   },
   emptyContainer: {
     flex: 1,
@@ -1064,7 +1064,7 @@ const styles = StyleSheet.create({
   },
   fab: {
       position: 'absolute',
-      bottom: 200,
+      bottom: 90,
       right: 20,
       width: 56,
       height: 56,
