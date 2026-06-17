@@ -49,7 +49,7 @@ export interface SwipeableListCardProps {
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 const SWIPE_THRESHOLD = 80;
-const DELETE_PANEL_WIDTH = 100;
+const DELETE_PANEL_WIDTH = 130;
 const LONG_PRESS_MS = 500;
 
 // ─── Component ──────────────────────────────────────────────────────────────
