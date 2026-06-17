@@ -4,9 +4,10 @@
  */
 
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, View, Platform } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, View, Platform, Image } from 'react-native';
 import { useActiveTheme } from '../state/useThemeStore';
 import { themeColors } from './groceryTheme';
+import { getStoreColor, getStoreInitial, getStoreLogo } from '../pricing/store-branding';
 
 interface StoreCardProps {
   storeName: string;
@@ -17,22 +18,6 @@ interface StoreCardProps {
   onPress: () => void;
 }
 
-const STORE_COLORS: Record<string, string> = {
-  nofrills: '#FFD700',
-  foodbasics: '#FF4444',
-  metro: '#E53935',
-  walmart: '#0071CE',
-  freshco: '#FF6600',
-  foodland: '#228B22',
-};
-
-function getStoreColor(storeId: string): string {
-  return STORE_COLORS[storeId.toLowerCase()] ?? '#16A34A';
-}
-
-function getStoreInitial(storeName: string): string {
-  return storeName.charAt(0).toUpperCase();
-}
 
 export default function StoreCard({
   storeName,
@@ -46,6 +31,7 @@ export default function StoreCard({
   const isDark = activeTheme === 'dark';
   const theme = isDark ? themeColors.dark : themeColors.light;
   const storeColor = getStoreColor(storeId);
+  const logoSource = getStoreLogo(storeId.toLowerCase());
 
   return (
     <TouchableOpacity
@@ -68,11 +54,19 @@ export default function StoreCard({
       activeOpacity={0.7}
     >
       <View style={styles.topRow}>
-        <View style={[styles.initialBadge, { backgroundColor: storeColor + '20' }]}>
-          <Text style={[styles.initialText, { color: storeColor }]}>
-            {getStoreInitial(storeName)}
-          </Text>
-        </View>
+        {logoSource ? (
+          <Image
+            source={logoSource}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
+        ) : (
+          <View style={[styles.initialBadge, { backgroundColor: storeColor + '20' }]}>
+            <Text style={[styles.initialText, { color: storeColor }]}>
+              {getStoreInitial(storeName)}
+            </Text>
+          </View>
+        )}
         {isSelected && (
           <View style={[styles.selectedDot, { backgroundColor: theme.primary }]} />
         )}
@@ -115,15 +109,23 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   initialBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
   },
   initialText: {
     fontSize: 14,
     fontWeight: '700',
+  },
+  logoImage: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   selectedDot: {
     width: 8,

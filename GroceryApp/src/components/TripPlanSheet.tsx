@@ -22,6 +22,7 @@ import {
 import { useActiveTheme } from '../state/useThemeStore';
 import type { TripPlan } from '../pricing/trip-plan';
 import { navigateToStore } from '../utils/storeNavigation';
+import { StoreLogo } from '../pricing/store-branding';
 
 interface TripPlanSheetProps {
   visible: boolean;
@@ -120,7 +121,8 @@ export default function TripPlanSheet({
                     Stop {idx + 1}
                   </Text>
                   <TouchableOpacity onPress={() => navigateToStore(stop.storeName)} style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                    <Text style={[styles.stopStore, { color: theme.primary }]}>
+                    <StoreLogo storeId={stop.storeId} size={24} />
+                    <Text style={[styles.stopStore, { color: theme.primary, marginLeft: 6 }]}>
                       {stop.storeName}
                     </Text>
                     <Text style={{ fontSize: 14, marginLeft: 4, color: theme.primary }}>📍</Text>

@@ -28,7 +28,7 @@ interface BarcodeScannerScreenProps {
 
 // ─── Barcode Formats ─────────────────────────────────────────────────────────
 
-const BARCODE_TYPES = ['ean-13', 'ean-8', 'upc-a', 'upc-e'];
+const BARCODE_TYPES = ['ean13', 'ean8', 'upc_a', 'upc_e', 'qr'];
 
 // ─── Component ───────────────────────────────────────────────────────────────
 

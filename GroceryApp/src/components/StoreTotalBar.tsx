@@ -6,6 +6,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { useActiveTheme } from '../state/useThemeStore';
 import { themeColors } from './groceryTheme';
+import { StoreLogo } from '../pricing/store-branding';
 
 export interface StoreTotal {
   storeId: string;
@@ -73,6 +74,7 @@ export default function StoreTotalBar({ storeTotals, selectedStoreId, onSelectSt
               ]}
               onPress={() => onSelectStore(isSelected ? null : st.storeId)}
             >
+              <StoreLogo storeId={st.storeId} size={18} />
               <Text style={[
                 styles.storeTotalPillText,
                 { color: isSelected ? '#fff' : theme.text },
