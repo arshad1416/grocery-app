@@ -18,6 +18,8 @@ import {
   UIManager,
   RefreshControl,
   ScrollView,
+  FlatList,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -38,6 +40,8 @@ import { computeStopProposals } from '../pricing/stop-optimizer';
 import { flippDealsAdapter } from '../pricing/flipp-deals-adapter';
 import { crowdsourcedAdapter } from '../pricing/crowdsourced';
 import { getSettings } from '../config/settings';
+import { fetchDealsForFSA, matchListItems, type FlippDealRow, type DealMatch } from '../services/dealMatcher';
+import { isTursoReady } from '../services/tursoClient';
 
 // Extracted components
 import SyncIndicator from '../components/SyncIndicator';
@@ -118,6 +122,18 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   const [priceSummaryItem, setPriceSummaryItem] = useState<{ id: string; name: string } | null>(null);
   const [activeCategory, setActiveCategory] = useState<string>('All');
   const [activeTab, setActiveTab] = useState<TabName>('lists');
+
+  // Flyer deals states & matched calculation
+  const [fsaDeals, setFsaDeals] = useState<FlippDealRow[]>([]);
+  const [fsaDealsLoading, setFsaDealsLoading] = useState(false);
+  const [fsaDealsError, setFsaDealsError] = useState<string | null>(null);
+
+  const matchedDealsMap = useMemo(() => {
+    if (fsaDeals.length === 0) return new Map<string, DealMatch[]>();
+    const activeListItems = Object.values(items)
+      .filter((item) => !item.isDeleted && item.listId === listId && !item.isChecked);
+    return matchListItems(activeListItems, fsaDeals);
+  }, [items, listId, fsaDeals]);
 
   // Build dynamic store name map from available stores
   const storeNameMap = useMemo(() => {
@@ -620,16 +636,62 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     [items],
   );
 
-  const handleTabPress = useCallback((tab: TabName) => {
-    setActiveTab(tab);
-    if (tab === 'home') {
-      navigation.goBack();
-    } else if (tab === 'scan') {
-      setShowAddSheet(true);
-    } else if (tab === 'account') {
-      navigation.navigate('Settings');
+  const loadFsaDeals = useCallback(async () => {
+    setFsaDealsLoading(true);
+    setFsaDealsError(null);
+    try {
+      const settings = getSettings();
+      const fsa = settings.flippFsa;
+      if (!fsa) {
+        setFsaDealsError('fsa_missing');
+        setFsaDealsLoading(false);
+        return;
+      }
+      if (!isTursoReady()) {
+        setFsaDealsError('turso_missing');
+        setFsaDealsLoading(false);
+        return;
+      }
+      const fetched = await fetchDealsForFSA(fsa);
+      setFsaDeals(fetched);
+    } catch (err) {
+      setFsaDealsError(err instanceof Error ? err.message : 'Failed to load flyer deals');
+    } finally {
+      setFsaDealsLoading(false);
     }
-  }, [navigation]);
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'deals') {
+      loadFsaDeals();
+    }
+  }, [activeTab, loadFsaDeals]);
+
+  const handleTabPress = useCallback((tab: TabName) => {
+    if (tab === 'account') {
+      navigation.navigate('Settings');
+      setActiveTab('lists');
+      return;
+    }
+    
+    if (tab === 'scan') {
+      setShowAddSheet(true);
+      return;
+    }
+    
+    if (tab === 'deals') {
+      setActiveTab('deals');
+      return;
+    }
+    
+    if (tab === 'home' || tab === 'lists') {
+      if (activeTab === 'deals') {
+        setActiveTab('lists');
+      } else {
+        navigation.goBack();
+      }
+    }
+  }, [activeTab, navigation]);
 
   const hasPrices = Object.keys(priceTimestamps).length > 0;
   const hasStalePrices = Object.values(items)
@@ -659,6 +721,139 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       </View>
     );
   }
+
+  const renderMatchedDealsView = () => {
+    const settings = getSettings();
+    const fsa = (settings as any).flippFsa;
+
+    const activeListItems = Object.values(items)
+      .filter((item) => !item.isDeleted && item.listId === listId && !item.isChecked);
+
+    if (fsaDealsLoading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={[styles.loadingText, { color: theme.secondaryText, marginTop: 12 }]}>
+            Matching flyer deals...
+          </Text>
+        </View>
+      );
+    }
+
+    if (fsaDealsError === 'fsa_missing' || fsaDealsError === 'turso_missing' || (!fsa && !fsaDealsError)) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="pricetag-outline" size={48} color={theme.secondaryText} />
+          <Text style={[styles.emptyTitle, { color: theme.text, marginTop: 12 }]}>
+            Flyer Matching Unconfigured
+          </Text>
+          <Text style={[styles.emptySubtitle, { color: theme.secondaryText, textAlign: 'center', marginBottom: 20 }]}>
+            {!fsa
+              ? 'Please configure your FSA (postal code prefix) in settings to match list items with flyer deals.'
+              : 'Please connect a Turso database in settings to match list items with flyer deals.'}
+          </Text>
+          <TouchableOpacity
+            style={[styles.createBtn, { backgroundColor: theme.primary }]}
+            onPress={() => navigation.navigate('Settings')}
+          >
+            <Text style={styles.createBtnText}>Go to Settings</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (fsaDealsError) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="alert-circle-outline" size={48} color="#EF4444" />
+          <Text style={[styles.emptyTitle, { color: '#EF4444', marginTop: 12 }]}>Failed to load deals</Text>
+          <Text style={[styles.emptySubtitle, { color: theme.secondaryText }]}>{fsaDealsError}</Text>
+          <TouchableOpacity style={[styles.createBtn, { backgroundColor: theme.primary }]} onPress={loadFsaDeals}>
+            <Text style={styles.createBtnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    const itemsWithMatches = activeListItems.filter((item) => {
+      const matches = matchedDealsMap.get(item.id);
+      return matches && matches.length > 0;
+    });
+
+    if (itemsWithMatches.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="pricetags-outline" size={48} color={theme.secondaryText} />
+          <Text style={[styles.emptyTitle, { color: theme.text, marginTop: 12 }]}>
+            No deals matched
+          </Text>
+          <Text style={[styles.emptySubtitle, { color: theme.secondaryText, textAlign: 'center' }]}>
+            We couldn't find any flyer deals in your area (FSA: {fsa}) for the items on your list.
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 40 }} showsVerticalScrollIndicator={false}>
+        <View style={{ paddingHorizontal: 20, paddingVertical: 12 }}>
+          <Text style={{ fontSize: 13, color: theme.secondaryText }}>
+            Matched flyer deals for your shopping list items (FSA: <Text style={{ color: theme.primary, fontWeight: 'bold' }}>{fsa}</Text>)
+          </Text>
+        </View>
+
+        {itemsWithMatches.map((item) => {
+          const matches = matchedDealsMap.get(item.id) || [];
+          return (
+            <View key={item.id} style={{ marginHorizontal: 16, marginVertical: 8 }}>
+              <Text style={{ fontSize: 16, fontWeight: 'bold', color: theme.text, marginBottom: 8, marginLeft: 4 }}>
+                {item.name}
+              </Text>
+              
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
+                {matches.map((deal, idx) => (
+                  <View
+                    key={`${deal.merchant}-${idx}`}
+                    style={[
+                      styles.matchedDealCard,
+                      {
+                        backgroundColor: theme.cardBg,
+                        borderColor: theme.border,
+                      },
+                    ]}
+                  >
+                    {deal.imageUrl ? (
+                      <Image source={{ uri: deal.imageUrl }} style={styles.matchedDealImage} resizeMode="contain" />
+                    ) : (
+                      <View style={[styles.matchedDealPlaceholder, { backgroundColor: theme.inputBg }]}>
+                        <Ionicons name="fast-food-outline" size={16} color={theme.secondaryText} />
+                      </View>
+                    )}
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text style={[styles.matchedDealMerchant, { color: theme.primary }]}>
+                        {deal.merchant}
+                      </Text>
+                      <Text style={[styles.matchedDealName, { color: theme.text }]} numberOfLines={2}>
+                        {deal.itemName}
+                      </Text>
+                      <Text style={[styles.matchedDealPrice, { color: theme.accent }]}>
+                        {deal.price}
+                      </Text>
+                      {deal.validTo && (
+                        <Text style={{ fontSize: 9, color: theme.secondaryText, marginTop: 2 }}>
+                          Ends {new Date(deal.validTo).toLocaleDateString()}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          );
+        })}
+      </ScrollView>
+    );
+  };
 
   const totalItems = Object.values(items).filter(
     (i) => !i.isDeleted && i.listId === listId,
@@ -690,240 +885,246 @@ export default function GroceryListScreen({ route, navigation }: Props) {
         </View>
       </View>
 
-      {/* Search bar */}
-      <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search groceries..." />
+      {activeTab === 'lists' ? (
+        <>
+          {/* Search bar */}
+          <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search groceries..." />
 
-      {/* Store card row — horizontal scroll */}
-      {(storeTotals.length > 0 || availableStores.length > 0) && (
-        <View style={styles.storeCardRow}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.storeCardScroll}
-          >
-            {storeTotals.length > 0 ? storeTotals.map((st) => (
-              <StoreCard
-                key={st.storeId}
-                storeName={st.storeName}
-                storeId={st.storeId}
-                total={st.total}
-                itemCount={Object.values(items).filter(i => !i.isDeleted && i.listId === listId && !i.isChecked).length}
-                isSelected={selectedStoreId === st.storeId}
-                onPress={() => {
-                  if (selectedStoreId === st.storeId) {
-                    setSelectedStoreId(null);
-                  } else {
-                    setSelectedStoreId(st.storeId);
-                    setSelectedRouteNumStops(null);
-                  }
-                }}
-              />
-            )) : availableStores.map((s) => (
-              <StoreCard
-                key={s.storeId}
-                storeName={s.storeName}
-                storeId={s.storeId}
-                total={0}
-                itemCount={Object.values(items).filter(i => !i.isDeleted && i.listId === listId && !i.isChecked).length}
-                isSelected={selectedStoreId === s.storeId}
-                onPress={() => {
-                  if (selectedStoreId === s.storeId) {
-                    setSelectedStoreId(null);
-                  } else {
-                    setSelectedStoreId(s.storeId);
-                    setSelectedRouteNumStops(null);
-                  }
-                }}
-              />
-            ))}
-          </ScrollView>
-        </View>
-      )}
-
-      {/* Category pills */}
-      <View style={styles.categoryPillContainer}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoryPillScroll}
-        >
-          {availableCategories.map((cat) => (
-            <CategoryPill
-              key={cat}
-              label={cat === 'All' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1)}
-              isActive={activeCategory === cat}
-              onPress={() => {
-                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                setActiveCategory(cat);
-              }}
-            />
-          ))}
-        </ScrollView>
-      </View>
-
-      {/* Stop optimizer */}
-      <StopOptimizer
-        items={filteredUncheckedItems}
-        perStorePrices={perStorePrices}
-        storeNameMap={storeNameMap}
-        selectedRouteNumStops={selectedRouteNumStops}
-        onSelectRouteNumStops={(numStops) => {
-          setSelectedRouteNumStops(numStops);
-          setSelectedStoreId(null);
-        }}
-        fullItems={filteredUncheckedItems.map((item) => ({
-          id: item.id,
-          name: item.name,
-          quantity: item.quantity,
-          unit: item.unit,
-        }))}
-      />
-
-      {/* Find Prices button */}
-      {!priceLoading && (
-        <TouchableOpacity
-          style={[styles.findPricesBtn, { backgroundColor: isDark ? 'rgba(0, 230, 118, 0.08)' : 'rgba(124, 179, 66, 0.1)' }]}
-          onPress={handleRefreshPrices}
-          activeOpacity={0.7}
-        >
-          <Ionicons name={hasPrices ? 'refresh' : 'search'} size={14} color={theme.primary} />
-          <Text style={[styles.findPricesText, { color: theme.primary }]}>
-            {hasPrices ? 'Refresh Prices' : 'Find Prices'}
-          </Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Price summary banner */}
-      {priceSummaryItem && (() => {
-        const priceEntries = availableStores
-          .map((store) => {
-            const pr = perStorePrices[store.storeId]?.[priceSummaryItem.id];
-            return pr ? `${store.storeName} $${pr.price.toFixed(2)}` : null;
-          })
-          .filter(Boolean);
-        return (
-          <View style={[styles.priceSummaryBanner, {
-            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#FFFFFF',
-            borderColor: isDark ? 'rgba(0, 230, 118, 0.15)' : 'rgba(0, 0, 0, 0.06)',
-          }]}>
-            <Text style={[styles.priceSummaryName, { color: theme.text }]}>
-              {priceSummaryItem.name}
-            </Text>
-            {priceEntries.length > 0 ? (
-              <Text style={[styles.priceSummaryText, { color: theme.secondaryText }]} numberOfLines={2}>
-                {priceEntries.join('  ·  ')}
-              </Text>
-            ) : (
-              <Text style={[styles.priceSummaryText, { color: theme.secondaryText }]}>
-                No prices found
-              </Text>
-            )}
-            <TouchableOpacity
-              style={styles.priceSummaryDismiss}
-              onPress={() => {
-                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                setPriceSummaryItem(null);
-              }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Ionicons name="close" size={16} color={theme.secondaryText} />
-            </TouchableOpacity>
-          </View>
-        );
-      })()}
-
-      {/* Sectioned list */}
-      {(() => {
-        const activeSections = selectedStoreId && storePlanSections
-          ? storePlanSections
-          : selectedRouteNumStops && routePlanSections
-          ? routePlanSections
-          : groupedSections;
-        const isStorePlan = selectedStoreId !== null || selectedRouteNumStops !== null;
-
-        if (activeSections.length === 0) {
-          return (
-            <View style={styles.emptyContainer}>
-              <Ionicons name="cart-outline" size={48} color={theme.secondaryText} />
-              <Text style={[styles.emptyTitle, { color: theme.text, marginTop: 12 }]}>
-                {searchQuery ? 'No results' : 'List is empty'}
-              </Text>
-              <Text style={[styles.emptySubtitle, { color: theme.secondaryText }]}>
-                {searchQuery
-                  ? 'Try a different search term'
-                  : 'Tap + to add your first item'}
-              </Text>
+          {/* Store card row — horizontal scroll */}
+          {(storeTotals.length > 0 || availableStores.length > 0) && (
+            <View style={styles.storeCardRow}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.storeCardScroll}
+              >
+                {storeTotals.length > 0 ? storeTotals.map((st) => (
+                  <StoreCard
+                    key={st.storeId}
+                    storeName={st.storeName}
+                    storeId={st.storeId}
+                    total={st.total}
+                    itemCount={Object.values(items).filter(i => !i.isDeleted && i.listId === listId && !i.isChecked).length}
+                    isSelected={selectedStoreId === st.storeId}
+                    onPress={() => {
+                      if (selectedStoreId === st.storeId) {
+                        setSelectedStoreId(null);
+                      } else {
+                        setSelectedStoreId(st.storeId);
+                        setSelectedRouteNumStops(null);
+                      }
+                    }}
+                  />
+                )) : availableStores.map((s) => (
+                  <StoreCard
+                    key={s.storeId}
+                    storeName={s.storeName}
+                    storeId={s.storeId}
+                    total={0}
+                    itemCount={Object.values(items).filter(i => !i.isDeleted && i.listId === listId && !i.isChecked).length}
+                    isSelected={selectedStoreId === s.storeId}
+                    onPress={() => {
+                      if (selectedStoreId === s.storeId) {
+                        setSelectedStoreId(null);
+                      } else {
+                        setSelectedStoreId(s.storeId);
+                        setSelectedRouteNumStops(null);
+                      }
+                    }}
+                  />
+                ))}
+              </ScrollView>
             </View>
-          );
-        }
-        return (
-          <SectionList
-            sections={activeSections}
-            keyExtractor={(item) => item.id}
-            refreshControl={
-              <RefreshControl
-                refreshing={isRefreshingPrices}
-                onRefresh={handleRefreshPrices}
-                tintColor={theme.primary}
-                colors={[theme.primary]}
-              />
-            }
-            renderItem={({ item, index, section }) => {
-              if (section.title === '__got_it__') {
-                return (
-                  <ItemRow
-                    item={item}
-                    onToggle={handleToggle}
-                    onPress={handleItemPress}
-                    onLongPress={handleItemLongPress}
-                    isFirst={index === 0}
-                    isLast={index === section.data.length - 1}
-                    price={getItemPrice(item.id)}
-                    priceLoading={itemLoading[item.id] ?? false}
-                    onQuantityChange={handleQuantityChange}
-                  />
-                );
-              }
-              return (
-                <ItemRow
-                  item={item}
-                  onToggle={handleToggle}
-                  onPress={handleItemPress}
-                  onLongPress={handleItemLongPress}
-                  onMoveUp={isStorePlan ? undefined : handleMoveUp}
-                  onMoveDown={isStorePlan ? undefined : handleMoveDown}
-                  isFirst={index === 0}
-                  isLast={index === section.data.length - 1}
-                  price={getItemPrice(item.id)}
-                  priceLoading={itemLoading[item.id] ?? false}
-                  onQuantityChange={handleQuantityChange}
+          )}
+
+          {/* Category pills */}
+          <View style={styles.categoryPillContainer}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.categoryPillScroll}
+            >
+              {availableCategories.map((cat) => (
+                <CategoryPill
+                  key={cat}
+                  label={cat === 'All' ? 'All' : cat.charAt(0).toUpperCase() + cat.slice(1)}
+                  isActive={activeCategory === cat}
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setActiveCategory(cat);
+                  }}
                 />
-              );
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Stop optimizer */}
+          <StopOptimizer
+            items={filteredUncheckedItems}
+            perStorePrices={perStorePrices}
+            storeNameMap={storeNameMap}
+            selectedRouteNumStops={selectedRouteNumStops}
+            onSelectRouteNumStops={(numStops) => {
+              setSelectedRouteNumStops(numStops);
+              setSelectedStoreId(null);
             }}
-            renderSectionHeader={({ section }) => {
-              if (section.title === '__got_it__') {
-                return (
-                  <GotItHeader
-                    count={checkedItemsCount}
-                    isExpanded={gotItExpanded}
-                    onToggle={() => setGotItExpanded((prev) => !prev)}
-                  />
-                );
-              }
-              return (
-                <CategoryHeader
-                  category={section.title}
-                  count={section.data.length}
-                  subtotal={section.subtotal}
-                />
-              );
-            }}
-            contentContainerStyle={styles.listContent}
-            stickySectionHeadersEnabled={false}
-            showsVerticalScrollIndicator={false}
+            fullItems={filteredUncheckedItems.map((item) => ({
+              id: item.id,
+              name: item.name,
+              quantity: item.quantity,
+              unit: item.unit,
+            }))}
           />
-        );
-      })()}
+
+          {/* Find Prices button */}
+          {!priceLoading && (
+            <TouchableOpacity
+              style={[styles.findPricesBtn, { backgroundColor: isDark ? 'rgba(0, 230, 118, 0.08)' : 'rgba(124, 179, 66, 0.1)' }]}
+              onPress={handleRefreshPrices}
+              activeOpacity={0.7}
+            >
+              <Ionicons name={hasPrices ? 'refresh' : 'search'} size={14} color={theme.primary} />
+              <Text style={[styles.findPricesText, { color: theme.primary }]}>
+                {hasPrices ? 'Refresh Prices' : 'Find Prices'}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Price summary banner */}
+          {priceSummaryItem && (() => {
+            const priceEntries = availableStores
+              .map((store) => {
+                const pr = perStorePrices[store.storeId]?.[priceSummaryItem.id];
+                return pr ? `${store.storeName} $${pr.price.toFixed(2)}` : null;
+              })
+              .filter(Boolean);
+            return (
+              <View style={[styles.priceSummaryBanner, {
+                backgroundColor: isDark ? 'rgba(255, 255, 255, 0.06)' : '#FFFFFF',
+                borderColor: isDark ? 'rgba(0, 230, 118, 0.15)' : 'rgba(0, 0, 0, 0.06)',
+              }]}>
+                <Text style={[styles.priceSummaryName, { color: theme.text }]}>
+                  {priceSummaryItem.name}
+                </Text>
+                {priceEntries.length > 0 ? (
+                  <Text style={[styles.priceSummaryText, { color: theme.secondaryText }]} numberOfLines={2}>
+                    {priceEntries.join('  ·  ')}
+                  </Text>
+                ) : (
+                  <Text style={[styles.priceSummaryText, { color: theme.secondaryText }]}>
+                    No prices found
+                  </Text>
+                )}
+                <TouchableOpacity
+                  style={styles.priceSummaryDismiss}
+                  onPress={() => {
+                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                    setPriceSummaryItem(null);
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="close" size={16} color={theme.secondaryText} />
+                </TouchableOpacity>
+              </View>
+            );
+          })()}
+
+          {/* Sectioned list */}
+          {(() => {
+            const activeSections = selectedStoreId && storePlanSections
+              ? storePlanSections
+              : selectedRouteNumStops && routePlanSections
+              ? routePlanSections
+              : groupedSections;
+            const isStorePlan = selectedStoreId !== null || selectedRouteNumStops !== null;
+
+            if (activeSections.length === 0) {
+              return (
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="cart-outline" size={48} color={theme.secondaryText} />
+                  <Text style={[styles.emptyTitle, { color: theme.text, marginTop: 12 }]}>
+                    {searchQuery ? 'No results' : 'List is empty'}
+                  </Text>
+                  <Text style={[styles.emptySubtitle, { color: theme.secondaryText }]}>
+                    {searchQuery
+                      ? 'Try a different search term'
+                      : 'Tap + to add your first item'}
+                  </Text>
+                </View>
+              );
+            }
+            return (
+              <SectionList
+                sections={activeSections}
+                keyExtractor={(item) => item.id}
+                refreshControl={
+                  <RefreshControl
+                    refreshing={isRefreshingPrices}
+                    onRefresh={handleRefreshPrices}
+                    tintColor={theme.primary}
+                    colors={[theme.primary]}
+                  />
+                }
+                renderItem={({ item, index, section }) => {
+                  if (section.title === '__got_it__') {
+                    return (
+                      <ItemRow
+                        item={item}
+                        onToggle={handleToggle}
+                        onPress={handleItemPress}
+                        onLongPress={handleItemLongPress}
+                        isFirst={index === 0}
+                        isLast={index === section.data.length - 1}
+                        price={getItemPrice(item.id)}
+                        priceLoading={itemLoading[item.id] ?? false}
+                        onQuantityChange={handleQuantityChange}
+                      />
+                    );
+                  }
+                  return (
+                    <ItemRow
+                      item={item}
+                      onToggle={handleToggle}
+                      onPress={handleItemPress}
+                      onLongPress={handleItemLongPress}
+                      onMoveUp={isStorePlan ? undefined : handleMoveUp}
+                      onMoveDown={isStorePlan ? undefined : handleMoveDown}
+                      isFirst={index === 0}
+                      isLast={index === section.data.length - 1}
+                      price={getItemPrice(item.id)}
+                      priceLoading={itemLoading[item.id] ?? false}
+                      onQuantityChange={handleQuantityChange}
+                    />
+                  );
+                }}
+                renderSectionHeader={({ section }) => {
+                  if (section.title === '__got_it__') {
+                    return (
+                      <GotItHeader
+                        count={checkedItemsCount}
+                        isExpanded={gotItExpanded}
+                        onToggle={() => setGotItExpanded((prev) => !prev)}
+                      />
+                    );
+                  }
+                  return (
+                    <CategoryHeader
+                      category={section.title}
+                      count={section.data.length}
+                      subtotal={section.subtotal}
+                    />
+                  );
+                }}
+                contentContainerStyle={styles.listContent}
+                stickySectionHeadersEnabled={false}
+                showsVerticalScrollIndicator={false}
+              />
+            );
+          })()}
+        </>
+      ) : (
+        renderMatchedDealsView()
+      )}
 
       {/* Undo Toast */}
       {toastState?.visible && (
@@ -956,9 +1157,13 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       <AddItemSheet
         visible={showAddSheet}
         listId={listId}
-        onClose={() => setShowAddSheet(false)}
+        onClose={() => {
+          setShowAddSheet(false);
+          setActiveTab('lists');
+        }}
         onItemAdded={() => {
           setShowAddSheet(false);
+          setActiveTab('lists');
         }}
       />
     </View>
@@ -1105,5 +1310,59 @@ const styles = StyleSheet.create({
   priceSummaryDismiss: {
     marginLeft: 8,
     padding: 4,
+  },
+  createBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginTop: 12,
+  },
+  createBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  matchedDealCard: {
+    width: 220,
+    flexDirection: 'row',
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    alignItems: 'center',
+  },
+  matchedDealImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 6,
+  },
+  matchedDealPlaceholder: {
+    width: 48,
+    height: 48,
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  matchedDealMerchant: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  matchedDealName: {
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 15,
+  },
+  matchedDealPrice: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    marginTop: 2,
   },
 });
