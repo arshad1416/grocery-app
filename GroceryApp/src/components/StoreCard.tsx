@@ -53,10 +53,10 @@ export default function StoreCard({
         styles.card,
         isSelected
           ? {
-              backgroundColor: isDark ? 'rgba(0, 230, 118, 0.12)' : 'rgba(124, 179, 66, 0.1)',
-              borderColor: isDark ? 'rgba(0, 230, 118, 0.4)' : '#7CB342',
+              backgroundColor: isDark ? 'rgba(0, 230, 118, 0.08)' : 'rgba(124, 179, 66, 0.06)',
+              borderColor: isDark ? 'rgba(0, 230, 118, 0.2)' : 'rgba(124, 179, 66, 0.4)',
               shadowColor: isDark ? '#00E676' : '#7CB342',
-              shadowOpacity: isDark ? 0.3 : 0.15,
+              shadowOpacity: isDark ? 0.15 : 0.08,
             }
           : {
               backgroundColor: isDark ? 'rgba(255, 255, 255, 0.04)' : '#FFFFFF',
