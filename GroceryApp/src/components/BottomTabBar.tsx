@@ -44,7 +44,7 @@ export default function BottomTabBar({ activeTab, onTabPress }: BottomTabBarProp
       style={[
         styles.container,
         {
-          paddingBottom: Math.max(insets.bottom, 8),
+          paddingBottom: Math.max(insets.bottom, 24),
           backgroundColor: isDark ? 'rgba(11, 15, 18, 0.95)' : '#FFFFFF',
           borderTopColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
         },
