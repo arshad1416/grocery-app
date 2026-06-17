@@ -624,6 +624,8 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     setActiveTab(tab);
     if (tab === 'home') {
       navigation.goBack();
+    } else if (tab === 'scan') {
+      setShowAddSheet(true);
     } else if (tab === 'account') {
       navigation.navigate('Settings');
     }
@@ -933,29 +935,31 @@ export default function GroceryListScreen({ route, navigation }: Props) {
         />
       )}
 
-      {/* FAB Add button */}
-      <TouchableOpacity
-        style={[styles.fab, {
-          backgroundColor: theme.primary,
-          shadowColor: isDark ? '#00E676' : '#7CB342',
-        }]}
-        onPress={() => setShowAddSheet(true)}
-        activeOpacity={0.8}
-      >
-        <View style={{ justifyContent: 'center', alignItems: 'center' }}>
-          <Ionicons name="add" size={28} color={isDark ? '#0B0F12' : '#FFFFFF'} />
-          <Text style={{
-            position: 'absolute',
-            fontSize: 28,
-            fontWeight: 'bold',
-            color: isDark ? '#0B0F12' : '#FFFFFF',
-            lineHeight: 30,
-          }}>+</Text>
-        </View>
-      </TouchableOpacity>
-
       {/* Bottom Tab Bar */}
       <BottomTabBar activeTab={activeTab} onTabPress={handleTabPress} />
+
+      {/* FAB Add button — in overlay for touch passthrough */}
+      <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+        <TouchableOpacity
+          style={[styles.fab, {
+            backgroundColor: theme.primary,
+            shadowColor: isDark ? '#00E676' : '#7CB342',
+          }]}
+          onPress={() => setShowAddSheet(true)}
+          activeOpacity={0.8}
+        >
+          <View style={{ justifyContent: 'center', alignItems: 'center' }}>
+            <Ionicons name="add" size={28} color={isDark ? '#0B0F12' : '#FFFFFF'} />
+            <Text style={{
+              position: 'absolute',
+              fontSize: 28,
+              fontWeight: 'bold',
+              color: isDark ? '#0B0F12' : '#FFFFFF',
+              lineHeight: 30,
+            }}>+</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
 
       {/* Add Item Sheet */}
       <AddItemSheet
@@ -1059,20 +1063,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   fab: {
-    position: 'absolute',
-    bottom: 180,
-    right: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 999,
-    elevation: 6,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-  },
+      position: 'absolute',
+      bottom: 200,
+      right: 20,
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      justifyContent: 'center',
+      alignItems: 'center',
+      elevation: 10,
+      zIndex: 999,
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.3,
+      shadowRadius: 6,
+    },
   findPricesBtn: {
     marginHorizontal: 16,
     marginBottom: 8,
