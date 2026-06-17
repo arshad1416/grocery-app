@@ -137,7 +137,7 @@ function App() {
           const { initTurso } = await import('./src/services/tursoClient');
           const settings = getSettings();
           const tursoUrl = settings.tursoUrl || 'https://stophop-arshad1416.aws-us-east-1.turso.io';
-          const tursoToken = settings.tursoToken || '***';
+          const tursoToken = settings.tursoToken || '***REMOVED-REVOKED-TURSO-TOKEN***';
           if (tursoUrl && tursoToken) {
             initTurso({ url: tursoUrl, token: tursoToken });
             console.warn('[init] Turso connected successfully');
