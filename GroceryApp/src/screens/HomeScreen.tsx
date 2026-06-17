@@ -330,7 +330,6 @@ export default function HomeScreen({ navigation }: Props) {
               onDelete={() => handleDeleteInitiated(list)}
               onShare={() => handleShare(list)}
               onLongPress={(event) => handleLongPress(list, event)}
-              theme={theme}
             />
           ))}
 
