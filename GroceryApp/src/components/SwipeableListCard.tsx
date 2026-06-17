@@ -44,7 +44,7 @@ interface SwipeableListCardProps {
   onPress: () => void;
   onDelete: () => void;
   onShare: () => void;
-  onLongPress?: () => void;
+  onLongPress?: (event: GestureResponderEvent) => void;
   deleteLabel?: string;
 }
 
@@ -128,10 +128,11 @@ export default function SwipeableListCard({
     }),
   ).current;
 
-  const handlePressIn = useCallback(() => {
+  const handlePressIn = useCallback((event: GestureResponderEvent) => {
+    event.persist?.();
     longPressTimer.current = setTimeout(() => {
       isLongPress.current = true;
-      onLongPressRef.current?.();
+      onLongPressRef.current?.(event);
     }, LONG_PRESS_MS);
   }, []);
 
