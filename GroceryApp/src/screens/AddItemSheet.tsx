@@ -782,8 +782,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
+    paddingTop: 50,
+    paddingBottom: 14,
+
   },
   title: {
     fontSize: 18,
