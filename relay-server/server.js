@@ -163,6 +163,61 @@ const TLS_KEY_PATH = process.env.TLS_KEY;
 /** File path for persisting relay state across restarts. */
 const STATE_FILE = process.env.RELAY_STATE_FILE || './relay-state.json';
 
+// ─── Voice Assistant OAuth2 & Keys ──────────────────────────────────────────────
+
+const ASSISTANT_PUBLIC_KEY_PATH =
+  process.env.ASSISTANT_PUBLIC_KEY_PATH || path.join(__dirname, 'keys', 'assistant-public-key.pem');
+const ASSISTANT_PRIVATE_KEY_PATH =
+  process.env.ASSISTANT_PRIVATE_KEY_PATH || path.join(__dirname, 'keys', 'assistant-private-key.pem');
+
+let assistantPublicKeyPem = null;
+let assistantPrivateKeyPem = null;
+
+function ensureAssistantKeys() {
+  if (assistantPublicKeyPem && assistantPrivateKeyPem) return;
+
+  const keysDir = path.join(__dirname, 'keys');
+  if (!fs.existsSync(keysDir)) {
+    fs.mkdirSync(keysDir, { recursive: true });
+  }
+
+  if (fs.existsSync(ASSISTANT_PUBLIC_KEY_PATH) && fs.existsSync(ASSISTANT_PRIVATE_KEY_PATH)) {
+    assistantPublicKeyPem = fs.readFileSync(ASSISTANT_PUBLIC_KEY_PATH, 'utf-8');
+    assistantPrivateKeyPem = fs.readFileSync(ASSISTANT_PRIVATE_KEY_PATH, 'utf-8');
+  } else {
+    console.log('[assistant-keys] Generating new RSA-4096 keypair for voice assistant...');
+    const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
+      modulusLength: 4096,
+      publicKeyEncoding: { type: 'spki', format: 'pem' },
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+    });
+    assistantPublicKeyPem = publicKey;
+    assistantPrivateKeyPem = privateKey;
+    fs.writeFileSync(ASSISTANT_PUBLIC_KEY_PATH, publicKey, 'utf-8');
+    fs.writeFileSync(ASSISTANT_PRIVATE_KEY_PATH, privateKey, 'utf-8');
+    console.log('[assistant-keys] RSA-4096 keypair saved.');
+  }
+}
+
+/**
+ * Map<accessToken, { familyId: string, encryptedMasterKey: string, expiresAt: number }>
+ */
+const oauthTokens = new Map();
+
+/**
+ * Map<pairingCode, { sessionId: string, redirectUri: string, state: string, scope: string, linked: boolean, familyId: string, encryptedMasterKey: string, authCode: string, createdAt: number }>
+ */
+const oauthSessions = new Map();
+
+function generatePairingCodeString() {
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += Math.floor(Math.random() * 10);
+  }
+  return code;
+}
+
+
 // ─── Pool Server ────────────────────────────────────────────────────────────────
 
 const { PoolStore } = require('./pool/store');
@@ -188,10 +243,16 @@ function serializeState() {
     families[familyId] = Array.from(tokens);
   }
 
+  const tokens = {};
+  for (const [token, data] of oauthTokens) {
+    tokens[token] = data;
+  }
+
   return {
     enrolledDevices: enrolled,
     familyDeviceTokens: families,
     usedInviteSignatures: Array.from(usedInviteSignatures),
+    oauthTokens: tokens,
   };
 }
 
@@ -218,6 +279,14 @@ function deserializeState(saved) {
   if (saved.usedInviteSignatures) {
     for (const sig of saved.usedInviteSignatures) {
       usedInviteSignatures.add(sig);
+    }
+  }
+
+  if (saved.oauthTokens) {
+    for (const [token, data] of Object.entries(saved.oauthTokens)) {
+      if (Date.now() <= data.expiresAt) {
+        oauthTokens.set(token, data);
+      }
     }
   }
 }
@@ -645,6 +714,273 @@ const server = createServer((req, res) => {
     return handleExtractRequest(req, res, enrolledDevices);
   }
 
+  // GET /api/assistant/public-key — returns voice assistant public key
+  if (req.url === '/api/assistant/public-key' && req.method === 'GET') {
+    ensureAssistantKeys();
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end(assistantPublicKeyPem);
+    return;
+  }
+
+  // GET /oauth/authorize — account linking HTML page showing pairing code
+  if (req.url.startsWith('/oauth/authorize') && req.method === 'GET') {
+    ensureAssistantKeys();
+    const reqUrl = new URL(req.url, `http://${req.headers.host}`);
+    const redirectUri = reqUrl.searchParams.get('redirect_uri');
+    const state = reqUrl.searchParams.get('state');
+    const scope = reqUrl.searchParams.get('scope') || '';
+    const clientId = reqUrl.searchParams.get('client_id') || '';
+
+    if (!redirectUri || !state) {
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      res.end('Missing redirect_uri or state parameters');
+      return;
+    }
+
+    const pairingCode = generatePairingCodeString();
+    oauthSessions.set(pairingCode, {
+      redirectUri,
+      state,
+      scope,
+      clientId,
+      linked: false,
+      familyId: null,
+      encryptedMasterKey: null,
+      authCode: null,
+      createdAt: Date.now()
+    });
+
+    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.end(getAuthorizeHtml(pairingCode));
+    return;
+  }
+
+  // GET /oauth/status — poll endpoint for pairing screen
+  if (req.url.startsWith('/oauth/status') && req.method === 'GET') {
+    const reqUrl = new URL(req.url, `http://${req.headers.host}`);
+    const pairingCode = reqUrl.searchParams.get('pairingCode');
+    if (!pairingCode) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Missing pairingCode' }));
+      return;
+    }
+
+    const session = oauthSessions.get(pairingCode);
+    if (!session) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Session not found or expired' }));
+      return;
+    }
+
+    if (session.linked) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        linked: true,
+        redirectUri: `${session.redirectUri}${session.redirectUri.includes('?') ? '&' : '?'}code=${session.authCode}&state=${session.state}`
+      }));
+      return;
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ linked: false }));
+    return;
+  }
+
+  // POST /api/oauth/pair — pairing submission from mobile app
+  if (req.url === '/api/oauth/pair' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const { pairingCode, familyId, encryptedMasterKey } = JSON.parse(body);
+        if (!pairingCode || !familyId || !encryptedMasterKey) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'pairingCode, familyId, and encryptedMasterKey are required' }));
+          return;
+        }
+
+        const session = oauthSessions.get(pairingCode);
+        if (!session) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid or expired pairing code' }));
+          return;
+        }
+
+        const authCode = crypto.randomBytes(16).toString('hex');
+        session.linked = true;
+        session.familyId = familyId;
+        session.encryptedMasterKey = encryptedMasterKey;
+        session.authCode = authCode;
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON payload' }));
+      }
+    });
+    return;
+  }
+
+  // POST /oauth/token — oauth2 token exchange
+  if (req.url === '/oauth/token' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (chunk) => { body += chunk; });
+    req.on('end', () => {
+      try {
+        let params;
+        const contentType = req.headers['content-type'] || '';
+        if (contentType.includes('application/x-www-form-urlencoded')) {
+          params = new URLSearchParams(body);
+        } else {
+          const parsed = JSON.parse(body);
+          params = {
+            get(key) { return parsed[key]; }
+          };
+        }
+
+        const grantType = params.get('grant_type');
+        const code = params.get('code');
+
+        if (grantType !== 'authorization_code' || !code) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Unsupported grant_type or missing authorization code' }));
+          return;
+        }
+
+        let foundCode = null;
+        let foundSession = null;
+        for (const [pCode, session] of oauthSessions.entries()) {
+          if (session.authCode === code) {
+            foundCode = pCode;
+            foundSession = session;
+            break;
+          }
+        }
+
+        if (!foundSession) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid or expired authorization code' }));
+          return;
+        }
+
+        const accessToken = crypto.randomBytes(32).toString('hex');
+        oauthTokens.set(accessToken, {
+          familyId: foundSession.familyId,
+          encryptedMasterKey: foundSession.encryptedMasterKey,
+          expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000 // 1 year
+        });
+
+        oauthSessions.delete(foundCode);
+        persistState();
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          access_token: accessToken,
+          token_type: 'Bearer',
+          expires_in: 31536000
+        }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to exchange token: ' + err.message }));
+      }
+    });
+    return;
+  }
+
+  // GET /api/assistant/list-data — fetches encrypted key and all Yjs updates
+  if (req.url === '/api/assistant/list-data' && req.method === 'GET') {
+    const authHeader = req.headers['authorization'];
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized. Missing Bearer token' }));
+      return;
+    }
+
+    const accessToken = authHeader.slice('Bearer '.length).trim();
+    const tokenData = oauthTokens.get(accessToken);
+
+    if (!tokenData || Date.now() > tokenData.expiresAt) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid or expired access token' }));
+      return;
+    }
+
+    const { familyId, encryptedMasterKey } = tokenData;
+    const { getAllUpdates } = require('./encrypted-store');
+    const updates = getAllUpdates(familyId);
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      encryptedMasterKey,
+      updates
+    }));
+    return;
+  }
+
+  // POST /api/assistant/submit-update — appends Yjs update and relays to WebSocket
+  if (req.url === '/api/assistant/submit-update' && req.method === 'POST') {
+    const authHeader = req.headers['authorization'];
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized. Missing Bearer token' }));
+      return;
+    }
+
+    const accessToken = authHeader.slice('Bearer '.length).trim();
+    const tokenData = oauthTokens.get(accessToken);
+
+    if (!tokenData || Date.now() > tokenData.expiresAt) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid or expired access token' }));
+      return;
+    }
+
+    const { familyId } = tokenData;
+
+    let body = '';
+    req.on('data', (chunk) => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const { listId, payload } = JSON.parse(body);
+        if (!listId || !payload) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'listId and payload are required' }));
+          return;
+        }
+
+        const { addUpdate } = require('./encrypted-store');
+        addUpdate(familyId, listId, payload);
+
+        // Broadcast to online family room clients
+        const room = familyRooms.get(familyId);
+        let relayed = 0;
+        if (room) {
+          room.forEach((client) => {
+            if (client.readyState === client.OPEN) {
+              sendTo(client, {
+                type: 'update',
+                familyId,
+                deviceId: 'assistant-cloud',
+                listId,
+                payload,
+              });
+              relayed++;
+            }
+          });
+        }
+
+        console.log(`[assistant-update] Update persisted for family "${familyId}" list "${listId}". Relayed to ${relayed} clients.`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true }));
+      } catch (err) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to process update: ' + err.message }));
+      }
+    });
+    return;
+  }
+
   // Default 404
   res.writeHead(404);
   res.end('Not Found');
@@ -881,6 +1217,31 @@ function handleMessage(sender, message) {
         familyId,
         deviceId,
       });
+
+      // Send stored update history to the client upon joining
+      try {
+        const { getAllUpdates } = require('./encrypted-store');
+        const familyUpdates = getAllUpdates(familyId);
+        let sentHistoryCount = 0;
+        for (const [lId, updates] of Object.entries(familyUpdates)) {
+          for (const update of updates) {
+            sendTo(sender, {
+              type: 'update',
+              familyId,
+              deviceId: 'stored-history',
+              listId: lId,
+              payload: update
+            });
+            sentHistoryCount++;
+          }
+        }
+        if (sentHistoryCount > 0) {
+          console.log(`[identity] Sent ${sentHistoryCount} historical updates to device "${deviceId.slice(0, 12)}..."`);
+        }
+      } catch (err) {
+        console.warn(`[identity] Failed to load update history: ${err.message}`);
+      }
+
       break;
     }
 
@@ -940,6 +1301,14 @@ function handleMessage(sender, message) {
           }
         });
         console.log(`[relay] Device "${deviceId.slice(0, 12)}..." → family "${familyId}" list "${listId}" → ${relayed} peers`);
+      }
+
+      // Save update to encrypted-store (100% zero-knowledge persistence)
+      try {
+        const { addUpdate } = require('./encrypted-store');
+        addUpdate(familyId, listId, payload);
+      } catch (err) {
+        console.warn(`[ws-update] Failed to save update: ${err.message}`);
       }
 
       sendTo(sender, {
@@ -1069,10 +1438,13 @@ async function handleTokenRequest(req, res) {
   });
 }
 
-// ─── Start ───────────────────────────────────────────────────────────────────
+// ─── Start ────────────────────────────────═══════════════════════════════════
 
 // Load persisted state from disk (enrollments, invite signatures)
 loadStateFromDisk();
+
+// Ensure RSA keys are ready for Voice Assistant
+ensureAssistantKeys();
 
 // Load the used tokens store (non-blocking)
 usedTokensStore.loadOnStartup().catch((err) => {
@@ -1162,4 +1534,215 @@ if (POOL_PORT !== RELAY_PORT) {
 } else {
   // When ports are the same, pool is served on the main server (no isolation needed)
   console.log(`  Pool API:  same server (POOL_PORT=${POOL_PORT})`);
+}
+
+function getAuthorizeHtml(pairingCode) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Link Voice Assistant | GroceryApp</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #8a2be2;
+      --secondary: #4b0082;
+      --glow: #00ffff;
+      --bg: #0b0813;
+      --card-bg: rgba(255, 255, 255, 0.03);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text: #f3f0ff;
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: 'Outfit', sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+    
+    /* Background animated blobs */
+    .blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      z-index: 1;
+      opacity: 0.15;
+      animation: float 20s infinite alternate ease-in-out;
+    }
+    .blob-1 {
+      width: 400px;
+      height: 400px;
+      background: var(--primary);
+      top: -10%;
+      left: -10%;
+    }
+    .blob-2 {
+      width: 500px;
+      height: 500px;
+      background: var(--glow);
+      bottom: -10%;
+      right: -10%;
+      animation-delay: -10s;
+    }
+    
+    @keyframes float {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(50px, 50px) scale(1.1); }
+    }
+    
+    .container {
+      z-index: 10;
+      width: 100%;
+      max-width: 480px;
+      padding: 20px;
+    }
+    
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-radius: 24px;
+      padding: 40px 30px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      text-align: center;
+      transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .logo {
+      font-weight: 800;
+      font-size: 28px;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #fff 0%, #a855f7 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 24px;
+    }
+    
+    .title {
+      font-size: 22px;
+      font-weight: 600;
+      margin-bottom: 12px;
+    }
+    
+    .description {
+      font-size: 14px;
+      color: #9ca3af;
+      line-height: 1.6;
+      margin-bottom: 32px;
+    }
+    
+    .code-container {
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 32px;
+      position: relative;
+      overflow: hidden;
+    }
+    
+    .code {
+      font-family: monospace;
+      font-size: 48px;
+      font-weight: 800;
+      letter-spacing: 8px;
+      color: #fff;
+      text-shadow: 0 0 20px rgba(168, 85, 247, 0.4);
+    }
+    
+    .status-container {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      font-size: 14px;
+      color: #a78bfa;
+    }
+    
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(167, 139, 250, 0.2);
+      border-top-color: #a78bfa;
+      border-radius: 50%;
+      animation: spin 1s infinite linear;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    /* Success states */
+    .success-card {
+      border-color: rgba(34, 197, 94, 0.3);
+      box-shadow: 0 20px 40px rgba(34, 197, 94, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    }
+    
+    .success {
+      color: #22c55e !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="blob blob-1"></div>
+  <div class="blob blob-2"></div>
+  
+  <div class="container">
+    <div class="card" id="card">
+      <div class="logo">GroceryApp</div>
+      <h1 class="title">Link Voice Assistant</h1>
+      <p class="description">
+        Open the GroceryApp on your phone, go to <strong>Settings</strong> &rarr; <strong>Link Voice Assistant</strong>, and enter the 6-digit code below to securely link your account.
+      </p>
+      
+      <div class="code-container">
+        <div class="code">${pairingCode}</div>
+      </div>
+      
+      <div class="status-container" id="status-box">
+        <div class="spinner" id="status-icon"></div>
+        <span id="status">Waiting for connection...</span>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    const pairingCode = "${pairingCode}";
+    const poll = setInterval(async () => {
+      try {
+        const res = await fetch(\`/oauth/status?pairingCode=\` + pairingCode);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.linked && data.redirectUri) {
+            clearInterval(poll);
+            document.getElementById('status').innerText = 'Successfully Linked! Redirecting...';
+            document.getElementById('status').classList.add('success');
+            document.getElementById('status-icon').style.display = 'none';
+            document.getElementById('card').classList.add('success-card');
+            setTimeout(() => {
+              window.location.href = data.redirectUri;
+            }, 1500);
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }, 1500);
+  </script>
+</body>
+</html>`;
 }

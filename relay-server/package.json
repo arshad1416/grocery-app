@@ -11,7 +11,8 @@
   "dependencies": {
     "@cloudflare/blindrsa-ts": "^0.4.4",
     "tweetnacl": "^1.0.3",
-    "ws": "^8.18.1"
+    "ws": "^8.18.1",
+    "yjs": "^13.6.31"
   },
   "devDependencies": {
     "jest": "^30.4.2"

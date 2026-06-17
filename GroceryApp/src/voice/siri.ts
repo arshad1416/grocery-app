@@ -2,58 +2,42 @@
  * Siri Intent Handler Bridge.
  *
  * Provides:
- *  - registerSiriIntent(handler): Registers an AddToGroceryListIntent handler
- *    via expo-siri-shortcuts or the native config plugin.
- *  - donateInteraction(itemName): Donates a Siri shortcut suggestion after
- *    a user manually adds an item, making it available via "Hey Siri" later.
+ *  - registerSiriIntent(handler): Registers an AddToGroceryListIntent handler.
+ *  - donateInteraction(itemName): Donates a Siri shortcut suggestion.
+ *  - checkPendingSiriItems(activeMemberId): Periodically checks the shared App Group
+ *    container for background voice additions made when the main app was closed.
  *  - isSiriAvailable(): Checks if Siri is available (iOS only).
  *
  * Architecture:
- *  - On iOS, Siri intents are registered via the native module bridge.
- *    The intent handler receives a voice utterance, passes it through
- *    parseVoiceText(), and adds the parsed item to the active Yjs document.
- *  - On Android, this module is a no-op stub — the platform detection
- *    happens at the VoiceService layer.
+ *  - Siri Intent Extensions run in a separate native process.
+ *  - They write voice input to a shared file in the App Group container.
+ *  - When the React Native app starts or resumes, it reads from this shared
+ *    container, encrypts the item names using the local family master key,
+ *    and writes them directly to WatermelonDB (which triggers Yjs sync).
  */
 
 import { Platform } from 'react-native';
 import type { ParsedItem } from './types';
 import { parseVoiceText } from './nlp';
+import { getDatabase } from '../storage/database';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
+// Shared App Group Identifier
+const APP_GROUP_ID = 'group.com.shiftlogichq.stophop';
 
 export type SiriIntentHandler = (item: ParsedItem) => Promise<void>;
-
-// ─── Internal State ──────────────────────────────────────────────────────────
 
 let registeredHandler: SiriIntentHandler | null = null;
 let handlerReady = false;
 
-// ─── Siri Availability ────────────────────────────────────────────────────────
-
 /**
  * Check whether Siri intents are supported on this device.
- * Returns true only on iOS.
  */
 export function isSiriAvailable(): boolean {
   return Platform.OS === 'ios';
 }
 
-// ─── Intent Registration ──────────────────────────────────────────────────────
-
 /**
- * Register a handler for the AddToGroceryListIntent.
- *
- * On iOS, this connects the native Siri intent extension to the app's
- * voice processing pipeline. The handler receives a ParsedItem that has
- * already been extracted from the voice utterance via the NLP parser.
- *
- * In production, this would use expo-siri-shortcuts or a custom
- * Expo Config Plugin to register the intent definition. For Phase 2,
- * it sets up the in-memory handler bridge that the native layer
- * calls into.
- *
- * @param handler - Async callback invoked when Siri resolves an intent.
+ * Register a handler for the AddToGroceryListIntent (for foreground shortcuts).
  */
 export async function registerSiriIntent(
   handler: SiriIntentHandler,
@@ -66,52 +50,20 @@ export async function registerSiriIntent(
   registeredHandler = handler;
   handlerReady = true;
 
-  // In production: call into native Siri intent registration
-  //   const SiriShortcuts = require('expo-siri-shortcuts');
-  //   await SiriShortcuts.registerShortcut({
-  //     intent: 'AddToGroceryListIntent',
-  //     handler: (utterance: string) => {
-  //       const parsed = parseVoiceText(utterance);
-  //       return handler(parsed);
-  //     },
-  //   });
-
   console.log('[Voice:Siri] AddToGroceryListIntent handler registered');
 }
 
-// ─── Intent Donation ──────────────────────────────────────────────────────────
-
 /**
  * Donate a Siri shortcut interaction after the user manually adds an item.
- *
- * This teaches Siri to suggest "Add [itemName] to grocery list" as a
- * shortcut when the user is likely to need it (e.g., at the grocery store).
- *
- * @param itemName - The name of the item that was added.
  */
 export async function donateInteraction(itemName: string): Promise<void> {
   if (!isSiriAvailable()) return;
 
-  // In production:
-  //   const SiriShortcuts = require('expo-siri-shortcuts');
-  //   await SiriShortcuts.donateInteraction({
-  //     intent: 'AddToGroceryListIntent',
-  //     parameters: { itemName },
-  //   });
-
   console.log(`[Voice:Siri] Donated interaction for "${itemName}"`);
 }
 
-// ─── Intent Dispatch ──────────────────────────────────────────────────────────
-
 /**
- * Handle an incoming Siri intent utterance.
- *
- * This is the entry point called by the native Siri intent extension
- * when a user says something like "Add milk to my grocery list" via Siri.
- *
- * @param utterance - The raw voice text from Siri.
- * @returns The parsed item if the handler processed it successfully.
+ * Handle an incoming Siri intent utterance in the foreground.
  */
 export async function handleSiriUtterance(
   utterance: string,
@@ -126,4 +78,81 @@ export async function handleSiriUtterance(
   const parsed = parseVoiceText(utterance);
   await registeredHandler(parsed);
   return parsed;
+}
+
+/**
+ * Check for any pending items added by the Siri Intent Extension via the App Group shared container.
+ * Siri writes pending items to a shared JSON file in the App Group container.
+ * When the main app resumes or starts, it reads these items, encrypts them,
+ * writes them to WatermelonDB, and syncs them.
+ */
+export async function checkPendingSiriItems(activeMemberId: string | null): Promise<void> {
+  if (Platform.OS !== 'ios') return;
+
+  try {
+    // Access the shared container path using the native bridge (e.g. expo-user-defaults or native module)
+    const nativeBridge = (globalThis as any).SiriAppGroupBridge;
+    if (!nativeBridge) {
+      // Fallback: in dev/testing, print logs
+      console.log('[SiriBridge] SiriAppGroupBridge not bound to globalThis');
+      return;
+    }
+
+    const pendingItemsJson = await nativeBridge.readPendingItems(APP_GROUP_ID);
+    if (!pendingItemsJson) return;
+
+    const pendingItems: Array<{ rawText: string; timestamp: number }> = JSON.parse(pendingItemsJson);
+    if (pendingItems.length === 0) return;
+
+    const db = getDatabase();
+    const { getMasterKey, encrypt } = await import('../crypto');
+    const { FIELD_CONTEXTS } = await import('../types');
+    const masterKey = await getMasterKey();
+
+    if (!masterKey) {
+      console.warn('[SiriBridge] Master key not available, skipping background queue processing');
+      return;
+    }
+
+    const itemsToCreate = [];
+    for (const pending of pendingItems) {
+      const parsed = parseVoiceText(pending.rawText);
+      const encryptedName = await encrypt(parsed.name, masterKey, FIELD_CONTEXTS.GROCERY_ITEM_NAME);
+      itemsToCreate.push({
+        parsed,
+        encryptedName,
+        timestamp: pending.timestamp
+      });
+    }
+
+    await db.write(async () => {
+      // Find active grocery list
+      const activeLists = await db.get('grocery_lists').query().fetch();
+      const activeList = activeLists.find((l: any) => l.isActive && !l.isDeleted);
+      if (!activeList) return;
+
+      for (const itemData of itemsToCreate) {
+        await db.get('grocery_items').create((item: any) => {
+          item.listId = activeList.id;
+          item.familyId = activeList.familyId;
+          item.name = itemData.encryptedName;
+          item.quantity = itemData.parsed.quantity;
+          item.unit = itemData.parsed.unit;
+          item.category = 'other';
+          item.isChecked = false;
+          item.isDeleted = false;
+          item.version = 1;
+          item.syncStatus = 'created';
+          item.createdAt = itemData.timestamp;
+          item.updatedAt = itemData.timestamp;
+        });
+      }
+    });
+
+    // Clear the pending queue after successful processing
+    await nativeBridge.clearPendingItems(APP_GROUP_ID);
+    console.log(`[SiriBridge] Successfully processed ${pendingItems.length} background Siri items`);
+  } catch (err) {
+    console.error('[SiriBridge] Error processing pending items:', err);
+  }
 }

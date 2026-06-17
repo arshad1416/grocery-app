@@ -171,7 +171,7 @@ export const usePriceStore = create<PriceState>((set, get) => ({
     try {
       const results: Record<string, Record<string, PriceResult>> = {};
 
-      await Promise.allSettled(
+      const outcomes = await Promise.allSettled(
         storeIds.map(async (storeId: string) => {
           const itemNames = items.map((i) => i.name);
           console.warn(`[prices] Looking up ${itemNames.join(',')} at store ${storeId}`);
@@ -190,6 +190,13 @@ export const usePriceStore = create<PriceState>((set, get) => ({
           }
         })
       );
+
+      const rejected = outcomes.find((o) => o.status === 'rejected') as PromiseRejectedResult | undefined;
+      if (rejected) {
+        set({
+          error: rejected.reason instanceof Error ? rejected.reason.message : String(rejected.reason),
+        });
+      }
 
       set((state) => ({
         prices: { ...state.prices, ...Object.values(results).reduce((acc, storePrices) => ({ ...acc, ...storePrices }), {}) },

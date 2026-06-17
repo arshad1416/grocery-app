@@ -193,6 +193,88 @@ export default function SettingsScreen({ navigation }: Props) {
 
   const { shareInvite } = useShareInvite();
 
+  const [voicePairingCode, setVoicePairingCode] = useState('');
+  const [linkingVoice, setLinkingVoice] = useState(false);
+
+  const getRelayHttpUrl = useCallback(() => {
+    if (!settings) return '';
+    const proto = settings.relayUrl.startsWith('wss:') ? 'https:' : 'http:';
+    const host = settings.relayUrl.replace(/^wss?:\/\//, '');
+    return `${proto}//${host}:${settings.relayPort}`;
+  }, [settings]);
+
+  const handleLinkVoice = useCallback(async () => {
+    if (!voicePairingCode || voicePairingCode.length !== 6) {
+      Alert.alert('Error', 'Please enter a valid 6-digit code.');
+      return;
+    }
+
+    setLinkingVoice(true);
+
+    try {
+      // 1. Get family ID and master key
+      const { getFamilyId } = await import('../identity/family');
+      const familyId = await getFamilyId();
+      if (!familyId) {
+        Alert.alert('Error', 'You must be in a family to link a voice assistant.');
+        setLinkingVoice(false);
+        return;
+      }
+
+      const { getMasterKey, encryptMasterKeyWithAssistantPublicKey } = await import('../crypto');
+      const masterKey = await getMasterKey();
+      if (!masterKey) {
+        Alert.alert('Error', 'Master key is not available. Please unlock your app first.');
+        setLinkingVoice(false);
+        return;
+      }
+
+      // 2. Fetch assistant public key from relay
+      const httpUrl = getRelayHttpUrl();
+      const pubKeyRes = await fetch(`${httpUrl}/api/assistant/public-key`, {
+        signal: AbortSignal.timeout(10_000)
+      });
+      if (!pubKeyRes.ok) {
+        throw new Error(`Failed to fetch assistant public key (${pubKeyRes.status})`);
+      }
+      const publicKeyPem = await pubKeyRes.text();
+
+      // 3. Encrypt the family master key with the assistant's public key
+      const encryptedMasterKey = await encryptMasterKeyWithAssistantPublicKey(
+        masterKey,
+        publicKeyPem
+      );
+
+      // 4. Submit pairing to relay server
+      const pairRes = await fetch(`${httpUrl}/api/oauth/pair`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pairingCode: voicePairingCode,
+          familyId,
+          encryptedMasterKey
+        }),
+        signal: AbortSignal.timeout(10_000)
+      });
+
+      if (!pairRes.ok) {
+        const errText = await pairRes.text().catch(() => '');
+        throw new Error(`Pairing failed: ${errText || pairRes.status}`);
+      }
+
+      Alert.alert(
+        'Linking Successful',
+        'Your voice assistant has been securely linked! You can now use Alexa or Google Assistant to manage your grocery list.',
+        [{ text: 'OK', onPress: () => setVoicePairingCode('') }]
+      );
+    } catch (err) {
+      console.error('[SettingsScreen:LinkVoice]', err);
+      Alert.alert('Error Linking Assistant', err instanceof Error ? err.message : String(err));
+    } finally {
+      setLinkingVoice(false);
+    }
+  }, [settings, voicePairingCode, getRelayHttpUrl]);
+
   // Theme support
   const themeMode = useThemeStore((s) => s.themeMode);
   const setThemeMode = useThemeStore((s) => s.setThemeMode);
@@ -514,6 +596,40 @@ export default function SettingsScreen({ navigation }: Props) {
           onValueChange={(v) => handleUpdate({ barcodeScanningEnabled: v })}
           theme={theme}
         />
+      </View>
+
+      {/* ── Voice Assistant Linking ────────────────────────────────────── */}
+      <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
+        <Text style={[styles.sectionTitle, { color: theme.text }]}>Voice Assistant Link</Text>
+        <Text style={[styles.sectionDescription, { color: theme.secondaryText }]}>
+          Link Amazon Alexa or Google Assistant to add/check-off items on your list using your voice.
+        </Text>
+        
+        <SettingsRow
+          label="6-Digit Code"
+          value={voicePairingCode}
+          onChangeText={(v) => setVoicePairingCode(v.replace(/[^0-9]/g, '').slice(0, 6))}
+          placeholder="Enter pairing code"
+          keyboardType="numeric"
+          theme={theme}
+          isDark={isDark}
+        />
+
+        <TouchableOpacity
+          style={[
+            styles.voiceLinkButton,
+            { backgroundColor: theme.primary },
+            (voicePairingCode.length !== 6 || linkingVoice) && styles.voiceLinkButtonDisabled
+          ]}
+          onPress={handleLinkVoice}
+          disabled={voicePairingCode.length !== 6 || linkingVoice}
+        >
+          {linkingVoice ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.voiceLinkButtonText}>Link Assistant</Text>
+          )}
+        </TouchableOpacity>
       </View>
 
       {/* ── Security ────────────────────────────────────────────────── */}
@@ -1063,5 +1179,19 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: 8,
     lineHeight: 16,
+  },
+  voiceLinkButton: {
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  voiceLinkButtonDisabled: {
+    opacity: 0.5,
+  },
+  voiceLinkButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
