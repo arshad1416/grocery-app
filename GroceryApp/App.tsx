@@ -137,7 +137,7 @@ function App() {
           const { initTurso } = await import('./src/services/tursoClient');
           const settings = getSettings();
           const tursoUrl = settings.tursoUrl || 'https://stophop-arshad1416.aws-us-east-1.turso.io';
-          const tursoToken = settings.tursoToken || '***';
+          const tursoToken = settings.tursoToken || 'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3ODE1MDExNDUsImlkIjoiMDE5ZWM5YmEtMTAwMS03ODc3LWEyODItOTg1NWRmYmYwNTMyIiwicmlkIjoiNmZlMGE0ZjMtYjdiYi00NTA1LThiYzUtYzRjMzIyNjMzZTMzIn0.5czZ4i7KsWU_kJZwBApOqQZOtojnznLsS4WbEuXqWZky5f9LWv-mbGH5qJI12C3NK__cfQBL3-0Y1siH8lThDg';
           if (tursoUrl && tursoToken) {
             initTurso({ url: tursoUrl, token: tursoToken });
             console.warn('[init] Turso connected successfully');
