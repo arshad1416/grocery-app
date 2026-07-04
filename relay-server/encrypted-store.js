@@ -53,13 +53,58 @@ function addUpdate(familyId, listId, update) {
     throw new Error('Invalid update payload format. Expected { ciphertext, iv, tag }');
   }
   
-  data[familyId][listId].push(update);
+  // Stamp arrival time so retention cleanup can age entries out.
+  data[familyId][listId].push({ ...update, storedAt: Date.now() });
   saveAllUpdates(data);
   return data[familyId][listId];
+}
+
+/**
+ * Delete stored updates older than ttlMs. Entries persisted before storedAt
+ * stamping existed are stamped now and age out one TTL later (never deleted
+ * eagerly). Returns the number of updates removed.
+ */
+function cleanupExpiredUpdates(ttlMs) {
+  const now = Date.now();
+  const data = loadAllUpdates();
+  let removed = 0;
+  let changed = false;
+
+  for (const familyId of Object.keys(data)) {
+    for (const listId of Object.keys(data[familyId])) {
+      const updates = data[familyId][listId];
+      const kept = [];
+      for (const update of updates) {
+        if (typeof update.storedAt !== 'number') {
+          kept.push({ ...update, storedAt: now });
+          changed = true;
+        } else if (now - update.storedAt >= ttlMs) {
+          removed++;
+          changed = true;
+        } else {
+          kept.push(update);
+        }
+      }
+      if (kept.length === 0) {
+        delete data[familyId][listId];
+      } else {
+        data[familyId][listId] = kept;
+      }
+    }
+    if (Object.keys(data[familyId]).length === 0) {
+      delete data[familyId];
+    }
+  }
+
+  if (changed) {
+    saveAllUpdates(data);
+  }
+  return removed;
 }
 
 module.exports = {
   getUpdates,
   getAllUpdates,
-  addUpdate
+  addUpdate,
+  cleanupExpiredUpdates
 };

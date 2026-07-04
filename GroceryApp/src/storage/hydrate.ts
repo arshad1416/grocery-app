@@ -210,7 +210,6 @@ export async function persistMember(
     await existing[0].update((record: any) => {
       record.displayName = encryptedDisplayName;
       record.avatarUrl = member.avatarUrl ?? null;
-      record.role = member.role;
       record.isActive = member.isActive;
       record.isDeleted = member.isDeleted;
       record.deletedAt = member.deletedAt;
@@ -224,7 +223,6 @@ export async function persistMember(
       record.familyId = member.familyId;
       record.displayName = encryptedDisplayName;
       record.avatarUrl = member.avatarUrl ?? null;
-      record.role = member.role;
       record.isActive = member.isActive;
       record.isDeleted = member.isDeleted;
       record.deletedAt = member.deletedAt;
@@ -363,7 +361,6 @@ export async function loadMembersFromDB(key: Uint8Array): Promise<FamilyMember[]
       familyId: (record as any).familyId,
       displayName: displayName ?? '',
       avatarUrl: (record as any).avatarUrl,
-      role: (record as any).role,
       isActive: (record as any).isActive,
       isDeleted: (record as any).isDeleted,
       deletedAt: (record as any).deletedAt,

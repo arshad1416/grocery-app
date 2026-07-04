@@ -114,7 +114,11 @@ export async function checkPendingSiriItems(activeMemberId: string | null): Prom
       return;
     }
 
-    const itemsToCreate = [];
+    const itemsToCreate: Array<{
+      parsed: ReturnType<typeof parseVoiceText>;
+      encryptedName: Awaited<ReturnType<typeof encrypt>>;
+      timestamp: number;
+    }> = [];
     for (const pending of pendingItems) {
       const parsed = parseVoiceText(pending.rawText);
       const encryptedName = await encrypt(parsed.name, masterKey, FIELD_CONTEXTS.GROCERY_ITEM_NAME);
@@ -128,7 +132,7 @@ export async function checkPendingSiriItems(activeMemberId: string | null): Prom
     await db.write(async () => {
       // Find active grocery list
       const activeLists = await db.get('grocery_lists').query().fetch();
-      const activeList = activeLists.find((l: any) => l.isActive && !l.isDeleted);
+      const activeList = activeLists.find((l: any) => l.isActive && !l.isDeleted) as any;
       if (!activeList) return;
 
       for (const itemData of itemsToCreate) {

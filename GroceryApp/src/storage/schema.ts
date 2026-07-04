@@ -63,7 +63,7 @@ export const schema = appSchema({
         { name: 'family_id', type: 'string' },
         { name: 'display_name', type: 'string' },       // encrypted
         { name: 'avatar_url', type: 'string', isOptional: true },
-        { name: 'role', type: 'string' },
+        { name: 'role', type: 'string' },              // legacy, unused in v1 (kept to avoid migration)
         { name: 'is_active', type: 'boolean' },
         { name: 'is_deleted', type: 'boolean' },
         { name: 'deleted_at', type: 'number', isOptional: true },
