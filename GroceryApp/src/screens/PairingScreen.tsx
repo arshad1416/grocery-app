@@ -139,9 +139,11 @@ export default function PairingScreen({ navigation, route }: Props) {
           const { bootstrapSync } = await import('../sync/bootstrap');
           bootstrapSync().catch(() => {});
           setStatusMessage('Joined family — sync is starting.');
-          Alert.alert('Joined Family', 'This device is enrolled and syncing.', [
-            { text: 'OK', onPress: () => navigation.navigate('Home') },
-          ]);
+          Alert.alert(
+            'Joined Family',
+            "This device is enrolled and syncing using its existing key.\n\nIf shared lists don't appear, this device's key differs from the family's — open Settings → Security → Recover from Backup and enter the family's 12-word recovery phrase.",
+            [{ text: 'OK', onPress: () => navigation.navigate('Home') }],
+          );
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Invalid pairing code';
