@@ -464,15 +464,50 @@ export default function SettingsScreen({ navigation }: Props) {
             style={[styles.generateQrBtn, { backgroundColor: theme.primary }]}
             onPress={async () => {
               try {
+                const { createFamilyInvite, acceptFamilyInvite, getFamilyId } = await import('../identity/family');
+                const { getDeviceKeypair } = await import('../identity/device');
+                const keypair = getDeviceKeypair();
+
+                // Reuse this device's family, or found one with the first invite
+                const existingFamilyId = await getFamilyId();
+                const invite = await createFamilyInvite(keypair, undefined, existingFamilyId ?? undefined);
+                if (!existingFamilyId) {
+                  await acceptFamilyInvite(invite, keypair);
+                }
+
+                // Invites are single-use, so the inviter can't ride on the
+                // invitee's code — self-enroll with a separate invite so THIS
+                // device also holds a relayToken and can sync.
+                try {
+                  const { getRelayToken, enrollWithRelay } = await import('../identity/enroll');
+                  if (!(await getRelayToken())) {
+                    const selfInvite = await createFamilyInvite(keypair, undefined, invite.familyId);
+                    const httpBase = `${settings.relayUrl}:${settings.relayPort}`
+                      .replace(/^ws:/, 'http:')
+                      .replace(/^wss:/, 'https:');
+                    await enrollWithRelay(httpBase, deviceId, JSON.stringify(selfInvite));
+                    const { bootstrapSync } = await import('../sync/bootstrap');
+                    bootstrapSync().catch(() => {});
+                  }
+                } catch (enrollErr) {
+                  console.warn('[settings] Self-enrollment failed (invite QR still generated):', enrollErr);
+                }
+
                 const code = await generatePairingCode(
                   deviceId,
-                  'default-family',
+                  invite.familyId,
                   `${settings.relayUrl}:${settings.relayPort}`,
                 );
-                const codeStr = pairingCodeToString(code);
+                // The QR carries BOTH the relay address (pairing code) and a
+                // signed one-time family invite (what the relay's /enroll
+                // endpoint validates). Either alone can't complete a join.
+                const codeStr = JSON.stringify({ pairingCode: code, invite });
                 await updateSettings({ pairingCode: codeStr });
                 setSettingsState((prev) => prev ? { ...prev, pairingCode: codeStr } : prev);
-                Alert.alert('QR Code Generated', 'Pairing code is ready. Share it with family members.');
+                Alert.alert(
+                  'QR Code Generated',
+                  'Invite is ready — valid for 7 days, one join per code. The new member will also need your family recovery phrase to unlock shared lists.',
+                );
               } catch (err) {
                 const message = err instanceof Error ? err.message : 'Failed to generate QR';
                 Alert.alert('Error', message);
@@ -485,7 +520,7 @@ export default function SettingsScreen({ navigation }: Props) {
             <View style={styles.qrCodeContainer}>
               <Text style={[styles.qrCodeLabel, { color: theme.secondaryText }]}>Scan to join your family list</Text>
               <QRCode
-                data={`grocceryapp://invite?token=${encodeURIComponent(settings.pairingCode)}`}
+                data={`groceryapp://invite?token=${encodeURIComponent(settings.pairingCode)}`}
                 size={180}
                 testID="pairing-qr-code"
               />
@@ -496,7 +531,7 @@ export default function SettingsScreen({ navigation }: Props) {
                 style={styles.shareInviteBtn}
                 onPress={() =>
                   shareInvite(
-                    `grocceryapp://invite?token=${encodeURIComponent(settings.pairingCode)}`,
+                    `groceryapp://invite?token=${encodeURIComponent(settings.pairingCode)}`,
                   )
                 }
               >

@@ -231,6 +231,12 @@ export interface PairingCode {
   deviceId: string;
   familyId: string;
   relayUrl: string;
+  /**
+   * Ed25519 public key (base64) of the signer, derived from the generating
+   * device's SECRET key. Verification must use this key — deriving a signing
+   * key from the public deviceId (as older code did) is forgeable by anyone.
+   */
+  signerKey: string;
   signature: string;
   createdAt: number;
 }

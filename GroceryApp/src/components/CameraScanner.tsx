@@ -39,28 +39,14 @@ export interface CameraScannerProps {
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const INVITE_URL_PREFIX = 'grocceryapp://invite?token=';
+import { parseInviteUrl } from '../setup/invite-url';
+export { parseInviteUrl };
 
 // ─── Helper ─────────────────────────────────────────────────────────────────
 
-/**
- * Parse an invite URL from scanned QR data.
- * Expects format: grocceryapp://invite?token=<value>
- * Returns the token value, or null if not a valid invite URL.
- */
-export function parseInviteUrl(data: string): string | null {
-  if (data.startsWith(INVITE_URL_PREFIX)) {
-    return data.substring(INVITE_URL_PREFIX.length);
-  }
-  // Also support https:// variants
-  const httpsMatch = data.match(
-    /^https:\/\/[^/]+\/invite\?token=([^&\s]+)/,
-  );
-  if (httpsMatch) {
-    return httpsMatch[1];
-  }
-  return null;
-}
+// parseInviteUrl lives in src/setup/invite-url.ts (pure module, testable
+// without the react-native runtime) and is re-exported above for callers
+// that import it from here.
 
 // ─── Camera Module Detection ────────────────────────────────────────────────
 

@@ -116,6 +116,12 @@ export default function RecoveryScreen({ navigation, route }: Props) {
         throw new Error('Failed to recover master key from phrase');
       }
 
+      // Now that the key exists, hydrate/connect sync immediately (also runs
+      // on every app start; fire-and-forget here so recovery UX isn't blocked)
+      import('../sync/bootstrap')
+        .then(({ bootstrapSync }) => bootstrapSync())
+        .catch(() => {});
+
       // Success — the master key has been recovered
       Alert.alert(
         'Recovery Successful',
