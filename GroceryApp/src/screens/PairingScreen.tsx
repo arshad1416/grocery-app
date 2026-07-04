@@ -21,8 +21,8 @@ import {
 } from 'react-native';
 
 import { testRelayConnection, updateSettings } from '../config/settings';
-import { parsePairingCodeString } from '../setup/self-host';
-import type { ConnectionStatus, PairingCode } from '../types';
+import { parsePairingCode } from '../setup/self-host';
+import type { ConnectionStatus, PairingCode, FamilyInviteToken } from '../types';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/deepLinks';
 
@@ -50,101 +50,123 @@ export default function PairingScreen({ navigation, route }: Props) {
   const [parsedCode, setParsedCode] = useState<PairingCode | null>(null);
   const [statusMessage, setStatusMessage] = useState('');
 
-  // Process invite token if present
-  useEffect(() => {
-    if (inviteToken) {
-      setStatusMessage(`Processing invite token...`);
-      (async () => {
-        try {
-          // Try to parse the token as a pairing code
-          const code = await parsePairingCodeString(inviteToken);
-          setParsedCode(code);
-          setManualUrl(code.relayUrl);
-          setStatusMessage('Invite token parsed! Connecting...');
-
-          // Auto-test connection
-          const url = code.relayUrl.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:');
-          const portMatch = code.relayUrl.match(/:(\d+)$/);
-          const port = portMatch ? parseInt(portMatch[1], 10) : 8080;
-
-          setConnectionStatus('connecting');
-          const ok = await testRelayConnection(code.relayUrl, port);
-
-          if (ok) {
-            setConnectionStatus('connected');
-            setStatusMessage('Connected to relay server via invite!');
-
-            // Save pairing info
-            await updateSettings({
-              relayUrl: code.relayUrl,
-              relayPort: port,
-              pairingCode: inviteToken,
-            });
-
-            Alert.alert(
-              'Invite Accepted',
-              'You have been paired with the family relay server.',
-              [
-                {
-                  text: 'OK',
-                  onPress: () => navigation.navigate('Home'),
-                },
-              ],
-            );
-          } else {
-            setConnectionStatus('error');
-            setStatusMessage('Could not connect to relay server from invite');
-          }
-        } catch {
-          // If it's not a pairing code, it might be a family invite token
-          setStatusMessage('Invite token received. Please enter the relay URL manually to complete pairing.');
-        }
-      })();
-    }
-  }, [inviteToken]);
-
-  // Handle QR code scan result
-  const handleScan = useCallback(
-    async (data: string) => {
+  /**
+   * Complete a scanned/linked invite end-to-end.
+   *
+   * Combined payloads ({ pairingCode, invite }) do the FULL family join:
+   * verify pairing code → test relay connection → save settings → enroll
+   * with the relay (obtains the relayToken that sync auth requires) → store
+   * family membership → route to recovery-phrase entry for the shared key
+   * (or start sync immediately if this device already has it).
+   *
+   * Legacy bare pairing codes just configure the relay connection.
+   */
+  const completeJoin = useCallback(
+    async (tokenStr: string) => {
       try {
-        setStatusMessage('Parsing pairing code...');
-        const code = await parsePairingCodeString(data);
+        setStatusMessage('Processing invite...');
+
+        let payload: any;
+        try {
+          payload = JSON.parse(tokenStr);
+        } catch {
+          throw new Error('Invalid invite: not a pairing payload');
+        }
+
+        const isCombined = payload && typeof payload === 'object' && payload.pairingCode;
+        const codeInput: PairingCode = isCombined ? payload.pairingCode : payload;
+        const invite: FamilyInviteToken | null = isCombined ? payload.invite : null;
+
+        const code = await parsePairingCode(codeInput);
         setParsedCode(code);
         setManualUrl(code.relayUrl);
-        setStatusMessage('Pairing code valid! Connecting...');
+        setStatusMessage('Invite valid! Connecting to relay...');
 
-        // Auto-test connection
-        const url = code.relayUrl.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:');
         const portMatch = code.relayUrl.match(/:(\d+)$/);
         const port = portMatch ? parseInt(portMatch[1], 10) : 8080;
 
         setConnectionStatus('connecting');
         const ok = await testRelayConnection(code.relayUrl, port);
-
-        if (ok) {
-          setConnectionStatus('connected');
-          setStatusMessage('Connected to relay server!');
-
-          // Save pairing info
-          await updateSettings({
-            relayUrl: code.relayUrl,
-            relayPort: port,
-            pairingCode: data,
-          });
-
-          // Navigate back to home after successful pairing
-          navigation.navigate('Home');
-        } else {
+        if (!ok) {
           setConnectionStatus('error');
-          setStatusMessage('Could not connect to relay server');
+          setStatusMessage('Could not connect to the relay server');
+          return;
+        }
+
+        await updateSettings({
+          relayUrl: code.relayUrl,
+          relayPort: port,
+          pairingCode: tokenStr,
+        });
+        setConnectionStatus('connected');
+
+        if (!invite) {
+          // Legacy relay-only pairing (first device / self-host setup)
+          setStatusMessage('Connected to relay server!');
+          Alert.alert('Relay Paired', 'Connected to the relay server.', [
+            { text: 'OK', onPress: () => navigation.navigate('Home') },
+          ]);
+          return;
+        }
+
+        // ── Family join: enroll with the relay, then store membership ──
+        setStatusMessage('Enrolling this device with the relay...');
+        const { enrollWithRelay } = await import('../identity/enroll');
+        const { acceptFamilyInvite } = await import('../identity/family');
+        const { getDeviceId, getDeviceKeypair } = await import('../identity/device');
+
+        const httpBase = code.relayUrl
+          .replace(/^ws:/, 'http:')
+          .replace(/^wss:/, 'https:');
+        await enrollWithRelay(httpBase, getDeviceId(), JSON.stringify(invite));
+        await acceptFamilyInvite(invite, getDeviceKeypair());
+
+        const { getMasterKey } = await import('../crypto');
+        const hasKey = !!(await getMasterKey());
+        if (!hasKey) {
+          setStatusMessage('Enrolled! One step left: family recovery phrase.');
+          Alert.alert(
+            'One More Step',
+            "You've joined the family and this device is enrolled with the relay.\n\nTo unlock the shared lists, enter your family's 12-word recovery phrase (ask the person who invited you).",
+            [
+              {
+                text: 'Enter Recovery Phrase',
+                onPress: () => navigation.navigate('Recovery', { mode: 'recover' }),
+              },
+            ],
+          );
+        } else {
+          const { bootstrapSync } = await import('../sync/bootstrap');
+          bootstrapSync().catch(() => {});
+          setStatusMessage('Joined family — sync is starting.');
+          Alert.alert('Joined Family', 'This device is enrolled and syncing.', [
+            { text: 'OK', onPress: () => navigation.navigate('Home') },
+          ]);
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Invalid pairing code';
+        setConnectionStatus('error');
         setStatusMessage(message);
-        Alert.alert('Invalid Code', message);
+        Alert.alert('Pairing Failed', message);
       }
     },
     [navigation],
+  );
+
+  // Process invite token if present (deep link / share sheet)
+  useEffect(() => {
+    if (inviteToken) {
+      completeJoin(inviteToken);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inviteToken]);
+
+  // Handle QR code scan result
+  const handleScan = useCallback(
+    async (data: string) => {
+      await completeJoin(data);
+    },
+    [completeJoin],
   );
 
   // Handle manual test connection
@@ -222,40 +244,7 @@ export default function PairingScreen({ navigation, route }: Props) {
             <CameraScanner
               onScan={(token) => {
                 setScannerActive(false);
-                setStatusMessage(`Processing invite token: ${token.slice(0, 16)}...`);
-                // Process the scanned token similar to deep link invite tokens
-                (async () => {
-                  try {
-                    const code = await parsePairingCodeString(token);
-                    setParsedCode(code);
-                    setManualUrl(code.relayUrl);
-                    setStatusMessage('Pairing code valid! Connecting...');
-
-                    // Auto-test connection
-                    const url = code.relayUrl.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:');
-                    const portMatch = code.relayUrl.match(/:\d+$/);
-                    const port = portMatch ? parseInt(code.relayUrl.match(/:(\d+)$/)![1], 10) : 8080;
-
-                    setConnectionStatus('connecting');
-                    const ok = await testRelayConnection(code.relayUrl, port);
-
-                    if (ok) {
-                      setConnectionStatus('connected');
-                      setStatusMessage('Connected to relay server via QR scan!');
-                      await updateSettings({
-                        relayUrl: code.relayUrl,
-                        relayPort: port,
-                        pairingCode: token,
-                      });
-                      navigation.navigate('Home');
-                    } else {
-                      setConnectionStatus('error');
-                      setStatusMessage('Could not connect to relay server');
-                    }
-                  } catch {
-                    setStatusMessage('Scanned an invite token. Enter the relay URL manually to complete pairing.');
-                  }
-                })();
+                handleScan(token);
               }}
               onCancel={() => setScannerActive(false)}
             />

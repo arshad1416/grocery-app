@@ -41,6 +41,7 @@ function serializePairingCodePayload(
     deviceId: code.deviceId,
     familyId: code.familyId,
     relayUrl: code.relayUrl,
+    signerKey: code.signerKey,
     createdAt: code.createdAt,
   });
 }
@@ -67,20 +68,24 @@ export async function generatePairingCode(
   const sodium = require('react-native-libsodium');
   await sodium.ready;
 
+  // Sign with an Ed25519 keypair derived from the device's SECRET key (same
+  // scheme as family invites). The old code derived the signing keypair from
+  // the PUBLIC deviceId, which anyone could reproduce — forgeable signatures.
+  const deviceKeypair = getDeviceKeypair();
+  const signKp = sodium.crypto_sign_seed_keypair(
+    deviceKeypair.privateKey.slice(0, 32),
+  );
+
   const codePayload = {
     version: PAIRING_CODE_VERSION,
     deviceId,
     familyId,
     relayUrl,
+    signerKey: uint8ArrayToBase64(signKp.publicKey),
     createdAt: Date.now(),
   };
 
   const serialized = serializePairingCodePayload(codePayload);
-
-  // Use crypto_sign_seed_keypair to derive a signing keypair from the device public key seed (matches parsePairingCode)
-  const signKp = sodium.crypto_sign_seed_keypair(
-    base64ToUint8Array(deviceId).slice(0, 32),
-  );
 
   const signature = sodium.crypto_sign_detached(
     new TextEncoder().encode(serialized),
@@ -126,11 +131,14 @@ export async function parsePairingCode(
   const messageBytes = new TextEncoder().encode(serialized);
   const signatureBytes = base64ToUint8Array(signature);
 
-  // Derive the signing public key from the device public key
-  const devicePublicKey = base64ToUint8Array(code.deviceId);
-  const signPk = sodium.crypto_sign_seed_keypair(
-    devicePublicKey.slice(0, 32),
-  ).publicKey;
+  // Verify against the embedded signer key (Ed25519 public key). Like family
+  // invites, the code is self-certifying: authenticity comes from the
+  // out-of-band QR handoff, and the signature proves the payload wasn't
+  // modified after the signer created it.
+  if (!code.signerKey) {
+    throw new Error('Pairing code missing signerKey (unsupported legacy format)');
+  }
+  const signPk = base64ToUint8Array(code.signerKey);
 
   const valid = sodium.crypto_sign_verify_detached(
     signatureBytes,

@@ -86,12 +86,17 @@ function serializeTokenPayload(token: Omit<FamilyInviteToken, 'signature'>): str
 export async function createFamilyInvite(
   inviterKeypair: DeviceKeypair,
   expiresAt?: number,
+  existingFamilyId?: string,
 ): Promise<FamilyInviteToken> {
   await initCrypto();
   const sodium = require('react-native-libsodium');
   await sodium.ready;
 
-  const familyId = await generateUUID();
+  // Reuse the caller's family when provided — otherwise this invite founds a
+  // new family. (Without this, every invite from the same household would
+  // create a different familyId and members could never actually join each
+  // other's family.)
+  const familyId = existingFamilyId ?? (await generateUUID());
   const exp = expiresAt ?? Date.now() + MAX_INVITE_AGE_MS;
 
   // Generate a random nonce for one-time-use enforcement.

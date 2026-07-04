@@ -53,11 +53,22 @@ export async function bootstrapSync(): Promise<'no-key' | 'local-only' | 'connec
     return 'local-only';
   }
 
-  // Ensure a ws:// or wss:// URL with a port (same pattern as settings.ts).
+  // Ensure a ws:// or wss:// URL. Use URL parsing so a default port is only
+  // added for plain ws:// hosts without one — appending ":8080" to an https
+  // relay (implicit 443) or after a path would produce a broken URL.
   let wsUrl = baseUrl.replace(/^http:/, 'ws:').replace(/^https:/, 'wss:');
-  const hasPort = /:\d+/.test(wsUrl.replace(/^wss?:\/\//, ''));
-  if (!hasPort) {
-    wsUrl = `${wsUrl}:${settings.relayPort || 8080}`;
+  try {
+    const parsed = new URL(wsUrl);
+    if (!parsed.port && parsed.protocol === 'ws:') {
+      parsed.port = String(settings.relayPort || 8080);
+    }
+    wsUrl = parsed.toString().replace(/\/$/, '');
+  } catch {
+    // Unparseable — fall back to the legacy suffix behavior for bare hosts
+    const hasPort = /:\d+/.test(wsUrl.replace(/^wss?:\/\//, ''));
+    if (!hasPort) {
+      wsUrl = `${wsUrl}:${settings.relayPort || 8080}`;
+    }
   }
 
   const { useSyncStore } = await import('../state/useSyncStore');
