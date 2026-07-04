@@ -50,6 +50,19 @@ Running log of findings, decisions, and deferrals. One entry per lesson/decision
 - **Relay retention:** `addUpdate` stamps `storedAt`; hourly cleanup ages out encrypted updates after `UPDATE_TTL_MS` (default 30d); docker-compose "stateless" comment corrected; threat-model.md documents persistence + flyer-channel caveat.
 - **Pre-existing tsc errors fixed** (siri.ts, 3 errors from the voice-assistants commit) — CI's `tsc --noEmit` would have failed.
 
+## Fresh-context verification round (2026-07-03/04) — findings and fixes
+Independent verifier confirmed all suites green + live relay behavior, and found 3 real bugs (all fixed):
+1. **Mangled .gitignore append** (`window_dump.xmlnode_modules_bak/` — original file lacked trailing newline) → fixed; `git check-ignore` verified both patterns work.
+2. **Relay tests polluted tracked state**: tests set `STATE_FILE` but server reads `RELAY_STATE_FILE` — every test/CI run wrote enrollment junk into tracked `relay-state.json`. Fixed env var in both test files; untracked + gitignored `relay-state.json`/`used-tokens.json`/`test-relay-state*.json`/`data/`; verified state file stays clean after `npm test`.
+3. **Flyer scan visible without pricing opt-in** → scans would silently surface nothing (AC-14 gate). Camera button now requires `flyerScanEnabled && pricingOptedIn`.
+
+### LAUNCH-BLOCKING discovery from the same round (fixed 2026-07-04)
+- **`syncManager.init()` / `hydrateFromDB()` were never called from any runtime code.** Comments everywhere said "hydrated from WatermelonDB on app start" but no code did it: lists lived only in in-memory Yjs docs (gone on every app restart) and the relay WebSocket never connected outside tests. The entire sync/persistence stack was built and tested but unplugged.
+- **Fix:** new `src/sync/bootstrap.ts` (`bootstrapSync()`: master key → `hydrateFromDB` → relay `init` when enrolled, wired to useSyncStore/useGroceryStore callbacks), called from App.tsx init. `hydrateFromDB` now also stores the encryption key (local persistence works without relay), rebuilds the `__lists_index__` doc that `useListStore.loadLists` reads, and registers hydrated lists for observation. Regression-tested by `__tests__/sync-bootstrap.test.ts` (restart-survival simulation). NOTE: needs one real-device smoke test (create list → kill app → relaunch) before submission — mock-DB tests can't prove the native SQLite path.
+- **Hardcoded Turso read-write JWT removed from App.tsx** (was committed in git history — **rotate that token**; treat the DB as exposed). Now reads `settings.tursoUrl/Token` or `EXPO_PUBLIC_TURSO_URL/TOKEN` build env.
+- **Flaky ac1 test fixed**: `signature.replace(/A/g,'B')` tamper was a no-op ~20% of the time (no 'A' in random base64); now flips the first char deterministically.
+- watermelondb mock now mirrors `_raw.id` ↔ `record.id` like the real library (the missing mirror hid the hydration path from tests).
+
 ## Additional ground truth (verified directly, resolving agent disagreement)
 - **Extract endpoint IS mounted** in relay-server/server.js:712 (`POST /api/extract/flyer` → extract/extract-server.js). One earlier agent report claiming it wasn't mounted was wrong.
 - **Pool separation-by-port already exists in code**: server.js:991-1535 — if `POOL_PORT !== RELAY_PORT`, a separate HTTP server serves `/api/pool/*`. What's missing is deployment config (docker-compose has one service, no POOL_PORT) and true separate-origin deployment.

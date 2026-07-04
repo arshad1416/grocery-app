@@ -10,4 +10,5 @@ dist/
 web-build/
 .DS_Store
 current_screen.png
-window_dump.xmlnode_modules_bak/
+window_dump.xml
+node_modules_bak/

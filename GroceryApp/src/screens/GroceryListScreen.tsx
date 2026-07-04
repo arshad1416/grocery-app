@@ -888,7 +888,10 @@ export default function GroceryListScreen({ route, navigation }: Props) {
         <Text style={[styles.title, { color: theme.text }]}>{listName}</Text>
         <View style={styles.headerRight}>
           <SyncIndicator />
-          {(getSettings().flyerScanEnabled ?? false) && (
+          {/* Flyer scan requires BOTH the feature toggle and the AC-14 pricing
+              opt-in — without the latter the registry returns no prices and a
+              scan would appear to silently do nothing. */}
+          {(getSettings().flyerScanEnabled ?? false) && (getSettings().pricingOptedIn ?? false) && (
             <TouchableOpacity
               onPress={() => setShowFlyerScan(true)}
               style={styles.settingsBtn}

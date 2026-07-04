@@ -62,8 +62,10 @@ class Collection {
     // WatermelonDB behavior of assigning a random id on create)
     if (!record.id && !record._raw.id) {
       record.id = `mock-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-      record._raw.id = record.id;
     }
+    // Real WatermelonDB exposes _raw.id as record.id — mirror both ways
+    record.id = record.id ?? record._raw.id;
+    record._raw.id = record._raw.id ?? record.id;
     items.set(record._raw?.id || record.id, record);
     return record;
   }

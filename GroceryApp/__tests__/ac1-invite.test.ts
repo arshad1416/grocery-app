@@ -71,10 +71,13 @@ describe('AC1: Family Invite Flow', () => {
       const kp = getDeviceKeypair();
       const invite = await createFamilyInvite(kp);
 
-      // Tamper with the signature
+      // Tamper with the signature — flip the first character to a guaranteed
+      // different one. (A previous `.replace(/A/g, 'B')` was a no-op whenever
+      // the random signature contained no 'A', making this test flaky.)
       const tamperedInvite: FamilyInviteToken = {
         ...invite,
-        signature: invite.signature.replace(/A/g, 'B'),
+        signature:
+          (invite.signature[0] === 'A' ? 'B' : 'A') + invite.signature.slice(1),
       };
 
       await expect(verifyFamilyInvite(tamperedInvite)).rejects.toThrow();
