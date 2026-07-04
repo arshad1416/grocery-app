@@ -19,7 +19,14 @@ import type { DeviceKeypair, PairingCode } from '../types';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 export const PAIRING_CODE_VERSION = 1;
-export const PAIRING_CODE_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
+/**
+ * Pairing codes live as long as family invites (7 days): the combined join QR
+ * is persisted in Settings and re-displayed, and its Generate alert promises
+ * 7-day validity. One-time-use and expiry of the JOIN itself are enforced by
+ * the invite half (server-side); the pairing code only carries the relay
+ * address. (Was 5 minutes, which made every re-displayed QR dead on arrival.)
+ */
+export const PAIRING_CODE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 // ─── Internal Helpers ────────────────────────────────────────────────────────
 

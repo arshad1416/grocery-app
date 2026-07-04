@@ -468,6 +468,13 @@ export default function SettingsScreen({ navigation }: Props) {
                 const { getDeviceKeypair } = await import('../identity/device');
                 const keypair = getDeviceKeypair();
 
+                // Relay base URL with exactly one port: settings.relayUrl may
+                // already contain one (it's saved from scanned pairing codes),
+                // so naive `${url}:${port}` would produce ws://host:8080:8080.
+                const relayBase = /:\d+(\/|$)/.test(settings.relayUrl.replace(/^[a-z]+:\/\//i, ''))
+                  ? settings.relayUrl
+                  : `${settings.relayUrl}:${settings.relayPort}`;
+
                 // Reuse this device's family, or found one with the first invite
                 const existingFamilyId = await getFamilyId();
                 const invite = await createFamilyInvite(keypair, undefined, existingFamilyId ?? undefined);
@@ -478,11 +485,12 @@ export default function SettingsScreen({ navigation }: Props) {
                 // Invites are single-use, so the inviter can't ride on the
                 // invitee's code — self-enroll with a separate invite so THIS
                 // device also holds a relayToken and can sync.
+                let selfEnrollWarning = '';
                 try {
                   const { getRelayToken, enrollWithRelay } = await import('../identity/enroll');
                   if (!(await getRelayToken())) {
                     const selfInvite = await createFamilyInvite(keypair, undefined, invite.familyId);
-                    const httpBase = `${settings.relayUrl}:${settings.relayPort}`
+                    const httpBase = relayBase
                       .replace(/^ws:/, 'http:')
                       .replace(/^wss:/, 'https:');
                     await enrollWithRelay(httpBase, deviceId, JSON.stringify(selfInvite));
@@ -491,12 +499,14 @@ export default function SettingsScreen({ navigation }: Props) {
                   }
                 } catch (enrollErr) {
                   console.warn('[settings] Self-enrollment failed (invite QR still generated):', enrollErr);
+                  selfEnrollWarning =
+                    '\n\n⚠️ This device could not enroll with the relay just now — regenerate the QR when the relay is reachable, or your own edits will not sync.';
                 }
 
                 const code = await generatePairingCode(
                   deviceId,
                   invite.familyId,
-                  `${settings.relayUrl}:${settings.relayPort}`,
+                  relayBase,
                 );
                 // The QR carries BOTH the relay address (pairing code) and a
                 // signed one-time family invite (what the relay's /enroll
@@ -506,7 +516,8 @@ export default function SettingsScreen({ navigation }: Props) {
                 setSettingsState((prev) => prev ? { ...prev, pairingCode: codeStr } : prev);
                 Alert.alert(
                   'QR Code Generated',
-                  'Invite is ready — valid for 7 days, one join per code. The new member will also need your family recovery phrase to unlock shared lists.',
+                  'Invite is ready — valid for 7 days, one join per code. The new member will also need your family recovery phrase to unlock shared lists.' +
+                    selfEnrollWarning,
                 );
               } catch (err) {
                 const message = err instanceof Error ? err.message : 'Failed to generate QR';

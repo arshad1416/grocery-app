@@ -71,6 +71,13 @@ Independent verifier confirmed all suites green + live relay behavior, and found
 - **Key-distribution design note:** the sealed-key (crypto_box_seal) handoff has NO relay transport endpoint — not built on either side. v1 join uses the existing recovery-phrase entry as the out-of-band family-key channel (matches the in-person QR trust model). Sealed-key-over-relay deferred to v1.1 with the fingerprint-verification work.
 - Deferred (documented): a REAL two-device smoke test on hardware before submission — mock-DB/Node tests can't prove the native SQLite + RN runtime path.
 
+## Third verification round (join-flow commit, 2026-07-04) — 2 bugs found, both fixed
+1. **QR died after 5 minutes while promising 7 days**: `PAIRING_CODE_MAX_AGE_MS` was 5 min, checked before the invite half was ever reached; the persisted, re-displayed QR was always expired. Fixed → 7 days to match the invite (one-time-use + expiry of the join itself stay server-enforced on the invite).
+2. **Double-port URL poisoning**: `${settings.relayUrl}:${settings.relayPort}` in the Generate-QR handler, but relayUrl saved from a scanned code already contains the port → `ws://host:8080:8080` → silent self-enroll failure + broken chained invites. Fixed with a port-aware guard (same class of bug fixed earlier in bootstrap.ts — lesson: never concatenate ports onto relayUrl anywhere; three sites now use guards).
+- UX hardening from the same review: self-enroll failure now surfaces in the Generate-QR alert (was console-only — inviter would silently never sync); joined-with-existing-key alert explains the wrong-key recovery path.
+- Verifier confirmed good: invitee recovery works on fresh devices and derives the identical family key (pure function of phrase); no remaining public-key-derived signing anywhere; client invite JSON verified byte-compatible with relay /enroll.
+- Known non-blocking edge cases (accepted for v1, documented here): one-time invite is burned if SecureStore fails between enroll and membership write (regenerate); replay error shows raw relay JSON; inviter must have generated a recovery phrase before the invitee needs it (guaranteed whenever the inviter has a key, since phrase+key are created together).
+
 ## Additional ground truth (verified directly, resolving agent disagreement)
 - **Extract endpoint IS mounted** in relay-server/server.js:712 (`POST /api/extract/flyer` → extract/extract-server.js). One earlier agent report claiming it wasn't mounted was wrong.
 - **Pool separation-by-port already exists in code**: server.js:991-1535 — if `POOL_PORT !== RELAY_PORT`, a separate HTTP server serves `/api/pool/*`. What's missing is deployment config (docker-compose has one service, no POOL_PORT) and true separate-origin deployment.
