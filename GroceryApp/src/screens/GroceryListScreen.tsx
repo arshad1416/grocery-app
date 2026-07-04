@@ -32,6 +32,7 @@ import { useGroceryStore } from '../state/useGroceryStore';
 import { getListMeta, yjsSweepExpiredClaims } from '../sync/yjs-adapter';
 import type { RootStackParamList } from '../navigation/deepLinks';
 import AddItemSheet from './AddItemSheet';
+import FlyerScanFlow from '../components/FlyerScanFlow';
 import StopOptimizer from '../components/StopOptimizer';
 import UndoToast from '../components/UndoToast';
 import { usePriceStore } from '../pricing/price-store';
@@ -109,6 +110,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   // Local state
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddSheet, setShowAddSheet] = useState(false);
+  const [showFlyerScan, setShowFlyerScan] = useState(false);
   const [listName, setListName] = useState('Grocery List');
   const [gotItExpanded, setGotItExpanded] = useState(false);
   const [toastState, setToastState] = useState<{
@@ -886,6 +888,16 @@ export default function GroceryListScreen({ route, navigation }: Props) {
         <Text style={[styles.title, { color: theme.text }]}>{listName}</Text>
         <View style={styles.headerRight}>
           <SyncIndicator />
+          {(getSettings().flyerScanEnabled ?? false) && (
+            <TouchableOpacity
+              onPress={() => setShowFlyerScan(true)}
+              style={styles.settingsBtn}
+              activeOpacity={0.7}
+              accessibilityLabel="Scan a store flyer for prices"
+            >
+              <Ionicons name="camera-outline" size={22} color={theme.text} />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity onPress={handleSettings} style={styles.settingsBtn} activeOpacity={0.7}>
             <Ionicons name="settings-outline" size={22} color={theme.text} />
           </TouchableOpacity>
@@ -1171,6 +1183,17 @@ export default function GroceryListScreen({ route, navigation }: Props) {
         onItemAdded={() => {
           setShowAddSheet(false);
           setActiveTab('lists');
+        }}
+      />
+
+      {/* Flyer Scan Flow (AI price extraction via relay) */}
+      <FlyerScanFlow
+        visible={showFlyerScan}
+        onClose={() => setShowFlyerScan(false)}
+        stores={availableStores}
+        theme={theme}
+        onComplete={() => {
+          handleRefreshPrices();
         }}
       />
     </View>

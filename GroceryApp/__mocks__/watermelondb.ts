@@ -58,20 +58,58 @@ class Collection {
     const items = tables.get(this.table)!;
     const record: any = { _raw: {} };
     fn(record);
+    // Auto-generate an id when the creator didn't set one (matches real
+    // WatermelonDB behavior of assigning a random id on create)
+    if (!record.id && !record._raw.id) {
+      record.id = `mock-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      record._raw.id = record.id;
+    }
     items.set(record._raw?.id || record.id, record);
     return record;
   }
 }
 
 export class Database {
+  constructor(_opts?: any) {}
+
   get(table: string): Collection {
     return new Collection(table);
+  }
+
+  async write<T>(fn: () => Promise<T>): Promise<T> {
+    return fn();
   }
 }
 
 export const Q = {
   where: (field: string, value: any) => ({ field, value }),
 };
+
+// ─── Schema / migration / adapter / model shims ─────────────────────────────
+// jest moduleNameMapper points every @nozbe/watermelondb subpath at this file,
+// so it must also cover schema helpers, migrations, decorators, and the
+// SQLite adapter used by src/storage/database.ts.
+
+export const appSchema = (x: any) => x;
+export const tableSchema = (x: any) => x;
+export const schemaMigrations = (x: any) => x;
+export const addColumns = (x: any) => x;
+export const createTable = (x: any) => x;
+
+export class Model {
+  static table: string;
+}
+
+// Legacy TS decorators used in src/storage/models.ts — no-ops in tests
+export const field = (_name: string) => (_target: any, _key: string) => {};
+export const relation = (_table: string, _key: string) => (_target: any, _key2: string) => {};
+export const readonly = (_target: any, _key: string) => {};
+export const date = (_name: string) => (_target: any, _key: string) => {};
+
+// Default export doubles as SQLiteAdapter for `adapters/sqlite`
+export default class SQLiteAdapter {
+  constructor(_opts?: any) {}
+}
 
 export function _resetDB(): void {
   tables.clear();

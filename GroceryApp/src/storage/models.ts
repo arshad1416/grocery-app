@@ -97,3 +97,13 @@ export class NotificationModel extends Model {
   @field('item_category') itemCategory: string;
   @field('is_read') isRead: boolean;
 }
+
+// ─── Offline Queue Model ────────────────────────────────────────────────────
+
+export class OfflineQueueModel extends Model {
+  static table = 'offline_queue' as const;
+
+  @field('list_id') listId: string;
+  @field('payload') payload: string;                    // encrypted (EncryptedData JSON)
+  @field('created_at') createdAt: number;
+}

@@ -20,7 +20,7 @@ RUN npm install --omit=dev && \
 COPY server.js ./
 
 # Expose WebSocket port
-EXPOSE 8080
+EXPOSE 8080 8081
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \

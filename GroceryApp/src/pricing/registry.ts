@@ -64,6 +64,7 @@ class PriceRegistry {
     itemName: string,
     storeId: string,
   ): Promise<PriceResult | null> {
+    if (!this.isPricingOptedIn()) return null;
     if (this.seedPromise) await this.seedPromise;
     const enabled = this.getEnabledMap();
     const normalizedName = normalizeForLookup(itemName);
@@ -85,16 +86,14 @@ class PriceRegistry {
     items: string[],
     storeId: string,
   ): Promise<Map<string, PriceResult>> {
-    console.warn(`[registry] entered getAllPrices for store ${storeId}`);
+    if (!this.isPricingOptedIn()) return new Map();
     if (this.seedPromise) await this.seedPromise;
     const results = new Map<string, PriceResult>();
     const enabled = this.getEnabledMap();
     const normalizedNames = items.map(normalizeForLookup);
-    console.warn(`[registry] getAllPrices for ${items.length} items at ${storeId}, ${this.adapters.length} adapters`);
 
     for (const adapter of this.adapters) {
       if (!enabled[adapter.id] || !adapter.isAvailable()) continue;
-      console.warn(`[registry] Querying adapter: ${adapter.id}`);
 
       const useHash = adapterRequiresHash(adapter.id);
       const lookupNames = useHash
@@ -150,6 +149,19 @@ class PriceRegistry {
   }
 
   // ─── Private Helpers ───────────────────────────────────────────────────
+
+  /**
+   * Master privacy gate (AC-14): no price lookup — local or network — runs
+   * unless the user has explicitly opted into pricing. Fails closed when
+   * settings aren't initialized yet.
+   */
+  private isPricingOptedIn(): boolean {
+    try {
+      return getSettings().pricingOptedIn === true;
+    } catch {
+      return false;
+    }
+  }
 
   private getEnabledMap(): AdapterEnableMap {
     let states: Record<string, boolean> | undefined;

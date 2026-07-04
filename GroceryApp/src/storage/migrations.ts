@@ -68,5 +68,19 @@ export const migrations = schemaMigrations({
         }),
       ],
     },
+    // v4 → v5: Add offline_queue table so undelivered Yjs updates survive app kill
+    {
+      toVersion: 5,
+      steps: [
+        createTable({
+          name: 'offline_queue',
+          columns: [
+            { name: 'list_id', type: 'string' },
+            { name: 'payload', type: 'string' },
+            { name: 'created_at', type: 'number' },
+          ],
+        }),
+      ],
+    },
   ],
 });
