@@ -47,7 +47,11 @@ export interface GroceryItem {
   // Claim-an-item lock: real-time flag to prevent same-trip duplicates
   /** Device/member ID of whoever claimed this item (for shopping). */
   claimedBy?: string;
-  /** Timestamp when the item was claimed. Auto-released after 30min. */
+  /**
+   * Timestamp when the item was claimed. A claim older than CLAIM_EXPIRY_MS
+   * (30 min) is treated as expired: other devices may re-claim it, the UI shows
+   * it as unclaimed, and the periodic sweep in GroceryListScreen releases it.
+   */
   claimedAt?: number;
   // Soft delete & version fields (sync)
   isDeleted: boolean;
@@ -80,7 +84,9 @@ export interface FamilyMember {
   familyId: string;
   displayName: string;
   avatarUrl?: string;
-  role: 'admin' | 'editor' | 'viewer';
+  // NOTE: no `role` field in v1. Roles (admin/editor/viewer) were never enforced
+  // anywhere, and in a shared-key E2EE CRDT they can't be enforced server-side.
+  // Reintroduce only together with a real enforcement design.
   isActive: boolean;
   // Soft delete fields (consistent with GroceryItem)
   isDeleted: boolean;

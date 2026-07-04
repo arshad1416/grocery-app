@@ -165,6 +165,16 @@ const STATE_FILE = process.env.RELAY_STATE_FILE || './relay-state.json';
 
 // ─── Voice Assistant OAuth2 & Keys ──────────────────────────────────────────────
 
+/**
+ * Cloud voice-assistant integration (Alexa / Google Assistant) is DISABLED by
+ * default. Linking uploads an RSA-encrypted copy of the family master key that
+ * THIS server can decrypt (it generates and holds the private key), which
+ * breaks the zero-knowledge guarantee for linked families. Self-host operators
+ * who accept that trade-off can opt in with ASSISTANT_INTEGRATION=true.
+ * Siri integration is unaffected (fully on-device).
+ */
+const ASSISTANT_INTEGRATION = process.env.ASSISTANT_INTEGRATION === 'true';
+
 const ASSISTANT_PUBLIC_KEY_PATH =
   process.env.ASSISTANT_PUBLIC_KEY_PATH || path.join(__dirname, 'keys', 'assistant-public-key.pem');
 const ASSISTANT_PRIVATE_KEY_PATH =
@@ -712,6 +722,19 @@ const server = createServer((req, res) => {
   if (req.url === '/api/extract/flyer' && req.method === 'POST') {
     const { handleExtractRequest } = require('./extract/extract-server');
     return handleExtractRequest(req, res, enrolledDevices);
+  }
+
+  // Voice-assistant + OAuth account-linking endpoints (see ASSISTANT_INTEGRATION
+  // above for why these are off by default).
+  if (
+    !ASSISTANT_INTEGRATION &&
+    (req.url.startsWith('/api/assistant/') ||
+      req.url.startsWith('/oauth/') ||
+      req.url.startsWith('/api/oauth/'))
+  ) {
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Voice assistant integration is disabled on this relay' }));
+    return;
   }
 
   // GET /api/assistant/public-key — returns voice assistant public key
@@ -1443,8 +1466,11 @@ async function handleTokenRequest(req, res) {
 // Load persisted state from disk (enrollments, invite signatures)
 loadStateFromDisk();
 
-// Ensure RSA keys are ready for Voice Assistant
-ensureAssistantKeys();
+// Ensure RSA keys are ready for Voice Assistant (opt-in only — see
+// ASSISTANT_INTEGRATION; no assistant private key is created otherwise)
+if (ASSISTANT_INTEGRATION) {
+  ensureAssistantKeys();
+}
 
 // Load the used tokens store (non-blocking)
 usedTokensStore.loadOnStartup().catch((err) => {
@@ -1510,6 +1536,18 @@ server.listen(RELAY_PORT, () => {
       if (cleaned > 0 || prunedInvites > 0) {
         console.log(`[cleanup] Removed ${cleaned} expired token(s) and ${prunedInvites} expired invite(s)`);
         persistState();
+      }
+      // Retention: age out stored encrypted updates (ciphertext-only, but
+      // don't keep them forever). Default 30 days, override via UPDATE_TTL_MS.
+      try {
+        const { cleanupExpiredUpdates } = require('./encrypted-store');
+        const updateTtlMs = parseInt(process.env.UPDATE_TTL_MS || '2592000000', 10);
+        const removedUpdates = cleanupExpiredUpdates(updateTtlMs);
+        if (removedUpdates > 0) {
+          console.log(`[cleanup] Removed ${removedUpdates} encrypted update(s) past retention (${Math.round(updateTtlMs / 86400000)}d)`);
+        }
+      } catch (err) {
+        console.error('[cleanup] Encrypted-update retention sweep failed:', err.message);
       }
     }, 60 * 60 * 1000);
 });

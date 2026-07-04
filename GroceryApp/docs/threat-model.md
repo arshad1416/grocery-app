@@ -13,6 +13,15 @@
 - Cannot read: item names, quantities, notes, prices, family member identities
 - Could: correlate usage patterns by timing/lists accessed (metadata leak)
 - Mitigation: all content encrypted client-side; relay only routes ciphertext
+- **Persistence**: the relay is not purely ephemeral — it persists ciphertext
+  updates and enrollment state to disk so offline devices can catch up.
+  Stored updates are aged out after a retention window (`UPDATE_TTL_MS`,
+  default 30 days). Everything persisted is ciphertext or opaque tokens;
+  a relay disk image never contains plaintext list content.
+- **Flyer extraction caveat**: the optional flyer-scan feature sends the
+  flyer image itself (EXIF-stripped, plaintext over TLS) to the relay's
+  extract endpoint. That channel is NOT zero-knowledge; see
+  `src/pricing/relay-extractor.ts` and AC-11 scope note.
 
 ### 2. Network Eavesdropper
 - Sees: encrypted WebSocket traffic between client and relay

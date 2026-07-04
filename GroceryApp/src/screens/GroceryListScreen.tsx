@@ -29,7 +29,7 @@ import type { GroceryItem, GroceryCategory } from '../types';
 import type { PriceResult } from '../pricing/types';
 import { BUILT_IN_CATEGORIES, STORE_PLAN_CATEGORY_ORDER } from '../types';
 import { useGroceryStore } from '../state/useGroceryStore';
-import { getListMeta } from '../sync/yjs-adapter';
+import { getListMeta, yjsSweepExpiredClaims } from '../sync/yjs-adapter';
 import type { RootStackParamList } from '../navigation/deepLinks';
 import AddItemSheet from './AddItemSheet';
 import StopOptimizer from '../components/StopOptimizer';
@@ -188,10 +188,17 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   const [, forceRender] = useState(0);
   useEffect(() => {
     const timer = setInterval(() => {
+      // Actually release claims past the 30-min expiry (syncs to the family
+      // via the normal Yjs path), then re-render so claim badges update.
+      try {
+        yjsSweepExpiredClaims(listId);
+      } catch {
+        // Yjs doc not yet hydrated — nothing to sweep
+      }
       forceRender((n) => n + 1);
     }, 60_000);
     return () => clearInterval(timer);
-  }, []);
+  }, [listId]);
 
   useEffect(() => {
     loadItems(listId).catch((err: Error) => {

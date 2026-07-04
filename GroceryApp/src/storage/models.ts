@@ -72,7 +72,8 @@ export class FamilyMemberModel extends Model {
   @field('family_id') familyId: string;
   @field('display_name') displayName: string;           // encrypted
   @field('avatar_url') avatarUrl: string | null;
-  @field('role') role: string;
+  // 'role' column still exists in the schema (kept to avoid a migration) but is
+  // intentionally unmapped: roles were never enforced and are dropped in v1.
   @field('is_active') isActive: boolean;
   @field('is_deleted') isDeleted: boolean;
   @field('deleted_at') deletedAt: number | null;

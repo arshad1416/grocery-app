@@ -394,6 +394,38 @@ export function yjsUnclaimItem(
 }
 
 /**
+ * Release every claim on the list that is older than CLAIM_EXPIRY_MS.
+ * Safe to call from any device on a periodic tick: the operation is
+ * idempotent and CRDT-converges even if several devices sweep at once.
+ * Returns the number of claims released.
+ */
+export function yjsSweepExpiredClaims(listId: string): number {
+  const doc = getDoc(listId);
+  const now = Date.now();
+  let released = 0;
+  doc.transact(() => {
+    const itemsArr = doc.getArray('items');
+    for (let i = 0; i < itemsArr.length; i++) {
+      const yItem = itemsArr.get(i) as Y.Map<any>;
+      const claimedAt = yItem.get('claimedAt') as number | undefined;
+      if (claimedAt !== undefined && now - claimedAt >= CLAIM_EXPIRY_MS) {
+        yItem.delete('claimedBy');
+        yItem.delete('claimedAt');
+        yItem.set('version', (yItem.get('version') as number) + 1);
+        yItem.set('updatedAt', now);
+        released++;
+      }
+    }
+    if (released > 0) {
+      const meta = doc.getMap('meta');
+      meta.set('version', (meta.get('version') as number) + 1);
+      meta.set('updatedAt', now);
+    }
+  });
+  return released;
+}
+
+/**
  * Update list metadata via Yjs.
  */
 export function yjsUpdateListMeta(

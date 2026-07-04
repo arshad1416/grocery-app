@@ -7,6 +7,9 @@ process.env.PORT = String(TEST_PORT);
 process.env.RELAY_PORT = String(TEST_PORT);
 process.env.POOL_PORT = String(TEST_PORT + 1);
 process.env.STATE_FILE = './test-relay-state.json';
+// This suite tests the opt-in voice-assistant integration, which is disabled
+// by default in production (see ASSISTANT_INTEGRATION in server.js).
+process.env.ASSISTANT_INTEGRATION = 'true';
 
 const fs = require('fs');
 const path = require('path');

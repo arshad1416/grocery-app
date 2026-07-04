@@ -32,7 +32,12 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    # No volumes — relay is stateless (all state on-device via WatermelonDB)
+    # The relay is zero-knowledge (stores only client-side-encrypted ciphertext)
+    # but NOT stateless: it persists enrollment state (relay-state.json), Yjs doc
+    # state (relay-docs.json), and encrypted updates (data/encrypted-updates.json)
+    # inside the container. Encrypted updates are aged out after UPDATE_TTL_MS
+    # (default 30 days). Mount a volume if you want that state to survive
+    # container rebuilds; omit it for wipe-on-rebuild behavior.
     deploy:
       resources:
         limits:

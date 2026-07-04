@@ -48,6 +48,16 @@ import { useThemeStore, useActiveTheme } from '../state/useThemeStore';
 
 import { themeColors } from '../components/groceryTheme';
 
+/**
+ * Cloud voice-assistant linking (Alexa / Google Assistant) is disabled in v1.
+ * Linking uploads an RSA-encrypted copy of the family master key that the relay
+ * can decrypt (it holds the matching private key), which breaks the app's
+ * zero-knowledge promise. The relay rejects these endpoints unless its operator
+ * sets ASSISTANT_INTEGRATION=true; flip this flag only together with that
+ * opt-in and an explicit in-app disclosure. Siri stays fully on-device.
+ */
+const VOICE_ASSISTANT_LINKING_ENABLED = false;
+
 // ─── Segmented Control ───────────────────────────────────────────────────────
 
 interface SegmentedControlProps {
@@ -598,7 +608,8 @@ export default function SettingsScreen({ navigation }: Props) {
         />
       </View>
 
-      {/* ── Voice Assistant Linking ────────────────────────────────────── */}
+      {/* ── Voice Assistant Linking (disabled in v1 — see flag at top) ── */}
+      {VOICE_ASSISTANT_LINKING_ENABLED && (
       <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
         <Text style={[styles.sectionTitle, { color: theme.text }]}>Voice Assistant Link</Text>
         <Text style={[styles.sectionDescription, { color: theme.secondaryText }]}>
@@ -631,6 +642,7 @@ export default function SettingsScreen({ navigation }: Props) {
           )}
         </TouchableOpacity>
       </View>
+      )}
 
       {/* ── Security ────────────────────────────────────────────────── */}
       <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>

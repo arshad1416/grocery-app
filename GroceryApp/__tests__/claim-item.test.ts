@@ -21,6 +21,7 @@ import {
   extractItems,
   yjsClaimItem,
   yjsUnclaimItem,
+  yjsSweepExpiredClaims,
   CLAIM_EXPIRY_MS,
   destroyDoc,
 } from '../src/sync/yjs-adapter';
@@ -275,5 +276,48 @@ describe('Claim-an-item lock', () => {
 
     docA.destroy();
     docB.destroy();
+  });
+
+  it('yjsSweepExpiredClaims releases only expired claims', () => {
+    const listId = 'test-claim-list';
+    const doc = getDoc(listId);
+
+    const expired = new Y.Map();
+    expired.set('id', 'item-expired');
+    expired.set('name', 'Old Milk');
+    expired.set('listId', listId);
+    expired.set('claimedBy', 'device-larissa');
+    expired.set('claimedAt', Date.now() - CLAIM_EXPIRY_MS - 1000);
+    expired.set('version', 1);
+
+    const fresh = new Y.Map();
+    fresh.set('id', 'item-fresh');
+    fresh.set('name', 'New Milk');
+    fresh.set('listId', listId);
+    fresh.set('claimedBy', 'device-arshad');
+    fresh.set('claimedAt', Date.now());
+    fresh.set('version', 1);
+
+    const unclaimed = new Y.Map();
+    unclaimed.set('id', 'item-unclaimed');
+    unclaimed.set('name', 'Bread');
+    unclaimed.set('listId', listId);
+    unclaimed.set('version', 1);
+
+    doc.transact(() => {
+      doc.getArray('items').push([expired, fresh, unclaimed]);
+    });
+
+    const released = yjsSweepExpiredClaims(listId);
+    expect(released).toBe(1);
+
+    const items = extractItems(listId);
+    const byId = new Map(items.map((i) => [i.id, i]));
+    expect(byId.get('item-expired')?.claimedBy).toBeUndefined();
+    expect(byId.get('item-expired')?.claimedAt).toBeUndefined();
+    expect(byId.get('item-fresh')?.claimedBy).toBe('device-arshad');
+
+    // Second sweep is a no-op
+    expect(yjsSweepExpiredClaims(listId)).toBe(0);
   });
 });
