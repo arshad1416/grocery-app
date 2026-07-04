@@ -85,14 +85,12 @@ function generateCredentialId(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let result = '';
   const array = new Uint8Array(32);
-  // Use crypto.getRandomValues if available (browser), fall back to Math.random
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-    crypto.getRandomValues(array);
-  } else {
-    for (let i = 0; i < array.length; i++) {
-      array[i] = Math.floor(Math.random() * 256);
-    }
+  // CSPRNG only — a guessable credential id would undermine the whole point.
+  // No Math.random fallback: fail loudly instead of degrading silently.
+  if (typeof crypto === 'undefined' || !crypto.getRandomValues) {
+    throw new Error('No CSPRNG available for passkey credential generation');
   }
+  crypto.getRandomValues(array);
   for (let i = 0; i < array.length; i++) {
     result += chars.charAt(array[i] % chars.length);
   }
