@@ -92,8 +92,8 @@ android {
         applicationId 'com.shiftlogichq.stophop'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 29
-        versionName "1.29.0"
+        versionCode 30
+        versionName "1.30.0"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -104,15 +104,36 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        release {
+            // Store builds MUST use a real upload keystore. Provide it via
+            // gradle properties (~/.gradle/gradle.properties or -P flags):
+            //   STOPHOP_UPLOAD_STORE_FILE, STOPHOP_UPLOAD_STORE_PASSWORD,
+            //   STOPHOP_UPLOAD_KEY_ALIAS, STOPHOP_UPLOAD_KEY_PASSWORD
+            // Generate once (and BACK IT UP — losing it locks you out of
+            // Play updates unless enrolled in Play App Signing):
+            //   keytool -genkeypair -v -keystore stophop-upload.keystore \
+            //     -alias stophop-upload -keyalg RSA -keysize 2048 -validity 10000
+            // EAS builds: `eas credentials` manages this instead.
+            if (project.hasProperty('STOPHOP_UPLOAD_STORE_FILE')) {
+                storeFile file(STOPHOP_UPLOAD_STORE_FILE)
+                storePassword STOPHOP_UPLOAD_STORE_PASSWORD
+                keyAlias STOPHOP_UPLOAD_KEY_ALIAS
+                keyPassword STOPHOP_UPLOAD_KEY_PASSWORD
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            // Falls back to the debug keystore ONLY for local release testing
+            // when no upload keystore is configured. Play Console rejects
+            // debug-signed bundles, so a store submission cannot ship this way
+            // by accident.
+            signingConfig project.hasProperty('STOPHOP_UPLOAD_STORE_FILE')
+                ? signingConfigs.release
+                : signingConfigs.debug
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds

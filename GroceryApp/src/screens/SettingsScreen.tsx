@@ -682,6 +682,45 @@ export default function SettingsScreen({ navigation }: Props) {
             🔑 Recover from Backup
           </Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.securityButton, { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#f44336' }]}
+          onPress={() => {
+            Alert.alert(
+              'Leave Family',
+              'This unpairs the device: your family membership and relay enrollment are removed, and syncing stops.\n\n' +
+                'Grocery data already on this device stays here (delete lists or uninstall the app to remove it). ' +
+                'Other family members keep their copies.',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'Leave Family',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      const { leaveFamily } = await import('../identity/family');
+                      const { clearRelayCredentials } = await import('../identity/enroll');
+                      const { syncManager } = await import('../sync/sync-manager');
+                      syncManager.disconnect();
+                      await leaveFamily();
+                      await clearRelayCredentials();
+                      Alert.alert(
+                        'Left Family',
+                        'This device is no longer paired. You can join a family again anytime from the pairing screen.',
+                      );
+                    } catch (err) {
+                      Alert.alert('Error', err instanceof Error ? err.message : String(err));
+                    }
+                  },
+                },
+              ],
+            );
+          }}
+        >
+          <Text style={[styles.securityButtonTextSecondary, { color: '#f44336' }]}>
+            🚪 Leave Family (Unpair Device)
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* ── Privacy ──────────────────────────────────────────────────────── */}
@@ -872,8 +911,13 @@ export default function SettingsScreen({ navigation }: Props) {
                 {
                   text: 'Clear',
                   style: 'destructive',
-                  onPress: () => {
+                  onPress: async () => {
                     crowdsourcedAdapter.clearAllPrices();
+                    const { flyerScanAdapter } = await import('../pricing/flyer-scan');
+                    flyerScanAdapter.clearAllPrices();
+                    const { usePriceStore } = await import('../pricing/price-store');
+                    usePriceStore.getState().clearPrices();
+                    usePriceStore.getState().clearPerStorePrices();
                     Alert.alert('Done', 'Local price data cleared.');
                   },
                 },
