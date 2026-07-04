@@ -11,7 +11,7 @@
 import { appSchema, tableSchema } from '@nozbe/watermelondb';
 
 export const schema = appSchema({
-  version: 4,
+  version: 5,
   tables: [
     // ─── Grocery Lists ────────────────────────────────────────────────────
     tableSchema({
@@ -89,7 +89,20 @@ export const schema = appSchema({
         { name: 'is_read', type: 'boolean' },
       ],
     }),
+
+    // ─── Offline Sync Queue ──────────────────────────────────────────────
+    // Yjs updates queued while offline, so a killed app doesn't lose edits
+    // that were never delivered to the relay. `payload` is the encrypted
+    // wire envelope (JSON EncryptedData) — never a plaintext Yjs update.
+    tableSchema({
+      name: 'offline_queue',
+      columns: [
+        { name: 'list_id', type: 'string' },
+        { name: 'payload', type: 'string' },            // encrypted (EncryptedData JSON)
+        { name: 'created_at', type: 'number' },
+      ],
+    }),
   ],
 });
 
-export type TableName = 'grocery_lists' | 'grocery_items' | 'family_members' | 'notifications';
+export type TableName = 'grocery_lists' | 'grocery_items' | 'family_members' | 'notifications' | 'offline_queue';

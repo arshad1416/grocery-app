@@ -58,6 +58,8 @@ export interface OfflineEntry {
   update: Uint8Array;
   listId: string;
   timestamp: number;
+  /** WatermelonDB row id when this entry is also persisted to disk. */
+  persistedId?: string | null;
 }
 
 // ─── WebSocket Sync Client ───────────────────────────────────────────────────
@@ -99,7 +101,47 @@ export class YjsWebSocketClient {
     await getSodium(); // triggers lazy import + sets module-level `sodium`
     await sodium.ready;
     this.ready = true;
+    // Restore updates that were queued offline in a previous process life —
+    // without this, killing the app loses edits that never reached the relay.
+    await this.restorePersistedQueue();
     this.connect();
+  }
+
+  /**
+   * Load queue entries persisted by a previous session into the in-memory
+   * queue. Entries that no longer decrypt (e.g. key changed after a family
+   * reset) are dropped from disk.
+   */
+  private async restorePersistedQueue(): Promise<void> {
+    try {
+      const { loadQueueEntries, deleteQueueEntries } = await import('./offline-queue-store');
+      const persisted = await loadQueueEntries();
+      if (persisted.length === 0) return;
+
+      const undecryptable: string[] = [];
+      for (const entry of persisted) {
+        if (this.offlineQueue.length >= MAX_QUEUE_SIZE) break;
+        try {
+          const update = this.decryptUpdate(entry.payload, entry.listId);
+          this.offlineQueue.push({
+            update,
+            listId: entry.listId,
+            timestamp: entry.createdAt,
+            persistedId: entry.id,
+          });
+        } catch {
+          undecryptable.push(entry.id);
+        }
+      }
+      if (undecryptable.length > 0) {
+        await deleteQueueEntries(undecryptable);
+      }
+      if (this.offlineQueue.length > 0) {
+        console.log(`YjsWebSocket: restored ${this.offlineQueue.length} offline update(s) from disk`);
+      }
+    } catch (err) {
+      console.warn('YjsWebSocket: failed to restore persisted queue', err);
+    }
   }
 
   // ─── Connection Management ──────────────────────────────────────────────
@@ -287,6 +329,7 @@ export class YjsWebSocketClient {
 
     const queue = [...this.offlineQueue];
     this.offlineQueue = [];
+    const delivered: Array<string | null | undefined> = [];
 
     for (const entry of queue) {
       if (this.state === 'connected' && this.ws) {
@@ -299,6 +342,7 @@ export class YjsWebSocketClient {
             listId: entry.listId,
             payload: encrypted,
           });
+          delivered.push(entry.persistedId);
         } catch {
           // Re-queue if send fails
           this.offlineQueue.push(entry);
@@ -306,6 +350,10 @@ export class YjsWebSocketClient {
       } else {
         this.offlineQueue.push(entry);
       }
+    }
+
+    if (delivered.some(Boolean)) {
+      this.deletePersisted(delivered);
     }
 
     if (this.offlineQueue.length === 0) {
@@ -426,6 +474,9 @@ export class YjsWebSocketClient {
   private enqueueOffline(update: Uint8Array, listId: string): void {
     if (this.offlineQueue.length >= MAX_QUEUE_SIZE) {
       const dropped = this.offlineQueue.shift(); // drop oldest
+      if (dropped?.persistedId) {
+        this.deletePersisted([dropped.persistedId]);
+      }
       this.onError?.(new Error(
         `Offline queue full (${MAX_QUEUE_SIZE}). Dropped oldest update for list ${dropped?.listId ?? 'unknown'}.`,
       ));
@@ -434,7 +485,35 @@ export class YjsWebSocketClient {
         `Queue now has ${this.offlineQueue.length} pending entries.`,
       );
     }
-    this.offlineQueue.push({ update, listId, timestamp: Date.now() });
+    const entry: OfflineEntry = { update, listId, timestamp: Date.now(), persistedId: null };
+    this.offlineQueue.push(entry);
+    this.persistEntry(entry);
+  }
+
+  /**
+   * Best-effort disk persistence of a queued entry (encrypted wire envelope).
+   * The in-memory queue keeps working even if persistence fails.
+   */
+  private persistEntry(entry: OfflineEntry): void {
+    if (!this.ready) return; // sodium not ready — cannot encrypt for disk yet
+    try {
+      const encrypted = this.encryptUpdate(entry.update, entry.listId);
+      import('./offline-queue-store')
+        .then(({ saveQueueEntry }) => saveQueueEntry(entry.listId, encrypted, entry.timestamp))
+        .then((id) => {
+          entry.persistedId = id;
+        })
+        .catch(() => {});
+    } catch {
+      // encryption failed — in-memory only
+    }
+  }
+
+  /** Best-effort removal of delivered/dropped entries from disk. */
+  private deletePersisted(ids: Array<string | null | undefined>): void {
+    import('./offline-queue-store')
+      .then(({ deleteQueueEntries }) => deleteQueueEntries(ids))
+      .catch(() => {});
   }
 
   private sendMessage(msg: RelayMessage): void {

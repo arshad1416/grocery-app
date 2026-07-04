@@ -25,6 +25,8 @@ const mockSettings: any = {
   priceServiceEnabled: false,
   voiceInputEnabled: false,
   barcodeScanningEnabled: false,
+  // Registry enforces this master gate (AC-14); adapter-chain tests assume opt-in
+  pricingOptedIn: true,
   adapterEnabled: {},
 };
 jest.mock('../src/config/settings', () => ({
@@ -253,5 +255,35 @@ describe('AC-10c: Adapter Enable/Disable', () => {
     result = await priceRegistry.getPrice('Milk', 'store_test');
     expect(result).not.toBeNull();
     expect(result!.source.adapterId).toBe('mock_crowd');
+  });
+
+  it('AC-14 master gate: getPrice returns null and queries no adapter when pricing is not opted in', async () => {
+    priceRegistry.registerAdapter(official);
+    const spy = jest.spyOn(official, 'getPrice');
+
+    mockSettings.pricingOptedIn = false;
+    try {
+      const result = await priceRegistry.getPrice('Milk', 'store_test');
+      expect(result).toBeNull();
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      mockSettings.pricingOptedIn = true;
+      spy.mockRestore();
+    }
+  });
+
+  it('AC-14 master gate: getAllPrices returns empty map and queries no adapter when pricing is not opted in', async () => {
+    priceRegistry.registerAdapter(official);
+    const spy = jest.spyOn(official, 'getPrices');
+
+    mockSettings.pricingOptedIn = false;
+    try {
+      const results = await priceRegistry.getAllPrices(['Milk', 'Eggs'], 'store_test');
+      expect(results.size).toBe(0);
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      mockSettings.pricingOptedIn = true;
+      spy.mockRestore();
+    }
   });
 });

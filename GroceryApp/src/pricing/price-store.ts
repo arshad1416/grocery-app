@@ -174,15 +174,14 @@ export const usePriceStore = create<PriceState>((set, get) => ({
       const outcomes = await Promise.allSettled(
         storeIds.map(async (storeId: string) => {
           const itemNames = items.map((i) => i.name);
-          console.warn(`[prices] Looking up ${itemNames.join(',')} at store ${storeId}`);
+          // NOTE: never log item names here — plaintext item names in logs
+          // would contradict the hashed-lookup privacy contract (AC-14).
           const priceMap = await priceRegistry.getAllPrices(itemNames, storeId);
-          console.warn(`[prices] Got ${priceMap.size} results from ${storeId}`);
           const storeResult: Record<string, PriceResult> = {};
           for (const item of items) {
             const result = priceMap.get(item.name);
             if (result) {
               storeResult[item.id] = result;
-              console.warn(`[prices] Found price for ${item.name}: $${result.price}`);
             }
           }
           if (Object.keys(storeResult).length > 0) {
