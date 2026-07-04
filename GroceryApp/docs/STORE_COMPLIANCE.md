@@ -1,8 +1,36 @@
 # StopHop — Store Compliance Reference
 
-> **Generated:** June 15, 2026 | **App version:** v1.03 | **Package:** `com.shiftlogichq.stophop`
+> **Updated:** July 3, 2026 | **App version:** v1.30.0 | **Package:** `com.shiftlogichq.stophop`
 
 This document contains all declarations needed for Google Play Console and Apple App Store Connect submissions.
+
+---
+
+## 0. Export Compliance (Encryption) — REQUIRED, EASY TO GET WRONG
+
+StopHop implements real end-to-end encryption (libsodium XChaCha20-Poly1305,
+Argon2id, Ed25519, Curve25519, RFC 9474 blind RSA). This is more than
+HTTPS/OS-provided crypto, so it does NOT qualify for Apple's "exempt" answer.
+
+### iOS
+- `ITSAppUsesNonExemptEncryption` is set to `true` in `app.json` (ios.infoPlist).
+- In App Store Connect's encryption questions answer:
+  - *Does your app use encryption?* → **Yes**
+  - *Does your app qualify for any of the exemptions?* → **No**
+  - *Does your app implement proprietary or non-standard encryption?* → **No**
+    (all algorithms are standard, published ones via libsodium)
+  - *Is your app going to be available in France?* → if yes, France has its own
+    declaration; standard-algorithm mass-market apps use the simplified process.
+- US export classification: mass-market software using standard cryptography →
+  self-classify as **5D992.c** under License Exception ENC §740.17(b)(1) and
+  email the annual **self-classification report** to BIS + NSA
+  (crypt-supp8@bis.doc.gov, enc@nsa.gov) — one line item, once per year.
+
+### Google Play
+- Play Console asks about export compliance in **App content → Government
+  regulations** (wording varies). Answer consistently with the above: uses
+  standard encryption for user-data protection; mass-market; self-classified
+  5D992.c.
 
 ---
 
@@ -22,6 +50,17 @@ Navigate to: **Play Console → StopHop → App Content → Data Safety**
 | **App activity** | App interactions | Yes | No | App functionality | No |
 | **App info and performance** | Crash logs | Yes | Yes (Sentry) | Analytics, app functionality | Yes |
 | **Device or other IDs** | Device or other IDs | Yes | No | App functionality | No |
+| **Photos and videos** | Photos | Yes (only if user scans a flyer) | No | App functionality | Yes |
+
+#### Photos (flyer scanning — optional feature)
+- **Collected:** Yes, ephemeral. When the user photographs a store flyer for
+  AI price extraction, the image (EXIF-stripped) is sent to the configured
+  relay server, processed, and discarded — it is not stored server-side.
+- **Shared:** No (the relay is the app's service provider or the user's own
+  server; images are not shared with third parties).
+- **Optional:** Yes — flyer scanning is user-initiated and can be disabled.
+- Google's data-safety rules treat off-device transmission as collection even
+  when ephemeral; declare it and mark "Data is processed ephemerally".
 
 ### Detailed Breakdown
 
@@ -94,6 +133,7 @@ Select **"Yes, we collect data from this app"** and configure:
 |---------------|-----------|---------------------|---------------------|---------|
 | **Crash Data** | Crash Data | No | No | App Functionality, Analytics |
 | **Identifiers** | Device ID | No | No | App Functionality |
+| **User Content** | Photos or Videos | No | No | App Functionality (flyer scanning, optional, ephemeral) |
 
 ### Detailed Entries in App Store Connect
 
@@ -122,7 +162,9 @@ Select **"Yes, we collect data from this app"** and configure:
 Data Not Linked to You
 ├── Crash Data
 │   └── App Functionality, Analytics
-└── Identifiers
+├── Identifiers
+│   └── App Functionality
+└── User Content (Photos — flyer scans only)
     └── App Functionality
 
 Data Used to Track You: None
@@ -219,7 +261,7 @@ https://groceryapp.app
 
 #### Camera
 **Title:** `Camera Access`
-**Message:** `StopHop uses your camera to scan barcodes and add items quickly. No images are captured or saved — frames are processed in real-time and discarded immediately.`
+**Message:** `StopHop uses your camera to scan barcodes, scan QR pairing codes, and photograph store flyers for price extraction. Barcode/QR frames are processed in real-time and discarded. Flyer photos are sent (without location metadata) to your relay server for AI extraction, then discarded.`
 
 #### Microphone
 **Title:** `Microphone Access`
@@ -233,9 +275,10 @@ https://groceryapp.app
 
 | Key | Value |
 |-----|-------|
-| NSCameraUsageDescription | Scan barcodes to add items to your grocery list |
+| NSCameraUsageDescription | Scan barcodes to add items to your grocery list, scan QR codes to join your family, and photograph store flyers for price extraction |
 | NSMicrophoneUsageDescription | Add items to your grocery list using voice commands |
 | NSSpeechRecognitionUsageDescription | Convert voice commands to grocery list items |
+| ITSAppUsesNonExemptEncryption | true (see Section 0) |
 
 ---
 
@@ -284,7 +327,7 @@ if (settings.sentryEnabled === false) {
 | Aspect | Self-Hosted | Managed |
 |--------|-------------|---------|
 | **Relay server** | User runs it | ShiftLogic runs it |
-| **Data at rest on server** | None (ephemeral relay) | Encrypted blobs only |
+| **Data at rest on server** | Encrypted blobs only (30-day retention, `UPDATE_TTL_MS`) | Encrypted blobs only (30-day retention) |
 | **Privacy policy disclosure** | "You run your own server" | "We relay encrypted data" |
 | **Data safety form** | No server-side data | Relay logs (device IDs, timestamps) |
 | **GDPR/data deletion** | User controls server | Email request to privacy@ |
@@ -298,19 +341,28 @@ For Google Play and Apple, the managed tier is the one that needs compliance dis
 ## 8. Checklist: Before Submitting
 
 ### Google Play Console
-- [ ] Data Safety form filled (see Section 1)
+- [ ] Data Safety form filled (see Section 1 — including Photos row for flyer scans)
+- [ ] Export compliance / government regulations answered (see Section 0)
 - [ ] Privacy policy URL added: `https://groceryapp.app/privacy`
 - [ ] `INTERNET` permission justified
 - [ ] `READ_EXTERNAL_STORAGE` maxSdkVersion=32 justified
 - [ ] No SYSTEM_ALERT_WINDOW (removed)
 - [ ] Target SDK 34+ (Android 14)
+- [ ] Release bundle signed with the upload keystore (STOPHOP_UPLOAD_* gradle
+      props or EAS credentials) — NOT the debug keystore
+- [ ] versionCode/versionName in android/app/build.gradle match app.json
 
 ### Apple App Store Connect
-- [ ] App Privacy labels configured (see Section 2)
+- [ ] App Privacy labels configured (see Section 2 — including User Content/Photos)
+- [ ] Encryption questions answered (see Section 0); ITSAppUsesNonExemptEncryption=true in build
+- [ ] Annual BIS self-classification report filed (5D992.c)
 - [ ] Privacy policy URL added: `https://groceryapp.app/privacy`
 - [ ] Privacy manifest included in build (via app.json)
 - [ ] Info.plist usage descriptions present
 - [ ] No tracking (NSPrivacyTracking = false)
+- [ ] apple-app-site-association deployed at
+      https://groceryapp.app/.well-known/apple-app-site-association with the
+      real Team ID (repo copy has TEAMID placeholder)
 
 ### In-App
 - [ ] Privacy screen accessible from Settings
