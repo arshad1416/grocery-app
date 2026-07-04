@@ -76,3 +76,16 @@
 - **Key rotation**: no mechanism to rotate the family encryption key without re-creating the family
 - **Supply chain**: libsodium-wrappers, yjs, and other dependencies could be compromised upstream
 - **Denial of service**: a malicious family member could corrupt shared Yjs documents
+- **Active-attacker relay (malicious, not just curious)**: the threat model assumes an
+  honest-but-curious relay. A fully malicious relay could substitute public keys during
+  enrollment and receive the sealed family key (machine-in-the-middle on the invite
+  flow). Mitigation today is the out-of-band QR handoff (invites are scanned in person
+  and Ed25519-signed by the inviter); full mitigation (key fingerprint verification UI
+  or MLS) is deferred past v1.
+- **No envelope versioning**: `EncryptedData {ciphertext, iv, tag}` carries no version
+  byte. If crypto parameters ever change, old ciphertexts are indistinguishable from
+  new ones — any future algorithm migration must add versioning first.
+- **Ed25519 signing keys are derived from the device Curve25519 secret** (first 32
+  bytes as seed). Cross-primitive key derivation is not ideal hygiene; acceptable here
+  because the seed is hashed inside Ed25519 keygen, but a future device-identity
+  redesign should use independent keys.
