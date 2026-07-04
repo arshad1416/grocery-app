@@ -218,12 +218,21 @@ export class SyncManager {
    */
   async hydrateFromDB(encryptionKey: Uint8Array): Promise<void> {
     this.isHydrating = true;
+    // Store the key so local WatermelonDB persistence works even before (or
+    // without) a relay connection — init() sets the same field later.
+    this.encryptionKey = encryptionKey;
     try {
       const lists = await loadListsFromDB(encryptionKey);
       const allItems = await loadItemsFromDB(encryptionKey);
+      const indexDoc = getDoc('__lists_index__');
       for (const list of lists) {
         const listItems = allItems.filter((item) => item.listId === list.id);
         hydrateList(list.id, list, listItems);
+        // Rebuild the in-memory lists index that useListStore.loadLists reads
+        indexDoc.transact(() => {
+          indexDoc.getMap('listIds').set(list.id, true);
+        });
+        this.registerList(list.id);
       }
     } finally {
       this.isHydrating = false;

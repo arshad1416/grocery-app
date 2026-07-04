@@ -132,18 +132,31 @@ function App() {
         const { initSettings, getSettings } = await import('./src/config/settings');
         await initSettings();
 
-        // Init Turso if configured
+        // Init Turso if configured. Credentials come from user settings or
+        // EXPO_PUBLIC_* build-time env — NEVER hardcode tokens here: a
+        // read-write JWT was previously committed in this file; treat it as
+        // compromised and rotate it (see GOAL_PROMPT_NOTES.md).
         try {
           const { initTurso } = await import('./src/services/tursoClient');
           const settings = getSettings();
-          const tursoUrl = settings.tursoUrl || 'https://stophop-arshad1416.aws-us-east-1.turso.io';
-          const tursoToken = settings.tursoToken || '***REMOVED-REVOKED-TURSO-TOKEN***';
+          const tursoUrl = settings.tursoUrl || process.env.EXPO_PUBLIC_TURSO_URL;
+          const tursoToken = settings.tursoToken || process.env.EXPO_PUBLIC_TURSO_TOKEN;
           if (tursoUrl && tursoToken) {
             initTurso({ url: tursoUrl, token: tursoToken });
-            console.warn('[init] Turso connected successfully');
           }
         } catch (e) {
           console.warn('[init] Turso init failed:', e);
+        }
+
+        // Restore persisted lists into Yjs and connect family sync (if
+        // enrolled). Without this call nothing ever hydrated from
+        // WatermelonDB and the relay never connected.
+        try {
+          const { bootstrapSync } = await import('./src/sync/bootstrap');
+          const mode = await bootstrapSync();
+          console.log(`[init] Sync bootstrap: ${mode}`);
+        } catch (e) {
+          console.warn('[init] Sync bootstrap failed:', e);
         }
 
         // Fire-and-forget: fetch remote store branding from Turso

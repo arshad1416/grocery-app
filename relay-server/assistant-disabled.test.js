@@ -9,7 +9,8 @@ const TEST_PORT = 9399;
 process.env.PORT = String(TEST_PORT);
 process.env.RELAY_PORT = String(TEST_PORT);
 process.env.POOL_PORT = String(TEST_PORT + 1);
-process.env.STATE_FILE = './test-relay-state-assistant-disabled.json';
+process.env.RELAY_STATE_FILE = './test-relay-state-assistant-disabled.json';
+process.env.STATE_FILE = './test-relay-state-assistant-disabled.json'; // for the cleanup helpers
 delete process.env.ASSISTANT_INTEGRATION;
 
 const fs = require('fs');

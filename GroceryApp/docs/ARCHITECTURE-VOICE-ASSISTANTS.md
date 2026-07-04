@@ -1,5 +1,16 @@
 # StopHop Architecture: Direct Google Assistant & Amazon Alexa Integrations
 
+> ⚠️ **STATUS (2026-07-03): DISABLED IN v1 — NOT SHIPPED.**
+> This design requires uploading the family master key encrypted to an RSA key
+> whose PRIVATE half lives on the relay (see §7.2 trade-off), which breaks the
+> zero-knowledge guarantee the app ships under. The relay refuses these
+> endpoints unless the operator sets `ASSISTANT_INTEGRATION=true`
+> (pinned by `relay-server/assistant-disabled.test.js`), and the client UI is
+> hidden behind `VOICE_ASSISTANT_LINKING_ENABLED=false` in SettingsScreen.
+> Siri (fully on-device, `src/voice/siri.ts`) is unaffected and ships in v1.
+> Re-enabling requires an in-app disclosure + privacy-label updates, or a
+> redesign that keeps decryption off the cloud function/relay.
+
 **Feature:** Standalone voice assistant integrations (no Home Assistant dependency)  
 **Tag:** `v1.03+`  
 **Date:** 2026-06-15  

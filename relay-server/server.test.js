@@ -6,7 +6,10 @@ const TEST_PORT = 9299;
 process.env.PORT = String(TEST_PORT);
 process.env.RELAY_PORT = String(TEST_PORT);
 process.env.POOL_PORT = String(TEST_PORT + 1);
-process.env.STATE_FILE = './test-relay-state.json';
+// NOTE: server.js reads RELAY_STATE_FILE (STATE_FILE was a long-standing bug
+// that made test runs write enrollment junk into the tracked relay-state.json)
+process.env.RELAY_STATE_FILE = './test-relay-state.json';
+process.env.STATE_FILE = './test-relay-state.json'; // kept for the cleanup helpers below
 // This suite tests the opt-in voice-assistant integration, which is disabled
 // by default in production (see ASSISTANT_INTEGRATION in server.js).
 process.env.ASSISTANT_INTEGRATION = 'true';
