@@ -63,6 +63,14 @@ Independent verifier confirmed all suites green + live relay behavior, and found
 - **Flaky ac1 test fixed**: `signature.replace(/A/g,'B')` tamper was a no-op ~20% of the time (no 'A' in random base64); now flips the first char deterministically.
 - watermelondb mock now mirrors `_raw.id` ↔ `record.id` like the real library (the missing mirror hid the hydration path from tests).
 
+## Second verification round → family join flow completed (2026-07-04)
+- Verifier #2 confirmed the hydration fix but proved **relay enrollment had no runtime callers**: PairingScreen only saved the relay URL; `enrollWithRelay` was never invoked; no relayToken ever existed; `bootstrapSync` could only ever be 'local-only'. Family sync — the app's headline feature — could not authenticate, ever.
+- **Fixed (commit dd28a6d3):** pairing QR now carries `{pairingCode, invite}`; PairingScreen `completeJoin()` does verify → connect → enroll → accept membership → recovery-phrase step for the shared key; inviter self-enrolls with a separate single-use invite and reuses its familyId (new optional param — previously every invite founded a NEW family, so members could never actually join each other).
+- **Additional real bugs fixed in the same path:** forgeable pairing-code signatures (signing keypair was derived from the PUBLIC deviceId — anyone could forge; now signed with the device secret, self-certifying signerKey, regression-tested); `grocceryapp://` scheme typo made all shared invite links dead (OS registered `groceryapp://` only); scanner didn't URL-decode tokens so even scanned QRs failed JSON.parse.
+- **Live verification:** booted the relay and drove the exact client invite construction against `/enroll`: 200 + relayToken, replay → 403, tamper → 403. Client/server serialization byte-compatible.
+- **Key-distribution design note:** the sealed-key (crypto_box_seal) handoff has NO relay transport endpoint — not built on either side. v1 join uses the existing recovery-phrase entry as the out-of-band family-key channel (matches the in-person QR trust model). Sealed-key-over-relay deferred to v1.1 with the fingerprint-verification work.
+- Deferred (documented): a REAL two-device smoke test on hardware before submission — mock-DB/Node tests can't prove the native SQLite + RN runtime path.
+
 ## Additional ground truth (verified directly, resolving agent disagreement)
 - **Extract endpoint IS mounted** in relay-server/server.js:712 (`POST /api/extract/flyer` → extract/extract-server.js). One earlier agent report claiming it wasn't mounted was wrong.
 - **Pool separation-by-port already exists in code**: server.js:991-1535 — if `POOL_PORT !== RELAY_PORT`, a separate HTTP server serves `/api/pool/*`. What's missing is deployment config (docker-compose has one service, no POOL_PORT) and true separate-origin deployment.
