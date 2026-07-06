@@ -13,6 +13,15 @@ process.env.STATE_FILE = './test-relay-state.json'; // kept for the cleanup help
 // This suite tests the opt-in voice-assistant integration, which is disabled
 // by default in production (see ASSISTANT_INTEGRATION in server.js).
 process.env.ASSISTANT_INTEGRATION = 'true';
+// The relay no longer generates the assistant keypair (it must never hold the
+// private key). Provision a throwaway PUBLIC key so the public-key endpoint
+// returns 200; the private key lives only in the webhook, which these tests
+// don't run (they pass an opaque fake encryptedMasterKey).
+process.env.ASSISTANT_PUBLIC_KEY = require('crypto').generateKeyPairSync('rsa', {
+  modulusLength: 2048,
+  publicKeyEncoding: { type: 'spki', format: 'pem' },
+  privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+}).publicKey;
 
 const fs = require('fs');
 const path = require('path');
