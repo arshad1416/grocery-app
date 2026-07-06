@@ -25,6 +25,9 @@
     ],
     "ios": {
       "supportsTablet": true,
+      "associatedDomains": [
+        "applinks:groceryapp.app"
+      ],
       "entitlements": {
         "com.apple.security.application-groups": [
           "group.com.shiftlogichq.stophop"
@@ -86,14 +89,22 @@
           "autoVerify": true,
           "data": [
             {
-              "scheme": "groceryapp",
-              "host": "invite",
-              "pathPrefix": "/"
-            },
-            {
               "scheme": "https",
               "host": "groceryapp.app",
               "pathPrefix": "/invite"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        },
+        {
+          "action": "VIEW",
+          "data": [
+            {
+              "scheme": "groceryapp",
+              "host": "invite"
             }
           ],
           "category": [

@@ -761,6 +761,8 @@ export default function HomeScreen({ navigation }: Props) {
                 onPress={() => navigation.navigate('Pairing')}
                 style={[styles.iconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F5F0E8' }]}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Pair a device or join a family"
               >
                 <Ionicons name="people-outline" size={20} color={theme.text} />
               </TouchableOpacity>
@@ -768,6 +770,8 @@ export default function HomeScreen({ navigation }: Props) {
                 onPress={() => navigation.navigate('Settings')}
                 style={[styles.iconBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : '#F5F0E8' }]}
                 activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="Settings"
               >
                 <Ionicons name="settings-outline" size={20} color={theme.text} />
               </TouchableOpacity>
