@@ -49,12 +49,26 @@ import { useThemeStore, useActiveTheme } from '../state/useThemeStore';
 import { themeColors } from '../components/groceryTheme';
 
 /**
+ * The paid "Managed" hosting tier is hidden in v1: there is no in-app way to
+ * purchase it, and Apple 3.1.1 requires digital services sold for use in-app
+ * to go through In-App Purchase — an un-buyable "subscription key" field is a
+ * rejection magnet. v1 ships self-hosted-only. Re-enable together with real
+ * IAP (see docs/MONETIZATION.md); the settings field and tier plumbing are
+ * kept intact underneath.
+ */
+const MANAGED_TIER_ENABLED = false;
+
+/**
  * Cloud voice-assistant linking (Alexa / Google Assistant) is disabled in v1.
- * Linking uploads an RSA-encrypted copy of the family master key that the relay
- * can decrypt (it holds the matching private key), which breaks the app's
- * zero-knowledge promise. The relay rejects these endpoints unless its operator
- * sets ASSISTANT_INTEGRATION=true; flip this flag only together with that
- * opt-in and an explicit in-app disclosure. Siri stays fully on-device.
+ *
+ * The relay-custody flaw is fixed: the relay no longer holds the assistant
+ * private key, so it can't decrypt the sealed family key (see
+ * assistant-keygen.js / ARCHITECTURE-VOICE-ASSISTANTS.md). But linking still
+ * sends list contents to a webhook that decrypts them to answer voice
+ * requests — inherent to cloud voice. Before flipping this on: deploy the
+ * webhook, add an explicit in-app disclosure, update the privacy labels/data-
+ * safety forms, and set ASSISTANT_INTEGRATION=true on the relay. See
+ * docs/MONETIZATION.md. Siri stays fully on-device and is unaffected.
  */
 const VOICE_ASSISTANT_LINKING_ENABLED = false;
 
@@ -353,7 +367,9 @@ export default function SettingsScreen({ navigation }: Props) {
   }
 
   const deviceId = getDeviceId();
-  const isSelfHosted = settings.hostingTier === 'self_hosted';
+  // With the managed tier hidden, everyone gets the self-hosted experience —
+  // including anyone whose stored settings still say 'managed'.
+  const isSelfHosted = !MANAGED_TIER_ENABLED || settings.hostingTier === 'self_hosted';
 
   return (
     <ScrollView style={[styles.container, { backgroundColor: theme.bg }]}>
@@ -364,7 +380,8 @@ export default function SettingsScreen({ navigation }: Props) {
         <Text style={[styles.title, { color: theme.text }]}>Settings</Text>
       </View>
 
-      {/* ── Tier Selector ─────────────────────────────────────────────── */}
+      {/* ── Tier Selector (hidden in v1 — see MANAGED_TIER_ENABLED) ──── */}
+      {MANAGED_TIER_ENABLED && (
       <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
         <Text style={[styles.sectionTitle, { color: theme.text }]}>Hosting Tier</Text>
         <SegmentedControl
@@ -377,6 +394,7 @@ export default function SettingsScreen({ navigation }: Props) {
           theme={theme}
         />
       </View>
+      )}
 
       {/* ── Appearance Selector ─────────────────────────────────────────── */}
       <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>

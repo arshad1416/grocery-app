@@ -1,15 +1,28 @@
 # StopHop Architecture: Direct Google Assistant & Amazon Alexa Integrations
 
-> ⚠️ **STATUS (2026-07-03): DISABLED IN v1 — NOT SHIPPED.**
-> This design requires uploading the family master key encrypted to an RSA key
-> whose PRIVATE half lives on the relay (see §7.2 trade-off), which breaks the
-> zero-knowledge guarantee the app ships under. The relay refuses these
-> endpoints unless the operator sets `ASSISTANT_INTEGRATION=true`
-> (pinned by `relay-server/assistant-disabled.test.js`), and the client UI is
-> hidden behind `VOICE_ASSISTANT_LINKING_ENABLED=false` in SettingsScreen.
-> Siri (fully on-device, `src/voice/siri.ts`) is unaffected and ships in v1.
-> Re-enabling requires an in-app disclosure + privacy-label updates, or a
-> redesign that keeps decryption off the cloud function/relay.
+> ⚠️ **STATUS (2026-07-06): DISABLED IN v1 — NOT SHIPPED.**
+> Still off in v1 (client UI hidden behind `VOICE_ASSISTANT_LINKING_ENABLED=false`
+> in SettingsScreen; relay endpoints 404 unless `ASSISTANT_INTEGRATION=true`,
+> pinned by `relay-server/assistant-disabled.test.js`). Siri (on-device,
+> `src/voice/siri.ts`) is unaffected and ships in v1.
+>
+> **Key-custody flaw FIXED (2026-07-06).** The relay no longer generates or
+> holds the assistant RSA private key. It serves only the *public* key
+> (`ASSISTANT_PUBLIC_KEY`, generated out of band by `assistant-keygen.js`) and
+> fails closed if it isn't provisioned; the private key lives ONLY in the
+> deployed webhook's environment (`ASSISTANT_PRIVATE_KEY`). So the relay —
+> which stores all ciphertext and the sealed family keys — is now
+> cryptographically unable to read any of it. Pinned by
+> `relay-server/assistant-key-custody.test.js`.
+>
+> **Residual (inherent to cloud voice, NOT a bug):** the webhook still
+> transiently decrypts list content while answering a request — no cloud
+> assistant can be zero-knowledge, since Amazon/Google invoke the webhook and
+> plaintext must exist there to answer. Re-enabling for real still requires:
+> (1) in-app disclosure + matching privacy-label/data-safety updates, (2) a
+> deployed webhook holding the private key, and (3) ideally a key hierarchy so
+> the webhook receives only a derived sync subkey, not the root master key
+> (see §7.2 and `docs/MONETIZATION.md`).
 
 **Feature:** Standalone voice assistant integrations (no Home Assistant dependency)  
 **Tag:** `v1.03+`  

@@ -167,46 +167,50 @@ const STATE_FILE = process.env.RELAY_STATE_FILE || './relay-state.json';
 
 /**
  * Cloud voice-assistant integration (Alexa / Google Assistant) is DISABLED by
- * default. Linking uploads an RSA-encrypted copy of the family master key that
- * THIS server can decrypt (it generates and holds the private key), which
- * breaks the zero-knowledge guarantee for linked families. Self-host operators
- * who accept that trade-off can opt in with ASSISTANT_INTEGRATION=true.
- * Siri integration is unaffected (fully on-device).
+ * default (opt in with ASSISTANT_INTEGRATION=true). Siri is unaffected
+ * (fully on-device).
+ *
+ * KEY CUSTODY (the fix for the earlier zero-knowledge break):
+ *   The relay holds ONLY the assistant RSA *public* key — never the private
+ *   key. Clients seal the family key to that public key; only the deployed
+ *   assistant webhook (Cloud Function / Lambda), which holds the private key
+ *   in its own environment (ASSISTANT_PRIVATE_KEY), can decrypt it, and only
+ *   transiently while answering a voice request.
+ *
+ *   The relay stores all ciphertext plus the sealed family-key blob, but with
+ *   no private key it is cryptographically unable to read any of it. Generate
+ *   the keypair out of band with `node assistant-keygen.js` and provision the
+ *   public half here (ASSISTANT_PUBLIC_KEY or keys/assistant-public-key.pem),
+ *   the private half to the webhook ONLY. Endpoints fail closed if the public
+ *   key is not provisioned.
  */
 const ASSISTANT_INTEGRATION = process.env.ASSISTANT_INTEGRATION === 'true';
 
 const ASSISTANT_PUBLIC_KEY_PATH =
   process.env.ASSISTANT_PUBLIC_KEY_PATH || path.join(__dirname, 'keys', 'assistant-public-key.pem');
-const ASSISTANT_PRIVATE_KEY_PATH =
-  process.env.ASSISTANT_PRIVATE_KEY_PATH || path.join(__dirname, 'keys', 'assistant-private-key.pem');
 
 let assistantPublicKeyPem = null;
-let assistantPrivateKeyPem = null;
 
-function ensureAssistantKeys() {
-  if (assistantPublicKeyPem && assistantPrivateKeyPem) return;
-
-  const keysDir = path.join(__dirname, 'keys');
-  if (!fs.existsSync(keysDir)) {
-    fs.mkdirSync(keysDir, { recursive: true });
+/**
+ * Load the voice-assistant RSA PUBLIC key (SPKI PEM). The relay NEVER holds or
+ * generates the private key. Returns the PEM string, or null if not
+ * provisioned (callers must fail closed).
+ */
+function getAssistantPublicKey() {
+  if (assistantPublicKeyPem) return assistantPublicKeyPem;
+  if (process.env.ASSISTANT_PUBLIC_KEY) {
+    assistantPublicKeyPem = process.env.ASSISTANT_PUBLIC_KEY;
+    return assistantPublicKeyPem;
   }
-
-  if (fs.existsSync(ASSISTANT_PUBLIC_KEY_PATH) && fs.existsSync(ASSISTANT_PRIVATE_KEY_PATH)) {
-    assistantPublicKeyPem = fs.readFileSync(ASSISTANT_PUBLIC_KEY_PATH, 'utf-8');
-    assistantPrivateKeyPem = fs.readFileSync(ASSISTANT_PRIVATE_KEY_PATH, 'utf-8');
-  } else {
-    console.log('[assistant-keys] Generating new RSA-4096 keypair for voice assistant...');
-    const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
-      modulusLength: 4096,
-      publicKeyEncoding: { type: 'spki', format: 'pem' },
-      privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
-    });
-    assistantPublicKeyPem = publicKey;
-    assistantPrivateKeyPem = privateKey;
-    fs.writeFileSync(ASSISTANT_PUBLIC_KEY_PATH, publicKey, 'utf-8');
-    fs.writeFileSync(ASSISTANT_PRIVATE_KEY_PATH, privateKey, 'utf-8');
-    console.log('[assistant-keys] RSA-4096 keypair saved.');
+  try {
+    if (fs.existsSync(ASSISTANT_PUBLIC_KEY_PATH)) {
+      assistantPublicKeyPem = fs.readFileSync(ASSISTANT_PUBLIC_KEY_PATH, 'utf-8');
+      return assistantPublicKeyPem;
+    }
+  } catch (err) {
+    console.error('[assistant-keys] Failed to read public key:', err.message);
   }
+  return null;
 }
 
 /**
@@ -737,17 +741,25 @@ const server = createServer((req, res) => {
     return;
   }
 
-  // GET /api/assistant/public-key — returns voice assistant public key
+  // GET /api/assistant/public-key — returns the voice-assistant PUBLIC key.
+  // Fails closed if no public key has been provisioned (the relay never
+  // generates one — see assistant-keygen.js).
   if (req.url === '/api/assistant/public-key' && req.method === 'GET') {
-    ensureAssistantKeys();
+    const pubKey = getAssistantPublicKey();
+    if (!pubKey) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        error: 'Voice assistant public key not provisioned. Generate a keypair with assistant-keygen.js and set ASSISTANT_PUBLIC_KEY; the private key goes to the webhook only.',
+      }));
+      return;
+    }
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end(assistantPublicKeyPem);
+    res.end(pubKey);
     return;
   }
 
   // GET /oauth/authorize — account linking HTML page showing pairing code
   if (req.url.startsWith('/oauth/authorize') && req.method === 'GET') {
-    ensureAssistantKeys();
     const reqUrl = new URL(req.url, `http://${req.headers.host}`);
     const redirectUri = reqUrl.searchParams.get('redirect_uri');
     const state = reqUrl.searchParams.get('state');
@@ -1466,11 +1478,10 @@ async function handleTokenRequest(req, res) {
 // Load persisted state from disk (enrollments, invite signatures)
 loadStateFromDisk();
 
-// Ensure RSA keys are ready for Voice Assistant (opt-in only — see
-// ASSISTANT_INTEGRATION; no assistant private key is created otherwise)
-if (ASSISTANT_INTEGRATION) {
-  ensureAssistantKeys();
-}
+// Voice-assistant public key is loaded lazily on first request. The relay
+// never generates or holds the assistant private key (see getAssistantPublicKey
+// and assistant-keygen.js); if ASSISTANT_INTEGRATION is on but no public key is
+// provisioned, the public-key endpoint fails closed.
 
 // Load the used tokens store (non-blocking)
 usedTokensStore.loadOnStartup().catch((err) => {

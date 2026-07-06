@@ -22,6 +22,13 @@
   flyer image itself (EXIF-stripped, plaintext over TLS) to the relay's
   extract endpoint. That channel is NOT zero-knowledge; see
   `src/pricing/relay-extractor.ts` and AC-11 scope note.
+- **Voice-assistant key custody**: the relay holds ONLY the assistant RSA
+  public key, never the private key (generated out of band by
+  `assistant-keygen.js`, private half provisioned only to the webhook). The
+  relay cannot decrypt the sealed family keys it stores. The webhook — a
+  separate trust domain — transiently decrypts list content while answering a
+  voice request; that exposure is inherent to any cloud voice assistant and is
+  disclosed, not claimed away. (Feature disabled in v1 regardless.)
 
 ### 2. Network Eavesdropper
 - Sees: encrypted WebSocket traffic between client and relay

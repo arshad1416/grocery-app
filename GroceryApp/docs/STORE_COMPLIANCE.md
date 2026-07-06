@@ -324,6 +324,13 @@ if (settings.sentryEnabled === false) {
 
 ## 7. Managed vs Self-Hosted — What Differs for Compliance
 
+> **v1 note:** the Managed tier is **hidden in v1** (`MANAGED_TIER_ENABLED = false`
+> in SettingsScreen.tsx) — there is no in-app purchase path, and offering an
+> un-buyable paid tier risks Apple 3.1.1 rejection. v1 submissions should
+> answer store questionnaires as a free, self-hosted-only app. This table
+> documents both modes for when the managed tier returns with real IAP
+> (see docs/MONETIZATION.md).
+
 | Aspect | Self-Hosted | Managed |
 |--------|-------------|---------|
 | **Relay server** | User runs it | ShiftLogic runs it |
