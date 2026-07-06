@@ -882,7 +882,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     <View style={[styles.container, { backgroundColor: theme.bg }]}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Go back">
           <Ionicons name="chevron-back" size={24} color={theme.primary} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: theme.text }]}>{listName}</Text>
@@ -901,7 +901,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
               <Ionicons name="camera-outline" size={22} color={theme.text} />
             </TouchableOpacity>
           )}
-          <TouchableOpacity onPress={handleSettings} style={styles.settingsBtn} activeOpacity={0.7}>
+          <TouchableOpacity onPress={handleSettings} style={styles.settingsBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Settings">
             <Ionicons name="settings-outline" size={22} color={theme.text} />
           </TouchableOpacity>
         </View>
@@ -1170,6 +1170,8 @@ export default function GroceryListScreen({ route, navigation }: Props) {
           }]}
           onPress={() => setShowAddSheet(true)}
           activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Add grocery item"
         >
           <Ionicons name="add" size={28} color={isDark ? '#0B0F12' : '#FFFFFF'} />
         </TouchableOpacity>

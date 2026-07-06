@@ -5,7 +5,7 @@
     "details": [
       {
         "appID": "TEAMID.com.shiftlogichq.stophop",
-        "paths": ["/invite/*"]
+        "paths": ["/invite", "/invite/*"]
       }
     ]
   }

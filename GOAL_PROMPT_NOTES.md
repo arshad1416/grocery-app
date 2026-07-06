@@ -63,6 +63,19 @@ Independent verifier confirmed all suites green + live relay behavior, and found
 - **Flaky ac1 test fixed**: `signature.replace(/A/g,'B')` tamper was a no-op ~20% of the time (no 'A' in random base64); now flips the first char deterministically.
 - watermelondb mock now mirrors `_raw.id` ↔ `record.id` like the real library (the missing mirror hid the hydration path from tests).
 
+## Launch-gap closing pass (2026-07-04) — scoping agent + fixes
+Fixed (repo-side, all tested/typechecked green at 465 passing):
+- **Dead list "Share"**: HomeScreen emitted `grocceryapp://` + `{listId,familyId}` blob the join flow couldn't parse → now uses new `src/identity/invite-link.ts` (single source of truth: `{pairingCode, invite}` + self-enroll), shared with Settings' Generate QR.
+- **Invite deep link routed nowhere**: `invite` path mapped to an unregistered `Invite` screen → made it a RN v7 `alias` of the Pairing screen (verified `alias` is real in @react-navigation/core 7.2.5 types); dropped dead route.
+- **iOS Universal Links couldn't verify**: added `ios.associatedDomains: applinks:groceryapp.app` to app.json; fixed AASA `paths` (`/invite/*` → `/invite`, `/invite/*`) so `/invite?token=` matches.
+- **Android App Links**: added `android/assetlinks.json` deploy template + docs/DEEP-LINK-HOSTING.md; split the `autoVerify` intent filter so the custom scheme isn't under autoVerify (only http/https are).
+- **Notification taps did nothing**: `useNotificationNavigation` was defined but never mounted → rewrote as `registerNotificationNavigation(ref)`, mounted from NavigationContainer `onReady`.
+- **Accessibility**: labeled the highest-traffic icon-only buttons (header nav, back, FAB, flyer scan). Full a11y sweep across ~291 touchables deferred as polish (not a store gate for v1).
+Deferred with reason:
+- **iOS native splash**: SDK 56 needs the `expo-splash-screen` config plugin (not installed); the core `expo.splash` key is web/PWA-only per @expo/config-types. Adding a native dep needs a real prebuild/EAS build to validate — can't verify here. Android splash already configured. → owner adds during first EAS build.
+- **Onboarding**: first run lands on an empty Home with visible "Create list" + pair (people icon) affordances — usable, no guided flow. Optional.
+- Mic/Speech iOS purpose strings: justified by the Siri entitlement (in-app "voice" is a text modal, no mic API); left as-is.
+
 ## Second verification round → family join flow completed (2026-07-04)
 - Verifier #2 confirmed the hydration fix but proved **relay enrollment had no runtime callers**: PairingScreen only saved the relay URL; `enrollWithRelay` was never invoked; no relayToken ever existed; `bootstrapSync` could only ever be 'local-only'. Family sync — the app's headline feature — could not authenticate, ever.
 - **Fixed (commit dd28a6d3):** pairing QR now carries `{pairingCode, invite}`; PairingScreen `completeJoin()` does verify → connect → enroll → accept membership → recovery-phrase step for the shared key; inviter self-enrolls with a separate single-use invite and reuses its familyId (new optional param — previously every invite founded a NEW family, so members could never actually join each other).

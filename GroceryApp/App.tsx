@@ -217,7 +217,18 @@ function App() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        <NavigationContainer ref={navigationRef} linking={Screens.linkingConfig}>
+        <NavigationContainer
+          ref={navigationRef}
+          linking={Screens.linkingConfig}
+          onReady={() => {
+            // Wire notification taps → navigate to the relevant list.
+            import('./src/navigation/useNotificationNavigation')
+              .then(({ registerNotificationNavigation }) =>
+                registerNotificationNavigation(navigationRef),
+              )
+              .catch(() => {});
+          }}
+        >
           <Stack.Navigator screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
             <Stack.Screen name="Home" component={Screens.Home} />
             <Stack.Screen name="GroceryList" component={Screens.GroceryList} />
