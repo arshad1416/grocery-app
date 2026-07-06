@@ -20,10 +20,10 @@ export type RootStackParamList = {
   Home: undefined;
   GroceryList: { listId: string };
   ItemEdit: { listId: string; itemId?: string };
-  Pairing: undefined;
+  // token is present when opened from an invite deep link (groceryapp://invite?token=)
+  Pairing: { token?: string } | undefined;
   Settings: undefined;
   Privacy: undefined;
-  Invite: { token: string };
   Recovery: { mode: 'show' | 'recover' } | undefined;
 };
 
@@ -36,9 +36,24 @@ export const linkingConfig: LinkingOptions<RootStackParamList> = {
       Home: '',
       GroceryList: 'list/:listId',
       ItemEdit: 'item/:listId/:itemId?',
-      Pairing: 'pairing',
+      // Both the manual `pairing` path and the shared `invite?token=` links
+      // open PairingScreen, which reads route.params.token and runs the full
+      // join. (Previously `invite` mapped to an `Invite` route that has no
+      // registered screen, so tapping a shared invite navigated nowhere.)
+      Pairing: {
+        path: 'pairing',
+        alias: ['invite'],
+        parse: {
+          token: (token: string) => {
+            try {
+              return decodeURIComponent(token);
+            } catch {
+              return token;
+            }
+          },
+        },
+      },
       Settings: 'settings',
-      Invite: 'invite',
     },
   },
   /**

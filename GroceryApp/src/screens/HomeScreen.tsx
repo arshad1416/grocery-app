@@ -227,34 +227,36 @@ export default function HomeScreen({ navigation }: Props) {
     }
   }, [contextMenu.list, handleDeleteInitiated]);
 
-  const handleContextMenuShare = useCallback(() => {
-    if (contextMenu.list) {
-      shareInvite(
-        `grocceryapp://invite?token=${encodeURIComponent(
-          JSON.stringify({
-            listId: contextMenu.list.id,
-            listName: contextMenu.list.name,
-            familyId: contextMenu.list.familyId,
-          }),
-        )}`,
+  // Sharing a list means inviting someone into the family (sync is
+  // family-wide, not per-list). Generate a real, joinable invite — the same
+  // payload the pairing/QR flow produces — instead of a bare list blob that
+  // the join flow can't consume.
+  const shareFamilyInvite = useCallback(async () => {
+    try {
+      const { createFamilyInviteLink, inviteTokenToUrl } = await import('../identity/invite-link');
+      const { token, selfEnrollFailed } = await createFamilyInviteLink();
+      if (selfEnrollFailed) {
+        Alert.alert(
+          'Heads up',
+          "The invite link is ready, but this device couldn't reach the relay to enroll itself — your own edits may not sync until you retry with the relay online.",
+        );
+      }
+      await shareInvite(inviteTokenToUrl(token));
+    } catch (err) {
+      Alert.alert(
+        'Cannot Create Invite',
+        err instanceof Error ? err.message : 'Failed to create invite link.',
       );
     }
-  }, [contextMenu.list, shareInvite]);
+  }, [shareInvite]);
 
-  const handleShare = useCallback(
-    (list: GroceryList) => {
-      shareInvite(
-        `grocceryapp://invite?token=${encodeURIComponent(
-          JSON.stringify({
-            listId: list.id,
-            listName: list.name,
-            familyId: list.familyId,
-          }),
-        )}`,
-      );
-    },
-    [shareInvite],
-  );
+  const handleContextMenuShare = useCallback(() => {
+    shareFamilyInvite();
+  }, [shareFamilyInvite]);
+
+  const handleShare = useCallback(() => {
+    shareFamilyInvite();
+  }, [shareFamilyInvite]);
 
   const loadFlyerDeals = useCallback(async () => {
     setDealsLoading(true);
@@ -513,7 +515,7 @@ export default function HomeScreen({ navigation }: Props) {
             list={list}
             onPress={() => handleListPress(list)}
             onDelete={() => handleDeleteInitiated(list)}
-            onShare={() => handleShare(list)}
+            onShare={() => handleShare()}
             onLongPress={(event) => handleLongPress(list, event)}
           />
         ))}

@@ -21,7 +21,8 @@ import {
   getFamilyId,
 } from '../src/identity/family';
 import { generatePairingCode, parsePairingCode } from '../src/setup/self-host';
-import { parseInviteUrl } from '../src/setup/invite-url';
+import { parseInviteUrl, INVITE_URL_PREFIX } from '../src/setup/invite-url';
+import { inviteTokenToUrl } from '../src/identity/invite-link';
 import type { PairingCode } from '../src/types';
 
 beforeAll(async () => {
@@ -61,6 +62,13 @@ describe('Combined invite payload (QR contents)', () => {
   it('still accepts QR links using the legacy misspelled scheme', () => {
     const token = parseInviteUrl('grocceryapp://invite?token=abc%7B1%7D');
     expect(token).toBe('abc{1}');
+  });
+
+  it('inviteTokenToUrl uses the correct scheme and round-trips through parseInviteUrl', () => {
+    const combined = JSON.stringify({ pairingCode: { relayUrl: 'ws://h:8080' }, invite: { nonce: 'x' } });
+    const url = inviteTokenToUrl(combined);
+    expect(url.startsWith(INVITE_URL_PREFIX)).toBe(true);
+    expect(parseInviteUrl(url)).toBe(combined);
   });
 });
 
