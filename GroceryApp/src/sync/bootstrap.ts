@@ -22,9 +22,11 @@ import type { ConnectionState } from './y-websocket';
  */
 export async function bootstrapSync(): Promise<'no-key' | 'local-only' | 'connected'> {
   const { getMasterKey } = await import('../crypto');
+  const { useSyncStore } = await import('../state/useSyncStore');
   const masterKey = await getMasterKey();
   if (!masterKey) {
     // First launch — nothing to hydrate, nothing to sync yet.
+    useSyncStore.getState().setSyncState('not_configured');
     return 'no-key';
   }
 
@@ -50,6 +52,7 @@ export async function bootstrapSync(): Promise<'no-key' | 'local-only' | 'connec
   if (!relayToken || !baseUrl || !familyId || !deviceId) {
     // Not enrolled (or relay not configured) — local-only mode. The Yjs
     // observer still persists edits to WatermelonDB via the key set above.
+    useSyncStore.getState().setSyncState('not_configured');
     return 'local-only';
   }
 
@@ -71,7 +74,6 @@ export async function bootstrapSync(): Promise<'no-key' | 'local-only' | 'connec
     }
   }
 
-  const { useSyncStore } = await import('../state/useSyncStore');
   const { useGroceryStore } = await import('../state/useGroceryStore');
 
   await syncManager.init(

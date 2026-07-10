@@ -454,7 +454,7 @@ export default function HomeScreen({ navigation }: Props) {
       ? theme.accent
       : syncState === 'error'
         ? '#EF4444'
-        : syncState === 'offline'
+        : syncState === 'offline' || syncState === 'not_configured'
           ? '#999'
           : theme.primary;
 
@@ -778,19 +778,33 @@ export default function HomeScreen({ navigation }: Props) {
             </View>
           </View>
 
-          {/* Sync indicator */}
-          <View style={styles.syncBar}>
-            <View style={[styles.syncDot, { backgroundColor: syncDotColor }]} />
-            <Text style={[styles.syncText, { color: theme.secondaryText }]}>
-              {syncState === 'syncing'
-                ? 'Syncing...'
-                : syncState === 'error'
-                  ? 'Sync error'
-                  : syncState === 'offline'
-                    ? 'Offline'
-                    : 'Connected'}
-            </Text>
-          </View>
+          {/* Sync indicator — tappable when not set up, to reach Pairing */}
+          {syncState === 'not_configured' ? (
+            <TouchableOpacity
+              style={styles.syncBar}
+              onPress={() => navigation.navigate('Pairing')}
+              accessibilityRole="button"
+              accessibilityLabel="Local only. Tap to set up family sharing."
+            >
+              <View style={[styles.syncDot, { backgroundColor: syncDotColor }]} />
+              <Text style={[styles.syncText, { color: theme.secondaryText }]}>
+                Local only — tap to set up sharing
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.syncBar}>
+              <View style={[styles.syncDot, { backgroundColor: syncDotColor }]} />
+              <Text style={[styles.syncText, { color: theme.secondaryText }]}>
+                {syncState === 'syncing'
+                  ? 'Syncing...'
+                  : syncState === 'error'
+                    ? 'Sync error'
+                    : syncState === 'offline'
+                      ? 'Offline'
+                      : 'Connected'}
+              </Text>
+            </View>
+          )}
 
           {/* Search bar */}
           <SearchBar value={searchQuery} onChangeText={setSearchQuery} placeholder="Search groceries..." />

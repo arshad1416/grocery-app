@@ -32,7 +32,9 @@ export interface SyncStateShape {
 // ─── Store ──────────────────────────────────────────────────────────────────
 
 export const useSyncStore = create<SyncStateShape>((set) => ({
-  syncState: 'idle',
+  // Start as not_configured: a fresh device has no relay/family, so it must not
+  // display "Synced". bootstrapSync() promotes this once a relay connects.
+  syncState: 'not_configured',
   connectionState: 'disconnected',
   lastSyncedAt: null,
   pendingUploads: 0,
