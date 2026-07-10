@@ -29,7 +29,9 @@ export default function SplashScreen({ onFinish }: SplashScreenProps) {
       }),
     ]).start();
 
-    const timer = setTimeout(onFinish, 2000);
+    // Just long enough for the 800ms intro animation to land — not a hard 2s
+    // stall on top of app init.
+    const timer = setTimeout(onFinish, 1100);
     return () => clearTimeout(timer);
   }, []);
 

@@ -61,6 +61,9 @@ export default function BottomTabBar({ activeTab, onTabPress }: BottomTabBarProp
             style={styles.tab}
             onPress={() => onTabPress(tab.name)}
             activeOpacity={0.7}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: isActive }}
+            accessibilityLabel={tab.label}
           >
             <View style={styles.tabContent}>
               {isActive && isDark && (

@@ -77,6 +77,7 @@ export default function HomeScreen({ navigation }: Props) {
   // Delete flow state
   const [pendingDelete, setPendingDelete] = useState<GroceryList | null>(null);
   const [undoList, setUndoList] = useState<GroceryList | null>(null);
+  const [flashMessage, setFlashMessage] = useState<string | null>(null);
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -392,7 +393,7 @@ export default function HomeScreen({ navigation }: Props) {
         sortOrder: 0,
       });
       
-      Alert.alert('Success', `Added "${name}" to "${list.name}"`);
+      setFlashMessage(`Added "${name}" to "${list.name}"`);
       setShowListSelector(false);
       setShowNewProductForm(false);
       setScanResult(null);
@@ -431,7 +432,7 @@ export default function HomeScreen({ navigation }: Props) {
         sortOrder: 0,
       });
       
-      Alert.alert('Success', `Added "${pendingDealToAdd.name}" to "${list.name}"`);
+      setFlashMessage(`Added "${pendingDealToAdd.name}" to "${list.name}"`);
       setPendingDealToAdd(null);
       setShowListSelector(false);
     } catch (err) {
@@ -862,6 +863,14 @@ export default function HomeScreen({ navigation }: Props) {
       />
 
       {/* Undo Toast */}
+      {flashMessage && !undoList && (
+        <UndoToast
+          message={flashMessage}
+          duration={2500}
+          onDismiss={() => setFlashMessage(null)}
+        />
+      )}
+
       {undoList && (
         <UndoToast
           message={`"${undoList.name}" deleted`}

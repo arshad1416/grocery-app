@@ -112,6 +112,10 @@ const ItemRow = memo(function ItemRow({
         style={styles.checkboxTouch}
         onPress={handleCheckToggle}
         activeOpacity={0.8}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: item.isChecked }}
+        accessibilityLabel={item.isChecked ? `${item.name}, checked off` : `${item.name}, not checked off`}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
         <View
           style={[

@@ -105,6 +105,10 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [showErrorDetails, setShowErrorDetails] = useState(false);
   const [Screens, setScreens] = useState<any>(null);
+  // Status-bar icons must contrast with the theme: light icons on dark, dark
+  // icons on light. Previously hardcoded "light", so icons vanished in light mode.
+  const activeTheme = useActiveTheme();
+  const statusBarStyle = activeTheme === 'dark' ? 'light' : 'dark';
 
   const runInit = useCallback(() => {
     setError(null);
@@ -271,7 +275,7 @@ function App() {
             <Stack.Screen name="Recovery" component={Screens.Recovery} />
           </Stack.Navigator>
         </NavigationContainer>
-        <StatusBar style="light" />
+        <StatusBar style={statusBarStyle} />
       </ErrorBoundary>
     </SafeAreaProvider>
   );
