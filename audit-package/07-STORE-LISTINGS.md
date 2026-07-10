@@ -194,3 +194,35 @@ Screenshots/video are the last asset gap on both stores' checklists
 (`02-APPLE-READINESS.md`, `03-GOOGLE-READINESS.md`). Everything here assumes
 the same session as the two-device smoke test — one afternoon: smoke test →
 seed data → capture screenshots → record video → frame/caption → upload.
+
+---
+
+## 7. Friendlier name candidates (verified 2026-07-08)
+
+Store search (both stores) + live domain checks. "Store hits" = any existing
+app found under that name.
+
+| Candidate | Vibe | Store hits | .app domain | .com | Verdict |
+|---|---|---|---|---|---|
+| **CartNest** | warm — nest = home/family | none found | ✅ available | ✅ available | **Top pick** — only candidate with both domains free; obvious icon (nest+cart) |
+| **SnugCart** | coziest, most playful | none found | ✅ available | — | Strong #2 — friendliest word, says feeling not function |
+| **KinCart** | family-forward ("kin") | none found | ✅ available | ❌ taken | Solid #3 |
+| HomeCart | friendly but plain | none found | ✅ available | — | OK; generic-adjacent, delivery-service confusion risk |
+| ToteCart | neutral | none | ✅ available | — | Clunky to say |
+| ~~CartHop~~ | — | **direct competitor** (carthop.store: multi-store price splitting!) | ❌ | — | Eliminated |
+| ~~Basketful~~ | — | live grocery-list app (Play co.basketful.basketful + iOS) | ✅ | — | Eliminated |
+| ~~Grocery App~~ | — | taken verbatim on Play; generic | — | — | Eliminated |
+| ~~PantryPal / Cartly / MilkRun / Grocerly / OurCart / ListNest / FamCart~~ | — | domains taken → brands occupied | ❌ | — | Eliminated |
+
+Registration (user action — do not auto-purchase):
+- cartnest.app / cartnest.com: godaddy.com/domainsearch/find?domainToCheck=cartnest.app
+- snugcart.app: godaddy.com/domainsearch/find?domainToCheck=snugcart.app
+- kincart.app: godaddy.com/domainsearch/find?domainToCheck=kincart.app
+
+**Rename cost (pre-launch = cheap):** display name lives in app.json
+(`name`, listing titles) + marketing docs; the bundle id
+(`com.shiftlogichq.stophop`) is user-invisible and can stay, but decide BEFORE
+first submission (iOS locks it after). Invite-link domain is brand-neutral
+(`groceryapp.app`) and keeps working; if switching to cartnest.app for links,
+update `associatedDomains`, AASA, assetlinks + DEEP-LINK-HOSTING.md.
+Listing copy: "CartNest: Family Grocery List" = 29 chars — fits.
