@@ -60,6 +60,7 @@ export default function HomeScreen({ navigation }: Props) {
   const isLoading = useListStore((s) => s.isLoading);
   const loadLists = useListStore((s) => s.loadLists);
   const createList = useListStore((s) => s.createList);
+  const updateList = useListStore((s) => s.updateList);
   const deleteList = useListStore((s) => s.deleteList);
   const restoreList = useListStore((s) => s.restoreList);
 
@@ -164,18 +165,40 @@ export default function HomeScreen({ navigation }: Props) {
     [navigation],
   );
 
-  const handleCreateList = useCallback(async () => {
-    const firstMember = Object.values(members).find((m) => m.isActive);
-    const familyId = firstMember?.familyId ?? 'default-family';
+  // Name-on-create + rename share one small modal (Alert.prompt is iOS-only).
+  const [nameModal, setNameModal] = useState<
+    { mode: 'create'; value: string } | { mode: 'rename'; listId: string; value: string } | null
+  >(null);
 
+  const handleCreateList = useCallback(() => {
+    setNameModal({ mode: 'create', value: '' });
+  }, []);
+
+  const handleRenameList = useCallback((list: GroceryList) => {
+    setNameModal({ mode: 'rename', listId: list.id, value: list.name });
+  }, []);
+
+  const handleNameModalSubmit = useCallback(async () => {
+    if (!nameModal) return;
+    const name = nameModal.value.trim() || 'My Grocery List';
     try {
-      const newList = await createList('My Grocery List', familyId);
-      navigation.navigate('GroceryList', { listId: newList.id });
+      if (nameModal.mode === 'create') {
+        const firstMember = Object.values(members).find((m) => m.isActive);
+        const familyId = firstMember?.familyId ?? 'default-family';
+        const newList = await createList(name, familyId);
+        setNameModal(null);
+        navigation.navigate('GroceryList', { listId: newList.id });
+      } else {
+        await updateList(nameModal.listId, { name });
+        setNameModal(null);
+      }
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create list';
-      Alert.alert('Error', message);
+      Alert.alert(
+        'Could not save',
+        err instanceof Error ? err.message : 'Please try again.',
+      );
     }
-  }, [createList, members, navigation]);
+  }, [nameModal, members, createList, updateList, navigation]);
 
   // Delete handlers
   const handleDeleteInitiated = useCallback((list: GroceryList) => {
@@ -823,6 +846,7 @@ export default function HomeScreen({ navigation }: Props) {
         listName={contextMenu.list?.name ?? ''}
         onDelete={handleContextMenuDelete}
         onShare={handleContextMenuShare}
+        onRename={contextMenu.list ? () => handleRenameList(contextMenu.list!) : undefined}
         onClose={handleContextMenuClose}
         theme={theme}
         position={contextMenu.position}
@@ -845,6 +869,61 @@ export default function HomeScreen({ navigation }: Props) {
           onDismiss={handleUndoDismiss}
         />
       )}
+
+      {/* Name / Rename list modal */}
+      <Modal
+        visible={nameModal !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setNameModal(null)}
+        statusBarTranslucent
+      >
+        <TouchableWithoutFeedback onPress={() => setNameModal(null)}>
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback>
+              <View style={[styles.listSelectorDialog, { backgroundColor: theme.cardBg }]}>
+                <Text style={[styles.listSelectorTitle, { color: theme.text }]}>
+                  {nameModal?.mode === 'rename' ? 'Rename list' : 'Name your list'}
+                </Text>
+                <TextInput
+                  style={[styles.nameInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.bg }]}
+                  value={nameModal?.value ?? ''}
+                  onChangeText={(t) =>
+                    setNameModal((m) => (m ? { ...m, value: t } : m))
+                  }
+                  placeholder="e.g. Weekly groceries"
+                  placeholderTextColor={theme.secondaryText}
+                  autoFocus
+                  returnKeyType="done"
+                  onSubmitEditing={handleNameModalSubmit}
+                  maxLength={60}
+                  accessibilityLabel="List name"
+                />
+                <View style={styles.nameModalActions}>
+                  <TouchableOpacity
+                    style={styles.nameModalBtn}
+                    onPress={() => setNameModal(null)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Cancel"
+                  >
+                    <Text style={{ color: theme.secondaryText, fontSize: 16, fontWeight: '600' }}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.nameModalBtn, styles.nameModalBtnPrimary, { backgroundColor: theme.primary }]}
+                    onPress={handleNameModalSubmit}
+                    accessibilityRole="button"
+                    accessibilityLabel={nameModal?.mode === 'rename' ? 'Save name' : 'Create list'}
+                  >
+                    <Text style={{ color: '#fff', fontSize: 16, fontWeight: '700' }}>
+                      {nameModal?.mode === 'rename' ? 'Save' : 'Create'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableWithoutFeedback>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
 
       {/* List Selector Modal */}
       <Modal
@@ -1257,6 +1336,29 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     textAlign: 'center',
     marginBottom: 6,
+  },
+  nameInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    marginTop: 14,
+    marginBottom: 16,
+  },
+  nameModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  nameModalBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+  },
+  nameModalBtnPrimary: {
+    minWidth: 96,
+    alignItems: 'center',
   },
   listSelectorSubtitle: {
     fontSize: 14,

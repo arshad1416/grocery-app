@@ -96,10 +96,11 @@ export default function FlyerScanFlow({
         }
 
         if (allPrices.length === 0) {
+          if (pipelineError) {
+            console.warn('[flyer-scan] extraction error:', pipelineError);
+          }
           setErrorMessage(
-            pipelineError
-              ? `Extraction failed: ${pipelineError}`
-              : 'No prices could be read from the flyer. Make sure the relay extract service is configured (Ollama or Qwen) and the photo is sharp and well-lit.',
+            "We couldn't read any prices from that photo. Try a sharper, well-lit shot of the flyer — or add the price manually.",
           );
           setStep('error');
           return;

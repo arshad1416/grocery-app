@@ -27,6 +27,7 @@ import { useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import type { GroceryItem, GroceryCategory } from '../types';
 import type { PriceResult } from '../pricing/types';
+import { friendlyError } from '../utils/friendlyError';
 import { BUILT_IN_CATEGORIES, STORE_PLAN_CATEGORY_ORDER } from '../types';
 import { useGroceryStore } from '../state/useGroceryStore';
 import { getListMeta, yjsSweepExpiredClaims } from '../sync/yjs-adapter';
@@ -40,7 +41,7 @@ import { useThemeStore, useActiveTheme } from '../state/useThemeStore';
 import { computeStopProposals } from '../pricing/stop-optimizer';
 import { flippDealsAdapter } from '../pricing/flipp-deals-adapter';
 import { crowdsourcedAdapter } from '../pricing/crowdsourced';
-import { getSettings } from '../config/settings';
+import { getSettings, updateSettings } from '../config/settings';
 import { fetchDealsForFSA, matchListItems, type FlippDealRow, type DealMatch } from '../services/dealMatcher';
 import { isTursoReady } from '../services/tursoClient';
 
@@ -204,7 +205,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     loadItems(listId).catch((err: Error) => {
-      Alert.alert('Error', err.message);
+      Alert.alert('Something went wrong', friendlyError(err));
     });
 
     try {
@@ -484,17 +485,43 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     return sections;
   }, [items, listId, searchQuery, gotItExpanded, selectedRouteNumStops, stopProposals, perStorePrices]);
 
+  // Flyer scan needs price lookups on. Rather than hide the icon (making the
+  // feature undiscoverable), show it always and present the price opt-in
+  // disclosure inline when a not-yet-opted-in user taps it.
+  const handleFlyerScanPress = useCallback(() => {
+    if (getSettings().pricingOptedIn ?? false) {
+      setShowFlyerScan(true);
+      return;
+    }
+    Alert.alert(
+      'Turn on price lookups to scan flyers?',
+      'Flyer scanning reads prices into your local price list. Normalized, hashed item names are sent to price sources to fetch prices — your actual item names and shopping habits are never sent. You can turn this off anytime in Settings.',
+      [
+        { text: 'Not now', style: 'cancel' },
+        {
+          text: 'Turn on & scan',
+          onPress: async () => {
+            try {
+              await updateSettings({ pricingOptedIn: true });
+              setShowFlyerScan(true);
+            } catch (err) {
+              Alert.alert('Could not enable', err instanceof Error ? err.message : 'Please try again.');
+            }
+          },
+        },
+      ],
+    );
+  }, []);
+
+  // Single tap opens the editor directly (the old double-tap — first tap shows
+  // a price panel, second tap edits — was undiscoverable). Price details moved
+  // to the long-press menu ("View prices").
   const handleItemPress = useCallback(
     (item: GroceryItem) => {
-      if (priceSummaryItem?.id === item.id) {
-        setPriceSummaryItem(null);
-        navigation.navigate('ItemEdit', { listId, itemId: item.id });
-      } else {
-        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        setPriceSummaryItem({ id: item.id, name: item.name });
-      }
+      setPriceSummaryItem(null);
+      navigation.navigate('ItemEdit', { listId, itemId: item.id });
     },
-    [navigation, listId, priceSummaryItem],
+    [navigation, listId],
   );
 
   const [togglingItems, setTogglingItems] = useState<Set<string>>(new Set());
@@ -512,7 +539,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
 
       toggleChecked(id)
         .catch((err: Error) => {
-          Alert.alert('Error', err.message);
+          Alert.alert('Something went wrong', friendlyError(err));
         })
         .finally(() => {
           setTogglingItems((prev) => {
@@ -537,7 +564,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     if (!toastState) return;
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     toggleChecked(toastState.itemId).catch((err: Error) => {
-      Alert.alert('Error', err.message);
+      Alert.alert('Something went wrong', friendlyError(err));
     });
     setToastState(null);
   }, [toastState, toggleChecked]);
@@ -556,6 +583,13 @@ export default function GroceryListScreen({ route, navigation }: Props) {
           },
         },
         {
+          text: 'View prices',
+          onPress: () => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setPriceSummaryItem({ id, name });
+          },
+        },
+        {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
@@ -566,7 +600,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
                 style: 'destructive',
                 onPress: () => {
                   deleteItem(id).catch((err: Error) => {
-                    Alert.alert('Error', err.message);
+                    Alert.alert('Something went wrong', friendlyError(err));
                   });
                 },
               },
@@ -596,7 +630,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   const handleMoveUp = useCallback(
     (id: string) => {
       reorderItem(id, 'up', listId).catch((err: Error) => {
-        Alert.alert('Error', err.message);
+        Alert.alert('Something went wrong', friendlyError(err));
       });
     },
     [reorderItem, listId],
@@ -605,7 +639,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
   const handleMoveDown = useCallback(
     (id: string) => {
       reorderItem(id, 'down', listId).catch((err: Error) => {
-        Alert.alert('Error', err.message);
+        Alert.alert('Something went wrong', friendlyError(err));
       });
     },
     [reorderItem, listId],
@@ -638,7 +672,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       const { updateItem } = useGroceryStore.getState();
       if (updateItem) {
         updateItem(id, { quantity: newQty }).catch((err: Error) => {
-          Alert.alert('Error', err.message);
+          Alert.alert('Something went wrong', friendlyError(err));
         });
       }
     },
@@ -891,11 +925,12 @@ export default function GroceryListScreen({ route, navigation }: Props) {
           {/* Flyer scan requires BOTH the feature toggle and the AC-14 pricing
               opt-in — without the latter the registry returns no prices and a
               scan would appear to silently do nothing. */}
-          {(getSettings().flyerScanEnabled ?? false) && (getSettings().pricingOptedIn ?? false) && (
+          {(getSettings().flyerScanEnabled ?? false) && (
             <TouchableOpacity
-              onPress={() => setShowFlyerScan(true)}
+              onPress={handleFlyerScanPress}
               style={styles.settingsBtn}
               activeOpacity={0.7}
+              accessibilityRole="button"
               accessibilityLabel="Scan a store flyer for prices"
             >
               <Ionicons name="camera-outline" size={22} color={theme.text} />

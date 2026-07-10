@@ -30,6 +30,7 @@ export interface ContextMenuProps {
   listName: string;
   onDelete: () => void;
   onShare: () => void;
+  onRename?: () => void;
   onClose: () => void;
   theme: {
     cardBg: string;
@@ -53,6 +54,7 @@ export default function ContextMenu({
   listName,
   onDelete,
   onShare,
+  onRename,
   onClose,
   theme,
   position,
@@ -100,6 +102,27 @@ export default function ContextMenu({
                 </Text>
               </View>
 
+              {/* Rename option */}
+              {onRename ? (
+                <>
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => {
+                      onClose();
+                      setTimeout(onRename, 200);
+                    }}
+                    activeOpacity={0.6}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Rename ${listName}`}
+                  >
+                    <Text style={[styles.menuItemText, { color: theme.text }]}>
+                      Rename
+                    </Text>
+                  </TouchableOpacity>
+                  <View style={[styles.divider, { backgroundColor: theme.border }]} />
+                </>
+              ) : null}
+
               {/* Share option */}
               <TouchableOpacity
                 style={styles.menuItem}
@@ -109,6 +132,8 @@ export default function ContextMenu({
                   setTimeout(onShare, 200);
                 }}
                 activeOpacity={0.6}
+                accessibilityRole="button"
+                accessibilityLabel={`Share ${listName}`}
               >
                 <Text style={[styles.menuItemText, { color: theme.text }]}>
                   Share

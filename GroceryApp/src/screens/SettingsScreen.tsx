@@ -44,6 +44,7 @@ import { scrapingAdapter } from '../pricing/scraping';
 import QRCode from '../components/QRCode';
 import ContributeConsentModal from '../components/ContributeConsentModal';
 import { useShareInvite } from '../hooks/useShareInvite';
+import { friendlyError } from '../utils/friendlyError';
 import { useThemeStore, useActiveTheme } from '../state/useThemeStore';
 
 import { themeColors } from '../components/groceryTheme';
@@ -487,15 +488,21 @@ export default function SettingsScreen({ navigation }: Props) {
                 await updateSettings({ pairingCode: token });
                 setSettingsState((prev) => prev ? { ...prev, pairingCode: token } : prev);
                 Alert.alert(
-                  'QR Code Generated',
-                  'Invite is ready — valid for 7 days, one join per code. The new member will also need your family recovery phrase to unlock shared lists.' +
+                  'Invite ready',
+                  'Valid for 7 days, one join per code. The new member also needs your family recovery phrase to unlock shared lists — show it now so you can share both together.' +
                     (selfEnrollFailed
-                      ? '\n\n⚠️ This device could not enroll with the relay just now — regenerate the QR when the relay is reachable, or your own edits will not sync.'
+                      ? '\n\n⚠️ This device could not connect to sync just now — regenerate the invite when your server is reachable, or your own edits will not sync.'
                       : ''),
+                  [
+                    { text: 'Later', style: 'cancel' },
+                    {
+                      text: 'Show recovery phrase',
+                      onPress: () => navigation.navigate('Recovery', { mode: 'show' }),
+                    },
+                  ],
                 );
               } catch (err) {
-                const message = err instanceof Error ? err.message : 'Failed to generate QR';
-                Alert.alert('Error', message);
+                Alert.alert('Could not create invite', friendlyError(err, 'Please try again.'));
               }
             }}
           >
