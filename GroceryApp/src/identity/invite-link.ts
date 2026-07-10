@@ -57,7 +57,8 @@ export async function createFamilyInviteLink(): Promise<InviteLinkResult> {
   const settings = getSettings();
   if (!settings.relayUrl) {
     throw new Error(
-      'Set up your relay connection first (Settings → Relay) before inviting family members.',
+      'Family sharing needs a sync server (a small, free server you or a tech-savvy family member run at home). ' +
+        'Set one up under Settings → Pair a device, then invite the rest of your family.',
     );
   }
 

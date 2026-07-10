@@ -70,7 +70,7 @@ export default function PairingScreen({ navigation, route }: Props) {
         try {
           payload = JSON.parse(tokenStr);
         } catch {
-          throw new Error('Invalid invite: not a pairing payload');
+          throw new Error("That invite link isn't valid. Ask for a new one.");
         }
 
         const isCombined = payload && typeof payload === 'object' && payload.pairingCode;
@@ -80,7 +80,7 @@ export default function PairingScreen({ navigation, route }: Props) {
         const code = await parsePairingCode(codeInput);
         setParsedCode(code);
         setManualUrl(code.relayUrl);
-        setStatusMessage('Invite valid! Connecting to relay...');
+        setStatusMessage('Invite looks good — connecting…');
 
         const portMatch = code.relayUrl.match(/:(\d+)$/);
         const port = portMatch ? parseInt(portMatch[1], 10) : 8080;
@@ -110,7 +110,7 @@ export default function PairingScreen({ navigation, route }: Props) {
         }
 
         // ── Family join: enroll with the relay, then store membership ──
-        setStatusMessage('Enrolling this device with the relay...');
+        setStatusMessage('Setting up this device…');
         const { enrollWithRelay } = await import('../identity/enroll');
         const { acceptFamilyInvite } = await import('../identity/family');
         const { getDeviceId, getDeviceKeypair } = await import('../identity/device');
