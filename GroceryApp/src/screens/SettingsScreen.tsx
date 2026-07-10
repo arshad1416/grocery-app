@@ -870,16 +870,16 @@ export default function SettingsScreen({ navigation }: Props) {
         <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Flipp Deal Matching</Text>
           <Text style={[styles.sectionDescription, { color: theme.secondaryText }]}>
-            Connect your stophop-arshad1416 Turso database to power deal-matched
-            shopping. Your FSA (first 3 chars of your postal code) determines which
-            local flyer deals to use.
+            Connect a Turso database to power deal-matched shopping. Your FSA
+            (first 3 characters of your postal code) determines which local
+            flyer deals to use.
           </Text>
 
           <SettingsRow
             label="Turso URL"
             value={settings.tursoUrl}
             onChangeText={(v) => handleUpdate({ tursoUrl: v })}
-            placeholder="https://stophop-arshad1416.aws-us-east-1.turso.io"
+            placeholder="https://your-database.turso.io"
             keyboardType="url"
             theme={theme}
             isDark={isDark}

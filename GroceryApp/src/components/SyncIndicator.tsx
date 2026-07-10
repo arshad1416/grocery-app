@@ -22,7 +22,9 @@ export default function SyncIndicator() {
         ? '#f44336'
         : syncState === 'offline'
           ? '#999'
-          : '#10B981';
+          : syncState === 'not_configured'
+            ? '#999'
+            : '#10B981';
 
   const label =
     syncState === 'syncing'
@@ -31,11 +33,15 @@ export default function SyncIndicator() {
         ? 'Sync error'
         : syncState === 'offline'
           ? 'Offline'
-          : 'Synced';
+          : syncState === 'not_configured'
+            ? 'Local only'
+            : 'Synced';
 
-  const timeLabel = lastSyncedAt
-    ? new Date(lastSyncedAt).toLocaleTimeString()
-    : '';
+  // Don't show a "last synced" time when nothing has ever synced.
+  const timeLabel =
+    lastSyncedAt && syncState !== 'not_configured'
+      ? new Date(lastSyncedAt).toLocaleTimeString()
+      : '';
 
   return (
     <View style={styles.syncIndicator}>

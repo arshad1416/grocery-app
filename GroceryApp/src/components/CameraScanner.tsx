@@ -12,7 +12,7 @@
  *  - onCancel() — called when the user taps cancel/back
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import {
   TextInput,
   Image,
   ScrollView,
+  Alert,
 } from 'react-native';
 
 // ─── Props ──────────────────────────────────────────────────────────────────
@@ -93,7 +94,6 @@ export default function CameraScanner({
 
   // ─── Flyer-mode state ────────────────────────────────────────────────────
   const [capturedImages, setCapturedImages] = useState<string[]>([]);
-  const [isCapturing, setIsCapturing] = useState(false);
 
   const isFlyerMode = captureMode === 'flyer';
 
@@ -170,43 +170,54 @@ export default function CameraScanner({
 
   // ─── Flyer Capture Handlers ────────────────────────────────────────────────
 
-  const handleCaptureImage = useCallback(async () => {
-    if (isCapturing) return;
-    setIsCapturing(true);
+  // A real photo was captured by the CameraView (via its ref, in the wrapper).
+  const handleImageCaptured = useCallback((uri: string) => {
+    setCapturedImages((prev) => [...prev, uri]);
+  }, []);
+
+  // Fallback: pick flyer photos from the library. Used when the live camera
+  // capture fails or is unavailable. Best-effort — expo-image-picker is an
+  // optional dependency; if it isn't installed we tell the user honestly
+  // instead of silently pushing a placeholder that always fails extraction.
+  const pickFromLibrary = useCallback(async () => {
+    let ImagePicker: any;
     try {
-      // In Stage 1, we use the expo-camera takePictureAsync path
-      const expoCamera = tryLoadExpoCamera();
-      if (expoCamera?.CameraView) {
-        // Real camera path: takePictureAsync gives us a photo URI
-        // We simulate capturing since we can't access the ref from here
-        // The actual capture uses the CameraView ref in CameraViewWrapper
-        const uri = `captured-${Date.now()}.jpg`;
-        setCapturedImages((prev) => [...prev, uri]);
-      } else {
-        // Fallback: use photo picker via expo-image-picker
-        try {
-          // @ts-ignore — expo-image-picker may not be installed
-          // eslint-disable-next-line @typescript-eslint/no-var-requires
-          const ImagePicker = require('expo-image-picker');
-          const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            allowsMultipleSelection: true,
-            quality: 0.8,
-          });
-          if (!result.canceled && result.assets) {
-            const uris = result.assets.map((a: any) => a.uri);
-            setCapturedImages((prev) => [...prev, ...uris]);
-          }
-        } catch {
-          // Fallback: simulate with a placeholder
-          const uri = `placeholder-${Date.now()}.jpg`;
-          setCapturedImages((prev) => [...prev, uri]);
-        }
-      }
-    } finally {
-      setIsCapturing(false);
+      // @ts-ignore — expo-image-picker may not be installed
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      ImagePicker = require('expo-image-picker');
+    } catch {
+      Alert.alert(
+        'Camera unavailable',
+        "Couldn't capture the flyer, and the photo library picker isn't available on this build. Try again, or add the item price manually.",
+      );
+      return;
     }
-  }, [isCapturing]);
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync?.();
+      if (perm && perm.status !== 'granted') {
+        Alert.alert('Permission needed', 'Allow photo access to pick a flyer image.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: true,
+        quality: 0.7,
+      });
+      if (!result.canceled && result.assets?.length) {
+        setCapturedImages((prev) => [...prev, ...result.assets.map((a: any) => a.uri)]);
+      }
+    } catch (err) {
+      Alert.alert(
+        'Could not add photo',
+        err instanceof Error ? err.message : 'Please try again.',
+      );
+    }
+  }, []);
+
+  // Called by the wrapper when live capture throws — auto-fall back to library.
+  const handleCaptureError = useCallback(() => {
+    pickFromLibrary();
+  }, [pickFromLibrary]);
 
   const handleFlyerDone = useCallback(() => {
     if (onFlyerCapture && capturedImages.length > 0) {
@@ -252,8 +263,9 @@ export default function CameraScanner({
               setCameraType((prev) => (prev === 'back' ? 'front' : 'back'))
             }
             flyerMode
-            onCaptureImage={handleCaptureImage}
-            isCapturing={isCapturing}
+            onImageCaptured={handleImageCaptured}
+            onCaptureError={handleCaptureError}
+            onPickFromLibrary={pickFromLibrary}
           />
           {/* Thumbnail strip */}
           {capturedImages.length > 0 && (
@@ -323,14 +335,11 @@ export default function CameraScanner({
 
           <TouchableOpacity
             style={styles.submitBtn}
-            onPress={handleCaptureImage}
-            disabled={isCapturing}
+            onPress={pickFromLibrary}
+            accessibilityRole="button"
+            accessibilityLabel="Select flyer images from library"
           >
-            {isCapturing ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.submitBtnText}>Select Images</Text>
-            )}
+            <Text style={styles.submitBtnText}>Select Images</Text>
           </TouchableOpacity>
 
           {/* Thumbnail strip for selected images */}
@@ -426,18 +435,22 @@ function CameraViewWrapper({
   onCancel,
   onToggleCamera,
   flyerMode,
-  onCaptureImage,
-  isCapturing,
+  onImageCaptured,
+  onCaptureError,
+  onPickFromLibrary,
 }: {
   cameraType: 'front' | 'back';
   onBarCodeScanned: ((result: any) => void) | undefined;
   onCancel: () => void;
   onToggleCamera: () => void;
   flyerMode?: boolean;
-  onCaptureImage?: () => Promise<void>;
-  isCapturing?: boolean;
+  onImageCaptured?: (uri: string) => void;
+  onCaptureError?: () => void;
+  onPickFromLibrary?: () => void;
 }) {
   const [CameraView, setCameraView] = useState<any>(null);
+  const [capturing, setCapturing] = useState(false);
+  const cameraRef = useRef<any>(null);
 
   useEffect(() => {
     (async () => {
@@ -452,6 +465,28 @@ function CameraViewWrapper({
     })();
   }, []);
 
+  // Take a real photo via the CameraView ref (expo-camera SDK 56
+  // takePictureAsync). On failure, hand off to the library-picker fallback.
+  const handleCapture = useCallback(async () => {
+    if (capturing) return;
+    setCapturing(true);
+    try {
+      const photo = await cameraRef.current?.takePictureAsync?.({
+        quality: 0.7,
+        skipProcessing: true,
+      });
+      if (photo?.uri) {
+        onImageCaptured?.(photo.uri);
+      } else {
+        onCaptureError?.();
+      }
+    } catch {
+      onCaptureError?.();
+    } finally {
+      setCapturing(false);
+    }
+  }, [capturing, onImageCaptured, onCaptureError]);
+
   if (!CameraView) {
     return (
       <View style={styles.cameraPlaceholder}>
@@ -464,6 +499,7 @@ function CameraViewWrapper({
   return (
     <View style={styles.cameraContainer}>
       <CameraView
+        ref={cameraRef}
         style={styles.cameraPreview}
         facing={cameraType}
         barcodeScannerSettings={{
@@ -486,20 +522,33 @@ function CameraViewWrapper({
         </TouchableOpacity>
         {flyerMode ? (
           <TouchableOpacity
-            style={[styles.captureBtn, isCapturing && styles.captureBtnDisabled]}
-            onPress={onCaptureImage}
-            disabled={isCapturing}
+            style={[styles.captureBtn, capturing && styles.captureBtnDisabled]}
+            onPress={handleCapture}
+            disabled={capturing}
+            accessibilityRole="button"
+            accessibilityLabel="Capture flyer photo"
           >
-            {isCapturing ? (
+            {capturing ? (
               <ActivityIndicator size="small" color="#fff" />
             ) : (
               <View style={styles.captureCircle} />
             )}
           </TouchableOpacity>
         ) : null}
-        <TouchableOpacity style={styles.controlBtn} onPress={onToggleCamera}>
-          <Text style={styles.controlBtnText}>Flip</Text>
-        </TouchableOpacity>
+        {flyerMode ? (
+          <TouchableOpacity
+            style={styles.controlBtn}
+            onPress={onPickFromLibrary}
+            accessibilityRole="button"
+            accessibilityLabel="Choose flyer photo from library"
+          >
+            <Text style={styles.controlBtnText}>Library</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={styles.controlBtn} onPress={onToggleCamera}>
+            <Text style={styles.controlBtnText}>Flip</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );

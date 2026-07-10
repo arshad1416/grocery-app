@@ -137,7 +137,10 @@ export interface SyncConflict {
 
 // ─── Store Types ─────────────────────────────────────────────────────────────
 
-export type SyncState = 'idle' | 'syncing' | 'error' | 'offline';
+// 'not_configured' = no relay/family set up yet (local-only device). Distinct
+// from 'offline' (configured but not currently connected) so the UI can show
+// "Local only — tap to set up sharing" instead of a misleading "Synced".
+export type SyncState = 'idle' | 'syncing' | 'error' | 'offline' | 'not_configured';
 
 // ─── Field Encryption Contexts ───────────────────────────────────────────────
 

@@ -66,8 +66,8 @@ if (!__DEV__) {
   LogBox.ignoreAllLogs(true);
 }
 
-import React, { useEffect, useState, Suspense, lazy } from 'react';
-import { StyleSheet, View, Text, ActivityIndicator } from 'react-native';
+import React, { useEffect, useState, useCallback, Suspense, lazy } from 'react';
+import { StyleSheet, View, Text, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -103,9 +103,11 @@ function App() {
   const [ready, setReady] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
   const [Screens, setScreens] = useState<any>(null);
 
-  useEffect(() => {
+  const runInit = useCallback(() => {
+    setError(null);
     async function init() {
       try {
         // 1. Init services (crypto, database)
@@ -191,12 +193,42 @@ function App() {
     init();
   }, []);
 
+  useEffect(() => {
+    runInit();
+  }, [runInit]);
+
   if (error) {
     return (
       <SafeAreaProvider>
         <View style={styles.centered}>
-          <Text style={styles.errorTitle}>Error</Text>
-          <Text style={styles.errorMsg}>{error}</Text>
+          <Text style={styles.errorTitle}>StopHop couldn't start</Text>
+          <Text style={styles.errorMsg}>
+            Something went wrong while getting things ready. This is usually
+            temporary — please try again.
+          </Text>
+          <TouchableOpacity
+            style={styles.retryBtn}
+            onPress={() => {
+              setShowErrorDetails(false);
+              runInit();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Retry starting the app"
+          >
+            <Text style={styles.retryBtnText}>Retry</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setShowErrorDetails((v) => !v)}
+            accessibilityRole="button"
+            accessibilityLabel="Show technical details"
+          >
+            <Text style={styles.detailsToggle}>
+              {showErrorDetails ? 'Hide details' : 'Show details'}
+            </Text>
+          </TouchableOpacity>
+          {showErrorDetails ? (
+            <Text style={styles.errorDetails}>{error}</Text>
+          ) : null}
         </View>
       </SafeAreaProvider>
     );
@@ -250,6 +282,10 @@ const styles = StyleSheet.create({
   loadingText: { color: '#1A1A1A', fontSize: 16, marginTop: 16 },
   errorTitle: { color: '#E53935', fontSize: 24, fontWeight: 'bold', marginBottom: 16 },
   errorMsg: { color: '#1A1A1A', fontSize: 16, textAlign: 'center', paddingHorizontal: 32 },
+  retryBtn: { marginTop: 24, backgroundColor: '#10B981', paddingVertical: 12, paddingHorizontal: 32, borderRadius: 12 },
+  retryBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  detailsToggle: { color: '#6B7280', fontSize: 13, marginTop: 16, textDecorationLine: 'underline' },
+  errorDetails: { color: '#6B7280', fontSize: 12, textAlign: 'center', paddingHorizontal: 32, marginTop: 8, fontFamily: 'System' },
 });
 
 export default App;
