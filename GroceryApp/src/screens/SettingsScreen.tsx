@@ -619,20 +619,10 @@ export default function SettingsScreen({ navigation }: Props) {
             Item names are normalized and hashed before being sent to price sources.
           </Text>
         )}
-
-        <ToggleRow
-          label="Voice Input"
-          value={settings.voiceInputEnabled}
-          onValueChange={(v) => handleUpdate({ voiceInputEnabled: v })}
-          theme={theme}
-        />
-
-        <ToggleRow
-          label="Barcode Scanning"
-          value={settings.barcodeScanningEnabled}
-          onValueChange={(v) => handleUpdate({ barcodeScanningEnabled: v })}
-          theme={theme}
-        />
+        {/* Voice Input / Barcode Scanning toggles removed in v1: they were
+            no-ops (never read anywhere), and both are always-available quick-add
+            methods in the Add Item sheet. Reintroduce only if they gate a real
+            behavior. */}
       </View>
 
       {/* ── Voice Assistant Linking (disabled in v1 — see flag at top) ── */}

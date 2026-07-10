@@ -23,7 +23,8 @@ import {
 
 interface UndoToastProps {
   message: string;
-  onUndo: () => void;
+  /** Omit for a plain confirmation toast with no Undo action. */
+  onUndo?: () => void;
   duration?: number;
   onDismiss: () => void;
 }
@@ -66,7 +67,7 @@ export default function UndoToast({
 
   const handleUndo = useCallback(() => {
     if (dismissTimer.current) clearTimeout(dismissTimer.current);
-    onUndoRef.current();
+    onUndoRef.current?.();
     // Animate out immediately
     Animated.parallel([
       Animated.timing(slideAnim, {
@@ -171,13 +172,17 @@ export default function UndoToast({
         <Text style={styles.message} numberOfLines={1}>
           {message}
         </Text>
-        <TouchableOpacity
-          style={styles.undoButton}
-          onPress={handleUndo}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Text style={styles.undoText}>Undo</Text>
-        </TouchableOpacity>
+        {onUndo ? (
+          <TouchableOpacity
+            style={styles.undoButton}
+            onPress={handleUndo}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            accessibilityRole="button"
+            accessibilityLabel="Undo"
+          >
+            <Text style={styles.undoText}>Undo</Text>
+          </TouchableOpacity>
+        ) : null}
       </TouchableOpacity>
     </Animated.View>
   );
