@@ -8,7 +8,7 @@
 
 ## 1. Problem Statement
 
-Flipp only provides **flyer deals** (promotional/discounted items with expiry dates). Regular shelf prices — the everyday price of Milk, Pork Chops, Cheddar Cheese — are not available through Flipp. To enable meaningful price comparison and trip optimization, StopHop needs access to **current regular prices** from major Canadian grocery chains.
+Flipp only provides **flyer deals** (promotional/discounted items with expiry dates). Regular shelf prices — the everyday price of Milk, Pork Chops, Cheddar Cheese — are not available through Flipp. To enable meaningful price comparison and trip optimization, PantryRun needs access to **current regular prices** from major Canadian grocery chains.
 
 ### What We Have vs What We Need
 
@@ -458,7 +458,7 @@ class LoblawsGroupScraper(BaseScraper):
 ```python
 #!/usr/bin/env python3
 """
-store_prices_scrape.py — Grocery shelf price scraper for StopHop.
+store_prices_scrape.py — Grocery shelf price scraper for PantryRun.
 
 Scrapes current regular prices from Canadian grocery store websites
 and writes results to the stophop Turso database.

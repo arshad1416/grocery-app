@@ -1,4 +1,4 @@
-# StopHop Usability Audit
+# PantryRun Usability Audit
 
 Read-only review at `b9d959d6` by a fresh-context reviewer (no involvement in
 the app's development). All paths relative to `GroceryApp/`. **No fixes were
@@ -35,7 +35,7 @@ Recovery screen → done. Non-technical users bail at server hosting, at
 | 1 | Sharing is unreachable for mainstream users: managed tier disabled; invite creation throws "Set up your relay connection first" with no path forward | `SettingsScreen.tsx:59`; `src/identity/invite-link.ts:59-64` | Guided "Set up sharing" wizard + either a hosted default relay or an honest "requires a home server" gate before users hit the dead end |
 | 2 | Fresh install shows a green "Connected" dot with no relay configured (`syncState: 'idle'` falls into the Connected branch) | `useSyncStore.ts:35`; `HomeScreen.tsx:452-459, 784-792` | Add a `not_configured` state rendered "Local only — tap to set up sharing", linking to Pairing |
 | 3 | **Camera-path flyer capture is fake**: with a working camera it pushes `captured-${Date.now()}.jpg` placeholder URIs instead of photographing, so every camera scan ends "Nothing extracted" | `CameraScanner.tsx:179-184` | Wire `takePictureAsync` via a CameraView ref; until then route flyer mode to the image-picker fallback (which works) |
-| 4 | App-init failure is a dead end: raw exception text, no Retry | `App.tsx:186-203, 251-252` | "StopHop couldn't start" + Retry button re-running `init()`; raw message behind a details disclosure |
+| 4 | App-init failure is a dead end: raw exception text, no Retry | `App.tsx:186-203, 251-252` | "PantryRun couldn't start" + Retry button re-running `init()`; raw message behind a details disclosure |
 | 5 | No first-run onboarding: nothing explains local-vs-synced, the pairing icon, or the recovery phrase before users hit errors | `App.tsx:232-240` | 2-3 card first-launch flow: instant local lists / share with family (setup) / encrypted + save your phrase |
 
 ### MAJOR

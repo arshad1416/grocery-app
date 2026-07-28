@@ -23,7 +23,7 @@ Notes:
   - Android: `adb shell pm verify-app-links --re-verify com.shiftlogichq.stophop`
     then `adb shell pm get-app-links com.shiftlogichq.stophop`
   - iOS: install a TestFlight build and tap an `https://groceryapp.app/invite?…`
-    link; it should open StopHop's Pairing screen.
+    link; it should open PantryRun's Pairing screen.
 - In-app routing is already wired: the `invite` path is an alias of the
   `Pairing` screen (`src/navigation/deepLinks.ts`), which reads `token` and
   runs the full join flow.
