@@ -25,8 +25,8 @@ Companion to [PRE-LAUNCH-AUDIT.md](PRE-LAUNCH-AUDIT.md), which explains the top 
 - [ ] **Perf:** `persistListToDB` opens one Writer per record, so saving a 50-item list is 51 transactions. Batch with `prepareCreate`/`prepareUpdate` in a single `write()` — **but note the test mock permits nested `write()` while real WatermelonDB deadlocks on it**, so that refactor can go green locally and hang in production. Make the mock throw on nesting before attempting it.
 
 ### Credentials
-- [ ] **C4. Live Turso token tracked in two committed build artifacts**, one inside the APK asset path. `android/app/src/main/assets/index.android.bundle`, `dist-android/_expo/.../*.hbc`
-- [ ] **C5. Two non-expiring read-write Turso tokens permanently in git history** (and `refs/stash`). Rotation mandatory; the client-fallback shape means a replacement is equally extractable — move Turso server-side. `App.tsx:140` (historical)
+- [x] **C4. Live Turso token tracked in two committed build artifacts**, one inside the APK asset path — **UNTRACKED 2026-07-28 (`6b2b8b1a`)**, still in history. Measured: bundle blob `a4c21f2b49a5`, 4,592,038 bytes, 1 JWT-shaped string + 2 `turso.io`; `dist-android/.../index-b22bf3f2b0b9a5a5764d413f75461794.hbc` blob `9a9a72fb05ba`, 1 JWT. `grep` misses the `.hbc`; `strings` finds it. A bundle rebuilt from the current tree yields **0 and 0**. `android/app/src/main/assets/index.android.bundle`, `dist-android/_expo/.../*.hbc`
+- [x] **C5. Two non-expiring read-write Turso tokens permanently in git history.** **Client-side paths removed 2026-07-28 (`a9792cdd`)** — Turso now sits behind the relay's `/api/catalog/*` (owner chose Option A). Revocation handed to the owner at the start of that session and is what actually closes this. **Correction to the original wording:** the exposure was not limited to a hardcoded literal — the replacement shape `settings.<token> || process.env.EXPO_PUBLIC_*` is equally extractable, proven by bundling with a synthetic token and finding it verbatim in the minified output. `App.tsx:140` (historical)
 
 ### Build & submission
 - [x] **C6. `ios.bundleIdentifier` absent from `app.json`** — **RESOLVED 2026-07-28.** Added `"bundleIdentifier": "com.shiftlogichq.pantryrun"`. **The description above was stale on one point:** it said "the only identifier in the repo is a different, wrong value", but `ios/apple-app-site-association` already carried `TEAMID.com.shiftlogichq.<app>` and `app.json` already declared the app group `group.com.shiftlogichq.<app>` — both pointed at the right app. (The "wrong value" was the pre-`2f22346e` AASA placeholder `TEAMID.com.groceryapp.app`; the store-compliance pass fixed it, and this entry was not updated.) All four identifiers now agree on `com.shiftlogichq.pantryrun` after the StopHop→PantryRun rename: `ios.bundleIdentifier`, `android.package`, the app group, and the AASA `appID`. Still owner-only: the real 10-character Apple **Team ID** replacing `TEAMID`.
@@ -77,17 +77,17 @@ Companion to [PRE-LAUNCH-AUDIT.md](PRE-LAUNCH-AUDIT.md), which explains the top 
 - [ ] Yjs doc state never persisted — full history replay on rejoin duplicates every item after restart. `src/sync/yjs-adapter.ts:105`
 - [ ] Barcode scanning ships ungated and undisclosed; `barcodeScanningEnabled` never read, policy calls it "Planned". `src/services/productLookup.ts:118` **[blocker]**
 - [ ] "Hashed item names" is a false claim — 48-bit non-cryptographic FNV-1a. `src/pricing/privacy.ts:21` **[blocker]**
-- [ ] "Turso Enabled" settings toggle stops no Turso traffic. `src/screens/SettingsScreen.tsx:913`
+- [x] ~~"Turso Enabled" settings toggle stops no Turso traffic.~~ **FIXED 2026-07-28 (`a9792cdd`)** — relabelled "Product Catalog Lookups"; `isCatalogAvailable()` returns false when it is off, so no catalog request is issued at all. `src/screens/SettingsScreen.tsx`
 - [ ] Pool consent enabled without seeing disclosure — cancelling the modal marks it shown. `src/screens/SettingsScreen.tsx:785`
 - [ ] Pool contributions default to the same origin as the token issuer, defeating blind-token unlinkability. `src/pricing/contribute.ts:28`
 - [ ] `NSPrivacyCollectedDataTypes` empty while App Privacy labels declare three types. `app.json:73`
-- [ ] No root `.gitignore`; `android/.gitignore` misses the filename that let the credential-bearing bundle get tracked. `android/.gitignore:20`
+- [x] ~~No root `.gitignore`; `android/.gitignore` misses the filename that let the credential-bearing bundle get tracked.~~ **FIXED 2026-07-28 (`6b2b8b1a`)** — root `.gitignore` added; `android/.gitignore` gained `index.android.bundle`, the full release-asset path, and `*.hbc`. **Pointer corrected: the file had 19 lines, so `:20` was out of range.** `android/.gitignore:19`
 - [ ] `SECURITY.md` advertises crypto the shipping app never executes. `SECURITY.md:33`
 - [ ] Release build falls back to the committed debug keystore when no upload keystore is set. `android/app/build.gradle:134`
 - [ ] `autoVerify` intent filter mixes custom scheme with https — App Links verification may fail. `android/app/src/main/AndroidManifest.xml:29`
 - [ ] `userInterfaceStyle` pinned to `light`, disabling shipped dark/system themes on iOS. `app.json:9`
 - [ ] docker-compose declares no volumes — every redeploy invalidates every device's relay token. `docker-compose.yml:1`
-- [ ] docker-compose provisions no issuer keypair — token issuance and pool both 500 on a default deploy. `docker-compose.yml:30`
+- [x] ~~docker-compose provisions no issuer keypair — token issuance and pool both 500 on a default deploy.~~ **FIXED 2026-07-28 (`64c41266`)** — read-only mount of `${KEYS_DIR:-./relay-server/keys}` at `/run/keys` plus `ISSUER_PRIVATE_KEY_PATH` / `ISSUER_PUBLIC_KEY_PATH` and an optional inline-PEM override. **Pointer corrected: the previously cited line was a pool-isolation comment; the finding held, the pointer did not.** `docker-compose.yml`
 - [ ] Fabricated test prices seeded into the production pool, shown as crowdsourced. `relay-server/server.js:242`
 - [ ] `/enroll` capacity limits check the wrong map — enrollments grow unbounded. `relay-server/server.js:633`
 - [ ] No unlink/token-revocation path; access tokens live one year beside the sealed family key. `relay-server/server.js:906`
@@ -100,8 +100,8 @@ Companion to [PRE-LAUNCH-AUDIT.md](PRE-LAUNCH-AUDIT.md), which explains the top 
 
 ## P3 — Low (26)
 
-- [ ] Blind-RSA issuer private key committed to git history, permanently retrievable — **treat as a rotation item despite low severity**. `relay-server/keys/issuer-private-key.pem`
-- [ ] ~20 MB of build/test junk tracked (prebuilt bundle, crash-screen dumps, `dist-android/`). `GroceryApp/dist-android`
+- [x] ~~Blind-RSA issuer private key committed to git history, permanently retrievable.~~ **ROTATED 2026-07-28 (`64c41266`)** — public-key fingerprint `372c83c3…` → `fe4fe47c…`. Added in `71d54a57`, deleted in `143b5a70`, blob `194aa746c83a` — still in history until a rewrite runs. Neither PEM is tracked. `relay-server/keys/issuer-private-key.pem`
+- [x] ~~~20 MB of build/test junk tracked (prebuilt bundle, crash-screen dumps, `dist-android/`).~~ **UNTRACKED 2026-07-28 (`6b2b8b1a`)** — 46 files (1 bundle + 45 under `dist-android/`). `GroceryApp/dist-android`
 - [ ] Personal infrastructure hostnames remain in tracked docs. `docs/ARCHITECTURE-GROCERY-SCRAPER.md:5`
 - [ ] Relay token obtained and used over plaintext HTTP/WS by default. `src/config/settings.ts:32`
 - [ ] Relay logs full per-family activity traces, contradicting the policy's "only device ID and timestamps". `relay-server/server.js:1338`
@@ -126,17 +126,27 @@ Companion to [PRE-LAUNCH-AUDIT.md](PRE-LAUNCH-AUDIT.md), which explains the top 
 - [ ] Splash screen goes blank for the rest of its timer when init finishes quickly. `src/screens/SplashScreen.tsx:14`
 - [ ] Barcode/deals items all get `sortOrder` 0, unlike every other add path. `src/screens/HomeScreen.tsx:393`
 - [ ] First item in a new list stored with an empty `familyId` that disagrees with the list's. `src/screens/AddItemSheet.tsx:194`
+- [x] ~~**`npm ci` fails in `GroceryApp/` — 58 mismatched packages**~~ **FIXED 2026-07-28 — [PR #9](https://github.com/arshad1416/grocery-app/pull/9).** Lockfile resynced. Regenerating it alone was **not** sufficient: it exposed two packages imported but never declared, which had only ever resolved by accident of npm hoisting. `expo-file-system@~56.0.8` (imported at `flyer-pipeline.ts:213`; nested, `tsc` fails TS2307) and `babel-preset-expo@~56.0.18` (named by bare specifier in `babel.config.js`; nested, **the release bundler fails**, breaking `gradlew assembleRelease` and EAS Build). Verified: `npm ci` ok, `tsc` clean, jest 41 suites / 478 passed, `expo export:embed` exit 0.
+- [ ] **CI's "Check bundle size" step never invokes the bundler** *(found 2026-07-28)* — it runs only `du -sk node_modules/`, so the release-blocking `babel-preset-expo` failure above sat behind a green tick. Replace it with a real `expo export:embed` so "CI is green" implies "the app can be built". Same class of gap as the docker job, which builds the relay image but never starts it. `.github/workflows/ci.yml`
+- [ ] **Docker Build job is flaky under QEMU** *(found 2026-07-28)* — `docker-compose.yml` declares `platforms: [linux/amd64, linux/arm64]`, so an amd64 runner emulates arm64 and npm intermittently dies with `qemu: uncaught target signal 4 (Illegal instruction) - core dumped`. Confirmed flaky: the identical commit failed then passed on re-run. Either drop arm64 from CI builds or build it natively; a randomly-red job trains people to ignore CI. `.github/workflows/ci.yml`
+- [ ] **Two lockfiles are tracked for one package manager** *(found 2026-07-28)* — `GroceryApp/` carries both `package-lock.json` and `yarn.lock`. CI, EAS and the Dockerfile all use `npm ci`, so `yarn.lock` is vestigial — but `npm ci` rewrites it as a side effect, so it shows up as a spurious ~1,400-line diff after any install and invites someone to commit churn or, worse, to trust it. Delete it, or commit to yarn and drop `package-lock.json`. `GroceryApp/yarn.lock`
+- [ ] **Relay test suite leaks a server process** *(found 2026-07-28)* — `npm test` runs jest with `--forceExit`, which kills jest but not the relay/pool servers its suites spawn. An orphan holding `:9500` makes a later run fail with `EADDRINUSE`, reported as "Test suite failed to run" with 70/70 tests passing — a confusing signature. Harmless in CI (fresh container each run), a real nuisance locally, and it means `--forceExit` is masking missing teardown. `relay-server/package.json`
+- [ ] **Enable `secret_scanning_non_provider_patterns`** *(found 2026-07-28)* — secret scanning and push protection are already ON, but generic/non-provider patterns are OFF, which is almost certainly why a Turso database JWT was never flagged: it matches no recognised vendor pattern. Free on a public repo. Settings → Code security. Also off: `secret_scanning_validity_checks`, `dependabot_security_updates`.
+- [ ] **`expo-file-system` and `babel-preset-expo` are used but not declared** *(found 2026-07-28)* — `flyer-pipeline.ts` imports the first and `babel.config.js` names the second, yet neither is in `package.json`; they resolve only by transitive hoisting. When npm nests them instead, `npx tsc --noEmit` and the bundler both break. `GroceryApp/src/pricing/flyer-pipeline.ts:213`
 
 ---
 
 ## Credential rotation list (permanent in git history)
 
-1. **Turso token A** — `iat 1781501145`, read-write, no expiry
-2. **Turso token B** — `iat 1781551606`, read-write, no expiry, same DB
-3. **Blind-RSA issuer private key** — blob at `71d54a57`; confirm the deployed relay is not serving it
-4. **Android upload keystore** — generate fresh; treat the tracked `debug.keystore` as public
+1. **Turso token A** — `iat 1781501145`, read-write, no expiry — **OWNER: revoke. Handed off 2026-07-28; confirmation outstanding.**
+2. **Turso token B** — `iat 1781551606`, read-write, no expiry, same DB — **OWNER: revoke.** Both die at once with `turso db tokens invalidate <database>`.
+3. **Blind-RSA issuer private key** — blob `194aa746c83a`, added `71d54a57`, deleted `143b5a70` — **ROTATED 2026-07-28**, fingerprint `372c83c3…` → `fe4fe47c…`. Owner must deploy the new pair to the relay **and the pool together**: rotating invalidates every outstanding blind token, and a split cutover fails closed.
+4. **Android upload keystore** — generate fresh; treat the tracked `debug.keystore` as public. Owner-only; `debug.keystore` deliberately stays tracked.
+5. ~~**Sentry DSN**~~ — **RETRACTED 2026-07-28, this was a false positive of mine.** Blob `3adf83af` holds `https://examplePublicKey@o0.ingest.sentry.io/0`, Sentry's documented placeholder. My detection regex matched the `sentry.io` hostname, not a key; a real-key pattern matches 0 times. **Nothing to rotate.** `GroceryApp/.env` and `.env.example` are the same blob, and the placeholder belongs in the tracked template.
 
-Rotation alone is insufficient for the Turso tokens: they were a client-side fallback, so any replacement shipped the same way is extractable from the APK. Move Turso behind a server endpoint first. History rewrite (`git filter-repo`/BFG) should be done in one pass together with the `node_modules_bak` / `dist-android` purge.
+**Rotation alone is insufficient for the Turso tokens, and always was.** They were a client-side fallback, so any replacement shipped the same way is extractable from the APK — demonstrated by bundling with a synthetic token and finding it verbatim in the minified output. That is now fixed: the credential lives only in the relay's environment (`a9792cdd`), so a fresh token finally means something.
+
+**The rewrite is hygiene; revocation is the fix.** A history rewrite has been prepared and fully verified in a scratch mirror (all four scoped paths gone, 87.74 MiB → 12.05 MiB, 9 branches / 22 tags intact) but **nothing has been pushed** and the owner has not yet scoped it in. Even when it runs it does not un-publish anything: old commits stay reachable by SHA through GitHub's UI and API until GitHub Support garbage-collects them, forks keep their own copies forever, and two other repositories carry the identical exposure regardless.
 
 ---
 

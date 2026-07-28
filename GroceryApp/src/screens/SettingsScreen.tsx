@@ -863,34 +863,23 @@ export default function SettingsScreen({ navigation }: Props) {
           </View>
         </View>
 
-        {/* ── Turso Database (for Flipp Deal Matching & Products) ───────── */}
+        {/* ── Product Catalog (Flipp Deal Matching & Products) ──────────── */}
         <View style={[styles.section, { backgroundColor: theme.cardBg, borderColor: theme.border }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Flipp Deal Matching</Text>
           <Text style={[styles.sectionDescription, { color: theme.secondaryText }]}>
-            Connect a Turso database to power deal-matched shopping. Your FSA
-            (first 3 characters of your postal code) determines which local
-            flyer deals to use.
+            Deal matching uses your relay's product catalog. Your FSA (first 3
+            characters of your postal code) determines which local flyer deals
+            to use, and is sent to your relay to fetch them.
           </Text>
 
-          <SettingsRow
-            label="Turso URL"
-            value={settings.tursoUrl}
-            onChangeText={(v) => handleUpdate({ tursoUrl: v })}
-            placeholder="https://your-database.turso.io"
-            keyboardType="url"
-            theme={theme}
-            isDark={isDark}
-          />
-
-          <SettingsRow
-            label="Turso Token"
-            value={settings.tursoToken}
-            onChangeText={(v) => handleUpdate({ tursoToken: v })}
-            placeholder="eyJ... (JWT token)"
-            secureTextEntry
-            theme={theme}
-            isDark={isDark}
-          />
+          {/*
+            There is deliberately no database URL or token field here. This
+            section used to collect a Turso URL and a read-write JWT, which
+            then lived in the app's persisted settings and inside the built
+            APK. The credential now lives only in the relay's environment
+            (TURSO_URL / TURSO_TOKEN). Do not add a credential input back —
+            see GOAL_PROMPT_NOTES.md.
+          */}
 
           <SettingsRow
             label="Your FSA (postal code prefix)"
@@ -909,7 +898,7 @@ export default function SettingsScreen({ navigation }: Props) {
           />
 
           <ToggleRow
-            label="Turso Enabled"
+            label="Product Catalog Lookups"
             value={settings.tursoEnabled ?? false}
             onValueChange={(v) => handleUpdate({ tursoEnabled: v })}
             theme={theme}

@@ -16,4 +16,14 @@ local.properties
 app/src/main/java/inline/
 
 # Bundle artifacts
+#
+# `*.jsbundle` does NOT match `index.android.bundle` — that gap is how a
+# production bundle carrying a live read-write database token ended up tracked
+# inside the release source set (app/src/main/assets/) and pushed to a public
+# remote. Match the real filename explicitly. The Gradle `react { }` block
+# regenerates it on every release build via @expo/cli `export:embed`, so there
+# is nothing to preserve.
 *.jsbundle
+index.android.bundle
+app/src/main/assets/index.android.bundle
+*.hbc

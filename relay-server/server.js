@@ -728,6 +728,15 @@ const server = createServer((req, res) => {
     return handleExtractRequest(req, res, enrolledDevices);
   }
 
+  // /api/catalog/* — authenticated product-catalog reads backed by Turso.
+  // The Turso credential lives ONLY in this process's environment
+  // (TURSO_URL / TURSO_TOKEN); the client never holds one. Six fixed
+  // operations, no SQL passthrough — see catalog/catalog-server.js.
+  if (req.url.startsWith('/api/catalog/')) {
+    const { handleCatalogRequest } = require('./catalog/catalog-server');
+    return handleCatalogRequest(req, res, enrolledDevices);
+  }
+
   // Voice-assistant + OAuth account-linking endpoints (see ASSISTANT_INTEGRATION
   // above for why these are off by default).
   if (

@@ -9,7 +9,7 @@
  *   - Greedy set-cover algorithm for store optimization
  */
 
-import { getTurso, isTursoReady } from './tursoClient';
+import { isCatalogAvailable, fetchDeals } from './catalogClient';
 import { getCachedDeals, setCachedDeals } from './dealCache';
 import type { GroceryItem } from '../types';
 
@@ -108,35 +108,14 @@ export async function fetchDealsForFSA(
     if (cached) return cached;
   }
 
-  if (!isTursoReady()) return [];
+  if (!isCatalogAvailable()) return [];
 
-  try {
-    const db = getTurso();
-    // Use FSA prefix match (first 3 chars of postal code)
-    const prefix = fsa.slice(0, 3).toUpperCase();
-    const result = await db.execute(
-      `SELECT merchant, name, price, price_real, image_url, valid_to
-       FROM flipp_deals
-       WHERE postal_code LIKE ?
-         AND valid_to >= datetime('now')
-       ORDER BY merchant, price_real ASC`,
-      [prefix + '%'],
-    );
+  // The FSA prefix match happens relay-side; the client sends only the FSA.
+  const deals = await fetchDeals(fsa);
+  if (deals.length === 0) return [];
 
-    const deals: FlippDealRow[] = result.rows.map((row) => ({
-      merchant: String(row[0] ?? ''),
-      name: String(row[1] ?? ''),
-      price: String(row[2] ?? ''),
-      price_real: row[3] != null ? Number(row[3]) : null,
-      image_url: row[4] != null ? String(row[4]) : null,
-      valid_to: String(row[5] ?? ''),
-    }));
-
-    setCachedDeals(fsa, deals);
-    return deals;
-  } catch {
-    return [];
-  }
+  setCachedDeals(fsa, deals);
+  return deals;
 }
 
 // ─── Deal matching ───────────────────────────────────────────────────────────

@@ -48,30 +48,19 @@ interface BrandingRow {
 const _tursoBranding: Map<string, BrandingRow> = new Map();
 
 /**
- * Fetch all store_branding rows from Turso and populate the in-memory cache.
- * Non-blocking: errors are caught and logged, so the app keeps working
- * with static fallback data if Turso is unreachable.
+ * Fetch all store branding rows via the relay catalog and populate the
+ * in-memory cache. Non-blocking: errors are caught and logged, so the app
+ * keeps working with static fallback data if the relay is unreachable.
  */
 export async function fetchStoreBranding(): Promise<void> {
   try {
-    // Lazy-import so this module can load before Turso is initialized
-    const { getTurso, isTursoReady } = await import('../services/tursoClient');
-    if (!isTursoReady()) return;
+    // Lazy-import so this module can load before settings are initialised
+    const catalog = await import('../services/catalogClient');
+    if (!catalog.isCatalogAvailable()) return;
 
-    const client = getTurso();
-    const result = await client.execute(
-      'SELECT store_id, store_name, logo_url, color FROM store_branding',
-    );
-
-    for (const row of result.rows) {
-      const entry: BrandingRow = {
-        store_id: String(row[0] ?? ''),
-        store_name: String(row[1] ?? ''),
-        logo_url: row[2] != null ? String(row[2]) : null,
-        color: row[3] != null ? String(row[3]) : null,
-      };
-      if (entry.store_id) {
-        _tursoBranding.set(entry.store_id.toLowerCase(), entry);
+    for (const row of await catalog.fetchStoreBranding()) {
+      if (row.store_id) {
+        _tursoBranding.set(row.store_id.toLowerCase(), row);
       }
     }
   } catch (e) {

@@ -135,24 +135,17 @@ function App() {
         await device.initDeviceIdentity();
 
         // Init settings store (loads from SecureStore → populates cache)
-        const { initSettings, getSettings } = await import('./src/config/settings');
+        const { initSettings } = await import('./src/config/settings');
         await initSettings();
 
-        // Init Turso if configured. Credentials come from user settings or
-        // EXPO_PUBLIC_* build-time env — NEVER hardcode tokens here: a
-        // read-write JWT was previously committed in this file; treat it as
-        // compromised and rotate it (see GOAL_PROMPT_NOTES.md).
-        try {
-          const { initTurso } = await import('./src/services/tursoClient');
-          const settings = getSettings();
-          const tursoUrl = settings.tursoUrl || process.env.EXPO_PUBLIC_TURSO_URL;
-          const tursoToken = settings.tursoToken || process.env.EXPO_PUBLIC_TURSO_TOKEN;
-          if (tursoUrl && tursoToken) {
-            initTurso({ url: tursoUrl, token: tursoToken });
-          }
-        } catch (e) {
-          console.warn('[init] Turso init failed:', e);
-        }
+        // NOTE: there is deliberately no database client initialised here.
+        // Product/deal/price lookups go through the relay's /api/catalog/*
+        // endpoints (src/services/catalogClient.ts), which need no client-side
+        // credential. This block previously read a Turso URL and token from
+        // user settings or EXPO_PUBLIC_* build-time env; both shapes ship the
+        // credential inside the APK, because Expo inlines every EXPO_PUBLIC_*
+        // value into the bundle at build time. Do not reintroduce either.
+        // See GOAL_PROMPT_NOTES.md.
 
         // Restore persisted lists into Yjs and connect family sync (if
         // enrolled). Without this call nothing ever hydrated from
@@ -165,7 +158,7 @@ function App() {
           console.warn('[init] Sync bootstrap failed:', e);
         }
 
-        // Fire-and-forget: fetch remote store branding from Turso
+        // Fire-and-forget: fetch remote store branding via the relay catalog
         import('./src/pricing/store-branding')
           .then(({ fetchStoreBranding }) => fetchStoreBranding())
           .catch(() => {});

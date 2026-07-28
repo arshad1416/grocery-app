@@ -44,7 +44,7 @@ import BarcodeScannerScreen from '../components/BarcodeScannerScreen';
 import { lookupProduct, submitNewProduct } from '../services/productLookup';
 import { fetchDealsForFSA, type FlippDealRow } from '../services/dealMatcher';
 import { getSettings } from '../config/settings';
-import { isTursoReady } from '../services/tursoClient';
+import { isCatalogAvailable } from '../services/catalogClient';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -293,7 +293,7 @@ export default function HomeScreen({ navigation }: Props) {
         setDealsLoading(false);
         return;
       }
-      if (!isTursoReady()) {
+      if (!isCatalogAvailable()) {
         setDealsError('turso_missing');
         setDealsLoading(false);
         return;
@@ -363,7 +363,7 @@ export default function HomeScreen({ navigation }: Props) {
     
     try {
       if (!scanResult.product && newProductName.trim()) {
-        if (isTursoReady()) {
+        if (isCatalogAvailable()) {
           try {
             await submitNewProduct({
               barcode: scanResult.barcode,

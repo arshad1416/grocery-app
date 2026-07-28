@@ -8,9 +8,11 @@
 |------|---------|
 | `src/types/product.ts` | ProductInfo, ScanResult, NewProductSubmission types |
 | `src/services/productCache.ts` | In-memory session cache (max 200 items) |
-| `src/services/tursoClient.ts` | HTTP client for Turso `/v2/pipeline` API (zero native deps) |
-| `src/services/tursoMigrations.ts` | SQL migrations for `products` + `product_prices` tables |
-| `src/services/productLookup.ts` | Lookup chain: cache → Turso → Open Food Facts → USDA |
+| `src/services/catalogClient.ts` | Client for the relay's `/api/catalog/*` endpoints (no DB credential) |
+| `relay-server/catalog/turso-client.js` | **Relay-side** Turso client — the only place a token exists |
+| `relay-server/catalog/catalog-server.js` | The six fixed catalog operations; no SQL passthrough |
+| `relay-server/catalog/migrations.js` | SQL migrations for `products` + `product_prices` tables |
+| `src/services/productLookup.ts` | Lookup chain: cache → relay catalog → Open Food Facts → USDA |
 | `src/services/aiCleanup.ts` | Heuristic + AI product name normalization (MiMo via OpenCode Go) |
 | `src/components/BarcodeScannerScreen.tsx` | Full-screen barcode scanner (expo-camera, EAN-13/UPC) |
 
@@ -18,8 +20,8 @@
 
 | File | Change |
 |------|--------|
-| `src/types/index.ts` | Added `tursoUrl`, `tursoToken`, `tursoEnabled` to AppSettings |
-| `App.tsx` | Adds Turso init after device identity setup |
+| `src/types/index.ts` | Added `tursoEnabled` to AppSettings (catalog on/off) |
+| `App.tsx` | No database client is initialised — catalog calls go through the relay |
 | `src/screens/AddItemSheet.tsx` | Scan button, scanner overlay, lookup, new-product form |
 
 ---
@@ -34,7 +36,7 @@ npx expo install expo-camera
 
 This is the same library already used dynamically in `CameraScanner.tsx`. Installing it makes the real camera available.
 
-### 2. Create a Turso database
+### 2. Create a Turso database (operator step — never the app)
 
 ```bash
 # Install Turso CLI
@@ -44,19 +46,20 @@ curl -sSfL https://get.turso.tech/install.sh | bash
 turso auth login
 
 # Create a database for PantryRun products
-turso db create stophop-products
+turso db create pantryrun-products
 
 # Get the database URL + token
-turso db show stophop-products --url        # → https://stophop-products-<org>.turso.io
-turso db tokens create stophop-products     # → <token>
+turso db show pantryrun-products --url      # → https://pantryrun-products-<org>.turso.io
+turso db tokens create pantryrun-products --read-only   # prefer read-only where the product allows
 
 # Initialize the schema
-turso db shell stophop-products < src/services/init-schema.sql
+turso db shell pantryrun-products < schema.sql
 ```
 
-### 3. Create `init-schema.sql`
+### 3. Apply the schema
 
-Run this against your Turso DB to create the tables:
+The statements below also live in `relay-server/catalog/migrations.js`. Run
+them against your Turso DB to create the tables:
 
 ```sql
 CREATE TABLE IF NOT EXISTS products (
@@ -101,9 +104,23 @@ EXPO_PUBLIC_AI_CLEANUP_URL=https://opencode.ai/zen/go/v1/chat/completions
 EXPO_PUBLIC_AI_CLEANUP_KEY=your_opencode_go_key
 ```
 
-### 5. Set Turso credentials in-app
+### 5. Set the Turso credentials on the RELAY — never in the app
 
-The SettingsScreen needs Turso URL + token fields (not built yet). For testing, you can hardcode them temporarily or add a TursoConfigSection in SettingsScreen.
+```bash
+# On the relay host only. These never appear in this repository, in a .env
+# that is committed, or in any EXPO_PUBLIC_* variable.
+TURSO_URL=https://pantryrun-products-<org>.turso.io
+TURSO_TOKEN=<token>
+```
+
+⚠️ **Do not add a Turso URL or token field to SettingsScreen, and do not
+introduce an `EXPO_PUBLIC_*` variable carrying either.** An earlier build did
+both. Expo inlines
+every `EXPO_PUBLIC_*` value into the JS bundle at build time, and a value in
+app settings ends up in the bundle or on the device either way — both are
+extractable from a shipped APK with `unzip` and `strings`. A read-write token
+committed this way is why the credentials in this repo's history had to be
+revoked. See `GOAL_PROMPT_NOTES.md`.
 
 ---
 
@@ -120,9 +137,9 @@ BarcodeScannerScreen ── onScan(barcode) ──► AddItemSheet
                                                │
                                     ┌──────────┼──────────┐
                                     ▼          ▼          ▼
-                               In-memory    Turso DB   Open Food Facts
-                                cache       (your      (free, no key)
-                                (session    products)       │
+                               In-memory   Relay       Open Food Facts
+                                cache      /api/catalog (free, no key)
+                                (session   (your products)  │
                                  only)                      ▼
                                                          USDA
                                                          (free fallback)
@@ -141,15 +158,15 @@ BarcodeScannerScreen ── onScan(barcode) ──► AddItemSheet
                          submitNewProduct()
                                 │
                                 ▼
-                          AI Cleanup → Turso INSERT
-                          (heuristic + MiMo)
+                          AI Cleanup → POST /api/catalog/product-submit
+                          (heuristic + MiMo)   (relay writes to Turso)
 ```
 
 ## Edge Cases Handled
 
 1. **Camera not available** → falls back to manual barcode entry (type digits)
 2. **No network** → cache hit works, otherwise shows error
-3. **Turso not configured** → lookup still works (OFF + USDA), save disabled
+3. **Relay catalog unavailable** → lookup still works (OFF + USDA), save disabled
 4. **Product not in any DB** → new product form, user enters name
 5. **All-caps names** → AI cleanup normalizes to title case
 6. **Rapid scanning** → `scanned` flag prevents duplicate triggers
@@ -157,9 +174,10 @@ BarcodeScannerScreen ── onScan(barcode) ──► AddItemSheet
 
 ## What's Not Built (For Your Next Session)
 
-1. **Turso settings UI** in SettingsScreen (URL + token fields)
-2. **Turso schema auto-migration** on app start (the `migrations` table check)
+1. ~~Turso settings UI in SettingsScreen (URL + token fields)~~ — **deliberately
+   never building this.** The app holds no database credential; see step 5.
+2. **Schema auto-migration** on relay start (the `migrations` table check)
 3. **AI cleanup server endpoint** (currently configured to hit OpenCode Go API directly — a Cloudflare Worker wrapper would be cleaner)
 4. **Price history view** in ItemEditScreen (data is stored, UI not wired)
 5. **expo-camera install** — you need to `npx expo install expo-camera`
-6. **Turso database creation** — via CLI
+6. **Turso database creation** — via CLI, by the relay operator

@@ -1,15 +1,25 @@
 /**
  * ProductLookup — the lookup chain for barcode product data.
  *
- * Order: in-memory cache → Turso DB → Open Food Facts API → USDA API
+ * Order: in-memory cache → relay catalog → Open Food Facts API → USDA API
  *
  * Results are cached in-memory so repeated scans of the same item
- * in one session are instant. Turso is the long-term persistent cache.
- * Open Food Facts and USDA are free external sources.
+ * in one session are instant. The relay-backed catalog is the long-term
+ * persistent cache. Open Food Facts and USDA are free external sources.
+ *
+ * The catalog was formerly queried directly from the app with a Turso token
+ * the app itself carried. It now goes through the relay's /api/catalog/*
+ * endpoints and the app holds no database credential — see
+ * src/services/catalogClient.ts.
  */
 
 import { getCachedProduct, setCachedProduct } from './productCache';
-import { getTurso, isTursoReady } from './tursoClient';
+import {
+  isCatalogAvailable,
+  fetchProduct,
+  fetchPriceHistory,
+  submitProduct,
+} from './catalogClient';
 import { cleanProductName } from './aiCleanup';
 import type { ProductInfo, CleanedProduct, NewProductSubmission, ScanResult } from '../types/product';
 
@@ -81,32 +91,22 @@ async function lookupUSDA(barcode: string): Promise<ProductInfo | null> {
   }
 }
 
-/** Look up in Turso (user-contributed products). */
-async function lookupTurso(barcode: string): Promise<ProductInfo | null> {
-  if (!isTursoReady()) return null;
+/** Look up in the relay catalog (user-contributed products). */
+async function lookupCatalog(barcode: string): Promise<ProductInfo | null> {
+  if (!isCatalogAvailable()) return null;
 
-  try {
-    const db = getTurso();
-    const result = await db.execute(
-      'SELECT product_name, brand, category, image_url, quantity_label FROM products WHERE barcode = ?',
-      [barcode],
-    );
+  const product = await fetchProduct(barcode);
+  if (!product) return null;
 
-    if (result.rows.length === 0) return null;
-
-    const row = result.rows[0];
-    return {
-      barcode,
-      productName: String(row[0] ?? 'Unknown Product'),
-      brand: row[1] ? String(row[1]) : undefined,
-      category: row[2] ? String(row[2]) : undefined,
-      imageUrl: row[3] ? String(row[3]) : undefined,
-      quantityLabel: row[4] ? String(row[4]) : undefined,
-      source: 'turso',
-    };
-  } catch {
-    return null;
-  }
+  return {
+    barcode,
+    productName: product.productName || 'Unknown Product',
+    brand: product.brand ?? undefined,
+    category: product.category ?? undefined,
+    imageUrl: product.imageUrl ?? undefined,
+    quantityLabel: product.quantityLabel ?? undefined,
+    source: 'turso',
+  };
 }
 
 // ─── Main public functions ───────────────────────────────────────────────────
@@ -123,8 +123,8 @@ export async function lookupProduct(barcode: string): Promise<ScanResult> {
   try {
     let product: ProductInfo | null = null;
 
-    // 2. Turso (user-contributed)
-    if (!product) product = await lookupTurso(barcode);
+    // 2. Relay catalog (user-contributed)
+    if (!product) product = await lookupCatalog(barcode);
 
     // 3. Open Food Facts (free, no key)
     if (!product) product = await lookupOpenFoodFacts(barcode);
@@ -145,15 +145,15 @@ export async function lookupProduct(barcode: string): Promise<ScanResult> {
 }
 
 /**
- * Save a user-submitted product to Turso.
+ * Save a user-submitted product through the relay catalog.
  * The raw name is passed through AI cleanup before storing.
  */
 export async function submitNewProduct(submission: NewProductSubmission): Promise<CleanedProduct> {
-  if (!isTursoReady()) {
-    throw new Error('Turso not configured. Connect a Turso database in Settings.');
+  if (!isCatalogAvailable()) {
+    throw new Error(
+      'Product catalog is unavailable. Check that your relay is reachable and that Product Catalog Lookups are enabled in Settings.',
+    );
   }
-
-  const db = getTurso();
 
   // AI cleanup — normalize the raw name
   const cleaned = await cleanProductName(submission.rawName);
@@ -172,53 +172,27 @@ export async function submitNewProduct(submission: NewProductSubmission): Promis
     updatedAt: new Date().toISOString(),
   };
 
-  // Build batch statements — product INSERT first (FK target), then optional price INSERT
-  const statements: { sql: string; args?: (string | number | null)[] }[] = [
-    {
-      sql: `INSERT INTO products (barcode, product_name, brand, category, image_url, quantity_label, source, raw_input, ai_cleaned, first_seen_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, 'turso', ?, 1, datetime('now'), datetime('now'))
-           ON CONFLICT(barcode) DO UPDATE SET
-             product_name = excluded.product_name,
-             brand = excluded.brand,
-             category = excluded.category,
-             quantity_label = excluded.quantity_label,
-             raw_input = excluded.raw_input,
-             ai_cleaned = 1,
-             updated_at = datetime('now')`,
-      args: [
-        product.barcode,
-        product.productName,
-        product.brand,
-        product.category,
-        product.imageUrl,
-        product.quantityLabel,
-        product.rawInput,
-      ],
-    },
-  ];
+  // Write through the relay. The client no longer issues SQL: the relay owns
+  // the statements and the credential (see relay-server/catalog/).
+  const accepted = await submitProduct({
+    barcode: product.barcode,
+    productName: product.productName,
+    brand: product.brand,
+    category: product.category,
+    quantityLabel: product.quantityLabel,
+    rawInput: product.rawInput,
+    aiCleaned: true,
+    price: submission.price
+      ? {
+          amount: submission.price.amount,
+          storeName: submission.price.storeName,
+          storeId: submission.price.storeId,
+        }
+      : undefined,
+  });
 
-  // If user submitted a price at the same time, log it in the same batch
-  if (submission.price) {
-    statements.push({
-      sql: `INSERT INTO product_prices (barcode, price, store_name, store_id, scanned_at, submitted_by)
-           VALUES (?, ?, ?, ?, datetime('now'), ?)`,
-      args: [
-        submission.barcode,
-        submission.price.amount,
-        submission.price.storeName,
-        submission.price.storeId,
-        'system',
-      ],
-    });
-  }
-
-  const batchResult = await db.batch(statements);
-
-  // Check if any statement in the batch failed
-  for (const result of batchResult.results) {
-    if ('error' in result) {
-      throw new Error(`Turso batch error: ${result.error}`);
-    }
+  if (!accepted) {
+    throw new Error('The relay could not save this product. Please try again.');
   }
 
   // Cache the result for this session
@@ -236,31 +210,12 @@ export async function submitNewProduct(submission: NewProductSubmission): Promis
 }
 
 /**
- * Load recent price history for a product from Turso.
+ * Load recent price history for a product from the relay catalog.
  */
 export async function getPriceHistory(
   barcode: string,
   limit = 20,
 ): Promise<{ price: number; storeName: string; scannedAt: string }[]> {
-  if (!isTursoReady()) return [];
-
-  try {
-    const db = getTurso();
-    const result = await db.execute(
-      `SELECT price, store_name, scanned_at
-       FROM product_prices
-       WHERE barcode = ?
-       ORDER BY scanned_at DESC
-       LIMIT ?`,
-      [barcode, limit],
-    );
-
-    return result.rows.map((row) => ({
-      price: Number(row[0]),
-      storeName: String(row[1]),
-      scannedAt: String(row[2]),
-    }));
-  } catch {
-    return [];
-  }
+  if (!isCatalogAvailable()) return [];
+  return fetchPriceHistory(barcode, limit);
 }

@@ -54,6 +54,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
 };
 
+/**
+ * The shipped defaults, exposed so tests can assert on them directly rather
+ * than restating them (a restated copy drifts and then proves nothing).
+ */
+export const DEFAULT_SETTINGS_FOR_TEST: Readonly<AppSettings> = DEFAULT_SETTINGS;
+
 // ─── Cache ───────────────────────────────────────────────────────────────────
 
 let settingsCache: AppSettings | null = null;
@@ -127,6 +133,76 @@ async function loadSettingsFromStore(): Promise<AppSettings | null> {
   }
 }
 
+// ─── Persisted-schema pruning ────────────────────────────────────────────────
+
+/**
+ * Every key AppSettings recognises. Kept in sync with the `AppSettings`
+ * interface in src/types/index.ts — `settings-schema.test.ts` fails if the two
+ * drift apart, so adding a field to the interface without adding it here is
+ * caught rather than silently dropping the field off users' devices.
+ */
+export const KNOWN_SETTINGS_KEYS: readonly string[] = [
+  'adapterEnabled',
+  'barcodeScanningEnabled',
+  'cloudFlyerEnabled',
+  'contributeConsentShown',
+  'contributeEnabled',
+  'contributeStoreGranularity',
+  'flippFsa',
+  'flyerScanEnabled',
+  'hostingTier',
+  'instacartApiKey',
+  'localAiEndpoint',
+  'managedSubscriptionKey',
+  'navigationApp',
+  'pairingCode',
+  'poolUrl',
+  'priceServiceEnabled',
+  'pricingOptedIn',
+  'relayPort',
+  'relayUrl',
+  'scrapingEnabled',
+  'sentryEnabled',
+  'theme',
+  'tursoEnabled',
+  'voiceInputEnabled',
+];
+
+/**
+ * Prune a settings object loaded off disk down to the keys the app still
+ * recognises.
+ *
+ * Why this exists rather than a list of specific fields to delete: earlier
+ * builds persisted a product-database URL and a read-write API token into
+ * this blob, entered through the Settings screen or inlined from build-time
+ * `EXPO_PUBLIC_*` variables. Those fields are gone from AppSettings, but a
+ * device that ran such a build still has the values sitting in SecureStore —
+ * deleting the TypeScript declarations alone would leave them there forever.
+ * Pruning to the known schema removes them, and removes any future
+ * abandoned field the same way, without this module having to carry a
+ * hardcoded list of dead credential names.
+ *
+ * @returns the pruned object and the keys removed. The caller re-persists
+ *          only when something was removed, so a normal launch does not pay
+ *          for an encrypt + SecureStore write.
+ */
+export function pruneUnknownSettings(
+  loaded: Record<string, unknown>,
+): { settings: Record<string, unknown>; removed: string[] } {
+  const settings: Record<string, unknown> = {};
+  const removed: string[] = [];
+
+  for (const key of Object.keys(loaded)) {
+    if (KNOWN_SETTINGS_KEYS.includes(key)) {
+      settings[key] = loaded[key];
+    } else {
+      removed.push(key);
+    }
+  }
+
+  return { settings, removed };
+}
+
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 /**
@@ -138,7 +214,21 @@ export async function initSettings(): Promise<AppSettings> {
   console.log('[settings] Loading settings from secure store…');
   const loaded = await loadSettingsFromStore();
   if (loaded) {
-    settingsCache = { ...DEFAULT_SETTINGS, ...loaded };
+    // Drop fields earlier builds persisted that the app no longer recognises —
+    // including the database credential fields — before anything can read
+    // them, and rewrite the blob so they leave the device for good.
+    const { settings: pruned, removed } = pruneUnknownSettings(
+      loaded as unknown as Record<string, unknown>,
+    );
+    settingsCache = { ...DEFAULT_SETTINGS, ...(pruned as Partial<AppSettings>) };
+
+    if (removed.length > 0) {
+      console.log(
+        `[settings] Pruned ${removed.length} unrecognised field(s) from stored settings: ${removed.join(', ')}`,
+      );
+      await persistSettings(settingsCache);
+    }
+
     console.log('[settings] ✓ Settings loaded (merged with defaults)');
     return { ...settingsCache };
   }

@@ -194,12 +194,16 @@ export interface AppSettings {
   /** Separate pool server URL for contribution transport isolation */
   poolUrl?: string;
 
-  // ─── Turso (Product Database) ────────────────────────────────────────────
-  /** Turso database URL (https://<db>-<org>.turso.io) */
-  tursoUrl?: string;
-  /** Turso database API token */
-  tursoToken?: string;
-  /** Whether the Turso product DB is connected */
+  // ─── Product catalog (deals, prices, barcode lookups) ────────────────────
+  //
+  // There are deliberately no database URL or API-token fields here. The app
+  // holds no database credential: catalog reads go through the relay's
+  // /api/catalog/* endpoints and the Turso credential lives only in the
+  // relay's process environment. Both fields were removed because anything
+  // the client can hold is extractable from the built APK. Settings objects
+  // already persisted with them are pruned on load — see
+  // `pruneUnknownSettings` in src/config/settings.ts. Do not add them back.
+  /** Whether catalog-backed deal matching and prices are enabled */
   tursoEnabled?: boolean;
   /** FSA (Forward Sortation Area) for Flipp deal matching (e.g. "L0R") */
   flippFsa?: string;

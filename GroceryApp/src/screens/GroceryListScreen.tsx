@@ -43,7 +43,7 @@ import { flippDealsAdapter } from '../pricing/flipp-deals-adapter';
 import { crowdsourcedAdapter } from '../pricing/crowdsourced';
 import { getSettings, updateSettings } from '../config/settings';
 import { fetchDealsForFSA, matchListItems, type FlippDealRow, type DealMatch } from '../services/dealMatcher';
-import { isTursoReady } from '../services/tursoClient';
+import { isCatalogAvailable } from '../services/catalogClient';
 
 // Extracted components
 import SyncIndicator from '../components/SyncIndicator';
@@ -690,7 +690,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
         setFsaDealsLoading(false);
         return;
       }
-      if (!isTursoReady()) {
+      if (!isCatalogAvailable()) {
         setFsaDealsError('turso_missing');
         setFsaDealsLoading(false);
         return;
