@@ -410,6 +410,137 @@ Both are read-write, non-expiring, and reachable from the public remote right no
 
 **8. Generate the Android upload keystore.** Owner-only, and unrelated to the tracked `debug.keystore`, which stays where it is: it is the stock React Native debug keystore whose credentials are public by design, and removing it breaks local debug builds for no security gain.
 
+## Credential exposure — INDEPENDENT RE-VERIFICATION at `e68a770` (2026-07-28, fresh session)
+
+A later session re-opened this goal with no memory of the earlier ones. Everything below was **re-measured from scratch** in worktree `repo-setup-launch-branch-738eca` against tip `e68a770`, which is **3 commits past** the tree the sections above were verified on (`f4948051` → PRs #9, #8, #10). Nothing destructive was re-run. Where a figure differs from the sections above, **the value here is the current one.**
+
+### Why re-verification was not a formality
+The tip moved, and one of the three new commits (`8b9bc98`, PR #9) resynced `package-lock.json` and added two previously-undeclared dependencies. That is exactly the change class that moves `tsc` and test counts, so the earlier "498 / 70 / tsc clean" figures were **stale evidence** for the current tree until re-run.
+
+### Setup items, re-established
+| Item | Measured at `e68a770` |
+|---|---|
+| Repo root | `/Users/arshadkazi/Documents/ShiftLogic_HQ/GroceryApp/repo-setup-launch-branch-738eca` |
+| Shared object store | `/Users/arshadkazi/Documents/GroceryApp/.git` — **9 worktrees** share it |
+| `GroceryApp/` and `relay-server/` | both present at the root |
+| Remote | `origin` = `git@github.com:arshad1416/grocery-app.git`, carries `main` + **22 tags** |
+| `git status --short` | **clean** — no uncommitted work in this copy |
+| Branches / tags | **9 / 22** — unchanged from the pre-rewrite baseline |
+| `count-objects -vH` | in-pack 2178, **size-pack 12.31 MiB**; git dir **13 MB** |
+| `git --version` | 2.48.1 |
+
+### CORRECTION — the launch branch, and the branch name in these notes
+1. **The branch name recorded throughout the sections above is wrong.** They say `claude/repo-setup-launch-branch-738eca`. The actual branch is **`claude/repo-setup-launch-branch-605b9a`**; `738eca` is the *worktree directory* suffix, not the branch. Corrected here rather than silently, because every commit attribution above inherits the error.
+2. **The setup premise is now inverted, and so is the standing memory note.** Both say `main` is stale and the launch work sits unmerged on a feature branch ~18 commits ahead. Measured: `claude/dreamy-faraday-758d4e` (`d4d442d`) **is an ancestor of `main`**; `main` == `origin/main` == `claude/repo-setup-launch-branch-605b9a` == `e68a770`; `git rev-list --left-right --count main...claude/repo-setup-launch-branch-605b9a` = `0 0`. **`main` carries the launch work.** Anyone auditing on the old assumption is auditing the wrong tree. `LAUNCH-PUNCH-LIST.md` § "Branch action" corrected to match.
+
+### `done_when` re-verified, one instrument at a time
+
+| # | Check | Result at `e68a770` |
+|---|---|---|
+| 1 | `npx tsc --noEmit` | **exit 0, clean** |
+| 1 | app suite (`npx jest`) | **498 passed, 1 skipped, 499 total, 44 suites** |
+| 1 | relay suite (`npm test`) | **70 passed, 6 suites** |
+| 1 | uncommitted work | none — tree clean before and after |
+| 2 | `grep -rn -E "tursoToken\|tursoUrl\|EXPO_PUBLIC_TURSO" GroceryApp/App.tsx GroceryApp/src` | **prints nothing** (exit 1) |
+| 3 | `git ls-files \| grep -E 'index\.android\.bundle\|dist-android/' \| wc -l` | **0** |
+| 3 | `debug.keystore` still tracked | **yes** |
+| 3 | root `.gitignore` | **exists** |
+| 4 | fresh bundle, `strings \| grep -cE 'eyJhbGciOi'` | **0** |
+| 4 | fresh bundle, `strings \| grep -c 'turso.io'` | **0** |
+| 5 | `git ls-files \| grep -c 'issuer-.*-key.pem'` | **0** |
+| 5 | keypair on disk, fingerprint | present; `fe4fe47c…` — **matches the rotated pair**, unchanged |
+| 6 | four scoped paths across all objects | **0** |
+| 6 | all 18 recorded artifact blobs via `cat-file -e` | **all fail — gone** |
+| 6 | `size-pack` vs 87.74 MiB baseline | **12.31 MiB — 14.0%, well under half** |
+
+**Item 6 was verified against the live repository, not a mirror — deliberately.** The wording asks for the checks "in the rewritten mirror clone." No mirror was cut this session and none should be: the rewrite already ran, was force-pushed, and all 9 worktrees were repaired onto it. The live object store **is** the rewritten history, and it is what `origin` and every worktree actually resolve — a stricter instrument than a scratch mirror, which only ever proved what *would* happen. Cutting a fresh mirror to satisfy the literal wording would prove strictly less.
+
+**One recorded blob is still present, and it is not a credential: `559be6a00f57` = `issuer-public-key.pem`.** The Stage 0 census lists it alongside the artifact blobs, so a reader checking "every recorded SHA fails `cat-file -e`" will find one that does not. It survives because the filter was scoped to the **private** key only. A public key is public by definition, its private half (`194aa746c83a`) is gone, and the keypair has been rotated (`372c83c3…` → `fe4fe47c…`). **The owner was offered its removal in this session and declined** — purging it would require a second rewrite and a second force-push that re-breaks all 9 worktrees and every clone, to hide a value meant to be published. All 18 *artifact* blobs and all 6 *credential* blobs are unreachable.
+
+**`git check-ignore -v` — both readings of item 3 satisfied**, since the task's wording is ambiguous about *which* ignore file must name the bundle:
+```
+GroceryApp/android/.gitignore:28:app/src/main/assets/index.android.bundle   →  …/assets/index.android.bundle
+.gitignore:46:GroceryApp/dist-android/                                      →  …/dist-android/…/index-deadbeef.hbc
+```
+The **root** `.gitignore:36` also carries a bare `index.android.bundle`, so the bundle is named by the root file too; `android/.gitignore:28` simply wins as the more specific match.
+
+### The bundle proof, with both controls
+Flags confirmed against `expo export:embed --help` first, not from recall. No `EXPO_PUBLIC_TURSO_*` was set (`env | grep -c` → 0).
+```
+./node_modules/.bin/expo export:embed --platform android \
+  --dev false --minify true --reset-cache \
+  --entry-file "$PWD/index.ts" \
+  --bundle-output <out>/index.android.bundle --assets-dest <out>/assets
+```
+Metro printed **"Bundler cache is empty, rebuilding"** — proof `--reset-cache` took effect, which is the difference between a clean zero and a cached one. Output 4,444,689 bytes, 2173 modules.
+
+| probe | count | role |
+|---|---|---|
+| `eyJhbGciOi` | **0** | the result |
+| `turso.io` | **0** | the result |
+| `api/catalog` | 1 | positive control — instrument is live on this file |
+| `pantryrun` (-i) | 6 | positive control |
+| planted synthetic JWT + hostname appended to a copy | **1 / 1** | negative control — `strings` does detect the shape it is being asked about |
+
+**`strings` finds 7 bare `turso` hits and that is correct, not a leak.** They are minified modules containing the `tursoEnabled` boolean and the `'turso'` `ProductSource` label. All 70 source-tree mentions are comments, that toggle, the source label, or the `turso_missing` error key — **zero credential fields**. Checked rather than assumed, because "0 for the exact probe, non-zero for the substring" is precisely the shape that looks like a miss.
+
+### Stage 1's security property, read rather than trusted
+A grep proves the client is clean; it cannot prove the server-side replacement is not a SQL passthrough. Read both files:
+- `relay-server/catalog/turso-client.js` — credential comes from `process.env.TURSO_URL` / `TURSO_TOKEN` **only**; `QUERIES` is a closed map of 7 fixed literal statements; `executeFixed(sql, args)` takes `sql` **only** from that map and binds everything else positionally. No general query function is exported.
+- `relay-server/catalog/catalog-server.js` — **all 7 `executeFixed` call sites pass a `QUERIES.*` literal**; verified by enumerating them. Bearer `relayToken` auth against enrolled devices, 503 when unprovisioned, upstream error bodies never returned.
+- Persisted-settings migration is real, not just a type change: `pruneUnknownSettings()` filters loaded settings against `KNOWN_SETTINGS_KEYS` and the caller re-persists, so `tursoUrl`/`tursoToken` already on a device are dropped. `settings-schema.test.ts` guards the key list against interface drift.
+- `__tests__/no-client-db-credential.test.ts` reads the **actual source tree from disk** rather than importing mocks, and assembles the forbidden identifiers at runtime so the guard does not trip on itself. That is a real instrument, and it is the thing that will catch a reintroduction.
+
+### CORRECTION — `refs/stash` is not the SHA these notes record
+The sections above state the rewritten stash is `16bd3c89`. **It is not, at `e68a770`.** Measured:
+
+| probe | value |
+|---|---|
+| `git rev-parse refs/stash` | **`04bdbbd0`** |
+| subject | `WIP on main: b2ba6577 aesthetic redesign…` |
+| `git stash list` | **0 entries** |
+| `git reflog show refs/stash` | **0 entries** |
+| credential artifacts in its tree | **0** |
+| the 6 credential blobs reachable from it | **0** |
+
+Two things follow, and both matter:
+1. **The entry survived the rewrite and is anchored to rewritten history** — its parent `b2ba6577` is tag `v1.16`, which `merge-base --is-ancestor` confirms is an ancestor of `main`. It is not a leftover pointing into the old graph.
+2. **`git stash list` is empty because the *reflog* is gone, not the stash.** `git stash list` reads `refs/stash`'s reflog, and `reflog expire --expire=now --all` during the rewrite destroyed it. The ref resolves fine. **Anyone checking stash state with `git stash list` alone will conclude there is no stash and be wrong** — check `git rev-parse --verify refs/stash` too. This is the same false-zero family as the `rev-list --objects` filename trap.
+
+**Why the SHA differs — resolved, not left hedged.** `git cat-file -p refs/stash` settles it:
+
+```
+tree   860f77f0…
+parent b2ba6577…   (= tag v1.16, a REWRITTEN SHA, ancestor of main)
+parent e3237186…   (the stash's index commit)
+committer Arshad … 1781651165 -0400   → 2026-06-16 19:06:05
+```
+
+- Its committer date is **2026-06-16**, six weeks *before* the force-push (`main` committed 2026-07-28 16:45). **So it is not a later re-stash** — that was the live alternative, and it is excluded.
+- Its first parent is the **rewritten** `v1.16`. So it is a genuine pre-existing stash carried *through* the rewrite, not a leftover pointing into the old graph.
+- **Neither SHA these notes record exists in this repository**: `git cat-file -e` fails for both `48bc0274` (the pre-rewrite `stash@{0}`) and `16bd3c89` (its recorded rewritten form). Different base commit (`9e19b54e` vs `b2ba6577`), so `04bdbbd0` is a **different stash entry**, not a different rewrite of the same one.
+
+**The mechanism:** `refs/stash` is a single ref; the other entries (`stash@{1}`, `stash@{2}`, …) exist only as reflog entries. The rewrite expired the reflog, so every entry but the tip was dropped, and which entry the tip resolved to differed between mirror cuts. What survives is one rewritten stash commit with **0** credential artifacts in its tree and **0** of the six credential blobs reachable from it. Nothing needed converting to a branch.
+
+### npm ci — the P1 blocker is genuinely gone
+`npm ci --dry-run` in `GroceryApp/` **exits 0** at `e68a770`. The earlier finding (58 mismatched packages, missing `expo-image-picker`) was fixed by PR #9. The punch list carried this **twice** — an open P1 item and a closed P3 item; the stale P1 copy is now struck.
+
+### NEW FINDING — two empty-states instructed an impossible action (FIXED, owner's call)
+Both Deals surfaces rendered *"Please connect a Turso database in settings…"* on the `turso_missing` branch (`HomeScreen.tsx:663`, `GroceryListScreen.tsx:796`), but Stage 1 **deliberately removed** the URL and token fields from Settings — that removal *was* the credential fix. So the app told the user to do something it no longer permits, and named a third-party vendor to end users.
+
+I proposed leaving it for the UX goal (a copy edit does not belong buried in a credential commit). **The owner chose to fix it here**, on the grounds that it is direct fallout of this goal's own change. Done as such:
+
+- New copy names the control that actually exists and matches the `SettingsScreen` label **verbatim**: *"Please turn on Product Catalog Lookups in settings… If it is already on, no relay is configured yet."* Read `isCatalogAvailable()` before writing it — the gate is false when the toggle is off **or** `getRelayHttpBaseUrl()` is null, so copy naming only the toggle would have been wrong in the second case.
+- Internal key `turso_missing` → `catalog_unavailable`, 4 sites across the two screens. Checked for test coupling first: **none**.
+- **Guarded, and the guard was proven.** A new case in `__tests__/no-client-db-credential.test.ts` matches the instruction only inside string literals, so the explanatory comments stay legal. Verified by replanting the old string: the suite went **1 failed / 6 passed** and named `src/screens/HomeScreen.tsx`, then returned to 7 passed on restore. A guard that has never been seen to fail is not evidence.
+
+**Re-verified after the change:** `tsc` clean · app **499 passed / 1 skipped / 44 suites** (up 1 — the new guard) · relay **70 passed / 6 suites** · rebundled with `--reset-cache` (4,444,825 bytes, cache confirmed empty), `eyJhbGciOi` **0**, `turso.io` **0**, `api/catalog` 1, new copy present 4×.
+
+### What is NOT closed, and what closing it depends on
+- **GitHub Support garbage-collection request — owner-only, still outstanding.** Until it runs, every pre-rewrite commit stays reachable by SHA through GitHub's UI and API. The force-push did not un-publish anything.
+- **`secret_scanning_non_provider_patterns` — still disabled.** Almost certainly why a Turso JWT was never flagged: scanning and push protection were on the whole time but generic patterns were off, and a Turso database JWT matches no vendor pattern. Free on a public repo.
+- **The other two repositories carry the identical exposure**, and this rewrite did nothing for them. Revocation — already done — is what covered all three at once.
+
 ## iOS: unblocked, project generated, builds and RUNS (2026-07-28)
 
 Owner installed Xcode, so the handoff below is cleared. Verified: `xcode-select -p` → `/Applications/Xcode.app/Contents/Developer`, Xcode **26.6**, CocoaPods **1.17.0**, iOS **26.5** runtime.
