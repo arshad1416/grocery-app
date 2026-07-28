@@ -54,6 +54,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
 };
 
+/**
+ * The shipped defaults, exposed so tests can assert on them directly rather
+ * than restating them (a restated copy drifts and then proves nothing).
+ */
+export const DEFAULT_SETTINGS_FOR_TEST: Readonly<AppSettings> = DEFAULT_SETTINGS;
+
 // ─── Cache ───────────────────────────────────────────────────────────────────
 
 let settingsCache: AppSettings | null = null;

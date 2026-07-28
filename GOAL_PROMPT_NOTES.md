@@ -166,6 +166,8 @@ Tree diff: rewritten tip is **byte-identical in file set** to the original tip (
 
 **`559be6a00f57` deliberately survives** — that is `issuer-public-key.pem`. A public key is not a credential, its keypair is now rotated, and the task scoped the filter to the private key only. Removable if the owner prefers a clean `keys/` history.
 
+**⚠️ THE SCRATCH MIRROR IS STALE.** It was cloned at `64c41266`; `1315557d` (this docs commit) landed afterwards, and anything committed later is not in it either. **Do not push that mirror.** Any rewrite must re-clone from the then-current tip and re-run every check above before a single byte is pushed — pushing the existing mirror would silently drop commits.
+
 ### CORRECTION — `refs/stash` was NOT dropped
 The brief states `git-filter-repo` drops stashes. **It did not.** filter-repo 2.47.0 *rewrote* `refs/stash`: `48bc0274` → `16bd3c89`. The entry survives with its 18 files, and `git ls-tree -r refs/stash | grep -cE 'index\.android\.bundle|\.hbc'` → **0**, so its credential-bearing content is gone while the WIP is preserved. No stash needed converting to a branch. Anyone repeating this must **verify** rather than assume the stash vanished.
 
@@ -184,6 +186,33 @@ Both halves matter:
 - Punch-list pointer `android/.gitignore:20` was out of range — the file had **19** lines. Corrected in `LAUNCH-PUNCH-LIST.md`.
 - The memory note "dreamy-faraday is 18 commits ahead of a stale main" is **stale**: local `main` was fast-forwarded and all three branches sat at `d322b1e1`. What is stale is `origin/main`, 28 commits behind.
 - **macOS `strings` silently ignores piped stdin** (Xcode toolchain build). `git cat-file blob X | strings | grep -c …` returns 0 for a blob whose file-on-disk form returns 1. Materialise blobs to a file first, or every history check reads clean.
+
+### OWNER HANDOFF — do these in this order (2026-07-28)
+
+Everything below needs a login, an irreversible publish, or a decision only the owner can make. Nothing here has been done on the owner's behalf.
+
+**1. Revoke both Turso tokens. Do this first; nothing else depends on it and everything else is less urgent.**
+Both are read-write, non-expiring, and reachable from the public remote right now. The app has not launched, so nothing real breaks when they die.
+- Console: https://app.turso.tech → sign in → **Databases** → the products database → **Tokens** (some consoles show this under *Settings → Tokens* / *Database Tokens*) → **Revoke** / **Invalidate** each of the two.
+- Or CLI, which kills every token for that database at once: `turso db tokens invalidate <database-name>`
+- **Then check the Turso audit log for the exposure window.** During an earlier audit an agent extracted the token from git history and attempted an authenticated query against the production database. The sandbox blocked it; it was never authorized. Confirm nothing else got through.
+
+**2. Confirm the revocation landed.** Step 3 is pointless before this.
+
+**3. Mint ONE new token for the relay only.** Narrowest scope the product allows — read-only or table-scoped if Turso offers it for the lookup paths. It goes into the relay's environment as `TURSO_URL` / `TURSO_TOKEN`. **Never** into a committed `.env`, **never** into an `EXPO_PUBLIC_*` variable, and never into a value I type or read. With both unset the relay serves 503 from `/api/catalog/*` and the app falls through to Open Food Facts / USDA.
+
+**4. Deploy the rotated issuer keypair to the relay AND the pool, and restart both together.**
+`ISSUER_PRIVATE_KEY_PATH` (or `ISSUER_PRIVATE_KEY`) and `ISSUER_PUBLIC_KEY` / `ISSUER_PUBLIC_KEY_PATH`. **This invalidates every outstanding blind token.** A split cutover fails closed in both directions: rotate the issuer alone and clients lose contribution until the pool catches up; update the pool alone and it rejects every freshly issued token. One operation, both services.
+
+**5. Answer the history-rewrite question** — two parts:
+   (a) Does the rewrite run against **this** repository at all? The other two repositories keep the identical exposure regardless, and a rewrite breaks every existing clone. Recommendation on file: yes, because this is the published repo, it also sheds 219.7 MB, and doing it before the 28 unpushed launch commits go up is the cheapest it will ever be.
+   (b) If yes — should `GroceryApp/.env` (Sentry DSN, blob `3adf83af`) join the four scoped paths as a fifth?
+
+**6. Force-push approval, in the owner's own words** — only after 5, and only after a fresh mirror is re-cut and re-verified. Before that happens the owner must also confirm **all 9 worktrees are clean or their work is committed**, because a force-push strands every one of them and any uncommitted work in the 8 I cannot see is unrecoverable.
+
+**7. Open a GitHub Support request to garbage-collect the old objects.** Owner-only. Until they do it, the pre-rewrite commits stay reachable by SHA through GitHub's web UI and API even after a successful force-push. Forks, if any exist, keep their own full copies forever. **This is why revocation, not the rewrite, is the remedy.**
+
+**8. Generate the Android upload keystore.** Owner-only, and unrelated to the tracked `debug.keystore`, which stays where it is: it is the stock React Native debug keystore whose credentials are public by design, and removing it breaks local debug builds for no security gain.
 
 ## iOS: unblocked, project generated, builds and RUNS (2026-07-28)
 
