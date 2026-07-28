@@ -1,0 +1,32 @@
+# gitleaks configuration
+#
+# Why this exists: GitHub's free secret scanning on public repositories covers
+# PARTNER patterns only. Generic-secret detection (`non_provider_patterns`) is
+# part of paid Secret Protection — the API accepts a request to enable it,
+# returns 200, and leaves it disabled. That gap is not theoretical: a
+# read-write Turso database JWT sat in this repository's history and was never
+# flagged, because a Turso token matches no vendor pattern.
+#
+# gitleaks closes it for free. Verified: it detects the exact JWT shape that
+# was missed.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Prose about cryptography, not a credential"
+paths = ['''^SECURITY\.md$''']
+regexes = ['''Curve25519|Ed25519|XChaCha20|Argon2id''']
+
+[[allowlists]]
+description = "Test fixtures — invented placeholder values, not credentials"
+paths = ['''^GroceryApp/__tests__/''']
+regexes = [
+  '''abc123-def456''',
+  '''PLACEHOLDER''',
+  '''example[A-Za-z]*Key''',
+]
+
+[[allowlists]]
+description = "Historical redaction markers left by git-filter-repo"
+regexes = ['''\*\*\*REMOVED-REVOKED-TURSO-TOKEN\*\*\*''']

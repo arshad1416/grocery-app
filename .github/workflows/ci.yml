@@ -50,6 +50,45 @@ jobs:
             echo "WARNING: node_modules exceeds 200MB — audit for bloat"
           fi
 
+
+  # ─── Secret Scanning ───────────────────────────────────────────────────────
+  # GitHub's free secret scanning on public repos covers PARTNER patterns only.
+  # Generic-secret detection (`secret_scanning_non_provider_patterns`) is paid
+  # Secret Protection: the REST API accepts a request to enable it, returns
+  # 200, and leaves it disabled. A Turso database JWT matches no vendor
+  # pattern, so one sat in this repository's history unflagged. gitleaks
+  # closes that gap for free.
+  #
+  # Deliberately NOT using gitleaks/gitleaks-action: on pull_request events it
+  # scans only the PR's own commit range (measured: 2 commits / 2.4 KB) while
+  # appearing to scan everything. Running the binary directly scans all 155
+  # commits / 7.5 MB. A secret added and later deleted is still a leak, which
+  # is exactly how the one in this repo survived.
+  secrets:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # full history, not a shallow clone
+
+      - name: Install gitleaks (pinned)
+        env:
+          # Pinned because 8.24.3 does not understand this config's
+          # [[allowlists]] schema and SILENTLY IGNORES it rather than erroring.
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          set -euo pipefail
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | sudo tar xz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: Scan full git history
+        run: gitleaks git . --config .gitleaks.toml --redact -v --exit-code 1
+
+      - name: Scan working tree
+        run: gitleaks dir . --config .gitleaks.toml --redact -v --exit-code 1
+
   # ─── Relay Server ──────────────────────────────────────────────────────────
   relay:
     name: Relay Server
