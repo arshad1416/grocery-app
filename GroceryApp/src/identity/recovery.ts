@@ -263,6 +263,22 @@ function createWordlistSet(): Set<string> {
 }
 
 /**
+ * The CHECKSUM_BITS-wide typo-detection digit for a recovery seed.
+ *
+ * Single source of truth for both the encode and decode paths — if these ever
+ * used different hashes, every generated phrase would fail its own validation.
+ *
+ * Uses crypto_generichash because it is one of only two hash primitives
+ * `react-native-libsodium` actually exposes on device (see the note in
+ * entropyToWordIndices).
+ */
+function entropyChecksum(entropy: Uint8Array): number {
+  const sodium = require('react-native-libsodium');
+  const hash = sodium.crypto_generichash(32, entropy);
+  return hash[0] >> (8 - CHECKSUM_BITS); // top CHECKSUM_BITS bits
+}
+
+/**
  * Convert 128 bits (16 bytes) + 4-bit checksum into 12 word indices.
  * Each word index is 11 bits.
  *
@@ -273,10 +289,20 @@ export function entropyToWordIndices(entropy: Uint8Array): number[] {
     throw new Error(`Entropy must be ${ENTROPY_BYTES} bytes`);
   }
 
-  // Calculate checksum: first CHECKSUM_BITS bits of SHA-256 of entropy
-  const sodium = require('react-native-libsodium');
-  const hash = sodium.crypto_hash_sha256(entropy);
-  const checksum = hash[0] >> (8 - CHECKSUM_BITS); // top CHECKSUM_BITS bits
+  // Calculate checksum: first CHECKSUM_BITS bits of a hash of the entropy.
+  //
+  // NOTE: BIP39 specifies SHA-256 here, but `react-native-libsodium` does not
+  // expose crypto_hash_sha256 on device — only crypto_generichash (BLAKE2b)
+  // and crypto_pwhash. Calling the absent function threw
+  // "TypeError: undefined is not a function" on every real device, which broke
+  // generateRecoveryPhrase() and therefore first-run key provisioning.
+  // The test mock delegates to libsodium-wrappers, which DOES implement the
+  // full API, so the whole suite passed against a call that never worked.
+  //
+  // The checksum is a typo-detection digit that only this app generates and
+  // verifies (both paths use the helper below), so BLAKE2b is safe here. The
+  // wordlist stays BIP39's; the checksum is deliberately not BIP39-compatible.
+  const checksum = entropyChecksum(entropy); // top CHECKSUM_BITS bits
 
   // Build a 132-bit big-endian buffer: 128 bits entropy + 4 bits checksum
   // The checksum sits immediately after the entropy (bits 128-131).
@@ -335,10 +361,8 @@ export function wordIndicesToEntropy(indices: number[]): Uint8Array {
   // Extract stored checksum (bottom 4 bits of the 132-bit value)
   const storedChecksum = Number(buffer & 0xFn);
 
-  // Verify checksum
-  const sodium = require('react-native-libsodium');
-  const hash = sodium.crypto_hash_sha256(entropy);
-  const expectedChecksum = hash[0] >> (8 - CHECKSUM_BITS);
+  // Verify checksum — must use the same helper as the encode path.
+  const expectedChecksum = entropyChecksum(entropy);
 
   if (storedChecksum !== expectedChecksum) {
     throw new Error('Recovery phrase checksum mismatch — phrase is invalid or corrupted');

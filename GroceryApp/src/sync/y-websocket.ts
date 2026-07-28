@@ -430,7 +430,15 @@ export class YjsWebSocketClient {
       nonce,
       this.encryptKey,
     );
-    const abytes = sodium.crypto_aead_xchacha20poly1305_ietf_ABYTES;
+    // Literal, not sodium.crypto_aead_xchacha20poly1305_ietf_ABYTES: that
+    // constant is undefined in react-native-libsodium on device (only the test
+    // mock's libsodium-wrappers defines it), which made this `undefined` and
+    // both slices below silently wrong — `length - undefined` is NaN, so
+    // ciphertext came out empty and tag held the entire payload. It happened to
+    // round-trip because the decrypt path re-concatenates the two, but the
+    // wire fields were wrong for any other reader. src/crypto/index.ts already
+    // hardcodes the same constant for the same reason.
+    const abytes = 16; // crypto_aead_xchacha20poly1305_ietf_ABYTES
     const ciphertext = cipherWithTag.slice(0, cipherWithTag.length - abytes);
     const tag = cipherWithTag.slice(cipherWithTag.length - abytes);
 
