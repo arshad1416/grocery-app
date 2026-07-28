@@ -187,6 +187,22 @@ Both halves matter:
 - The memory note "dreamy-faraday is 18 commits ahead of a stale main" is **stale**: local `main` was fast-forwarded and all three branches sat at `d322b1e1`. What is stale is `origin/main`, 28 commits behind.
 - **macOS `strings` silently ignores piped stdin** (Xcode toolchain build). `git cat-file blob X | strings | grep -c …` returns 0 for a blob whose file-on-disk form returns 1. Materialise blobs to a file first, or every history check reads clean.
 
+### ✅ TURSO REVOCATION LANDED (2026-07-28) — the exposure is closed
+
+**Done in the Turso console, with the owner's explicit instruction, at their keyboard.** `stophop` → *Invalidate Database Tokens* → typed `INVALIDATE` → confirmed. Console returned **"All database tokens invalidated."** Both leaked non-expiring read-write tokens are dead. **This — not the history rewrite — is what actually closed the exposure.**
+
+Findings from doing it, several of which correct earlier instructions in this file:
+
+- **The database is named `stophop`, not `stophop-arshad1416`.** The longer string is the *hostname* (`libsql://stophop-arshad1416.aws-us-east-1.turso.io`) — database name plus org suffix. Any CLI command must use `stophop`.
+- **There is no Turso *Cloud* CLI on either machine.** `/Users/arshadkazi/.local/bin/turso` is **`tursodb` 0.6.0 — the interactive SQL shell** (the Limbo rewrite, which took the same binary name). It has no `db tokens` subcommand; `turso auth whoami` fails with a SQL parse error. `which turso` on the Pi returns nothing. **Every `turso db tokens …` command drafted earlier in this session would have failed.** Use the console.
+- **Invalidation is all-or-nothing and requires typing `INVALIDATE`.** Turso database tokens are JWTs signed by the database keypair; invalidating rotates that keypair, so there is no per-token revoke and any token minted *before* the click also dies. The console's own text confirms it: *"This will require generating new tokens for any applications currently using this database."* Order must be invalidate → then mint, never the reverse.
+- **The audit log is unavailable on the Developer plan** — *"No audit logs available for this organization."* **We therefore cannot determine whether the leaked token was ever used.** Absence of evidence, not evidence of absence. Treat the exposure window as unaudited.
+- **The relay is not deployed.** No relay container on the Pi (AdGuard, Home Assistant, eufy, wyze, matter, portainer only); the `:8080` listener is a `python3` process, not the Node relay. **So the database has exactly one consumer today: the Pi scraper.** The relay's read-only token is not needed until a relay actually exists — which makes this a one-file change, not a coordinated cutover.
+- **An IP allowlist was considered and rejected as the primary control.** The console offers *Restrict Access* (CIDR allowlist), currently empty. The Pi and the Mac share one household egress address, and the Flint's WAN is **DHCP** — a dynamic residential IP. Allowlisting it would have introduced a *silent* failure mode: the address changes, the 4 AM scrape starts failing, and nothing reports it. Viable as a temporary stopgap or defence-in-depth with monitoring; not as the fix. (Raw addresses deliberately not recorded here — this repo forbids raw IPs in git.)
+- **`Delete Protection` is OFF** on `stophop` (347.82 MB). Different threat model from a database token, but a free toggle.
+
+**Outstanding, owner-only:** mint one replacement token and write it to `~/.hermes/stophop_turso_token.txt` on the Pi. Until then the scraper cannot write. Next scheduled run is 04:00 ET (Mon–Sat; full scrape Sun 03:00). Baseline to verify against: **Rows Written = 1,844,460** at time of revocation — a successful scrape moves it.
+
 ### OWNER HANDOFF — do these in this order (2026-07-28)
 
 Everything below needs a login, an irreversible publish, or a decision only the owner can make. Nothing here has been done on the owner's behalf.
