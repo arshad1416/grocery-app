@@ -67,23 +67,34 @@ function realExportedNames(): Set<string> {
 }
 
 /**
- * Blank out comments while preserving line count, so reported line numbers stay
- * accurate. Several files mention absent APIs deliberately, in comments that
- * explain why a literal is hardcoded instead — those must not count as usage.
+ * Blank out comments and string literals while preserving line count, so
+ * reported line numbers stay accurate.
+ *
+ * Both must go: several files mention absent APIs deliberately in comments that
+ * explain why a literal is hardcoded instead, and one warning message contains
+ * the text "Libsodium.install() may have failed". Neither is a call site.
  */
-function stripComments(text: string): string {
+function stripCommentsAndStrings(text: string): string {
+  const blank = (s: string) => s.replace(/[^\n]/g, ' ');
   return text
-    .replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ' '))
-    .replace(/\/\/[^\n]*/g, (line) => line.replace(/[^\n]/g, ' '));
+    .replace(/\/\*[\s\S]*?\*\//g, blank)
+    .replace(/\/\/[^\n]*/g, blank)
+    .replace(/'(?:\\.|[^'\\\n])*'/g, blank)
+    .replace(/"(?:\\.|[^"\\\n])*"/g, blank)
+    .replace(/`(?:\\.|[^`\\])*`/g, blank);
 }
 
-/** Every `sodium.<member>` referenced in src/, with the files referencing it. */
+/**
+ * Every libsodium member referenced in src/, with the files referencing it.
+ * Covers both binding names in use — the module is imported as `sodium` in most
+ * files and as `Libsodium` where the JSI install is invoked.
+ */
 function referencedMembers(): Map<string, string[]> {
   const found = new Map<string, string[]>();
   for (const file of walk(SRC_DIR)) {
-    const lines = stripComments(fs.readFileSync(file, 'utf8')).split('\n');
+    const lines = stripCommentsAndStrings(fs.readFileSync(file, 'utf8')).split('\n');
     lines.forEach((line, i) => {
-      for (const m of line.matchAll(/\bsodium\.([A-Za-z_$][\w$]*)/g)) {
+      for (const m of line.matchAll(/\b(?:sodium|Libsodium)\.([A-Za-z_$][\w$]*)/g)) {
         const where = `${path.relative(PROJECT_ROOT, file)}:${i + 1}`;
         found.set(m[1], [...(found.get(m[1]) ?? []), where]);
       }
