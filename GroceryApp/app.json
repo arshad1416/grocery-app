@@ -30,7 +30,7 @@
       ],
       "entitlements": {
         "com.apple.security.application-groups": [
-          "group.com.shiftlogichq.stophop"
+          "group.com.shiftlogichq.pantryrun"
         ],
         "com.apple.developer.siri": true
       },
@@ -114,7 +114,7 @@
           ]
         }
       ],
-      "package": "com.shiftlogichq.stophop",
+      "package": "com.shiftlogichq.pantryrun",
       "packagingOptions": {
         "pickFirst": ["**/libc++_shared.so"]
       }

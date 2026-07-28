@@ -1,6 +1,6 @@
 # PantryRun — Store Compliance Reference
 
-> **Updated:** July 3, 2026 | **App version:** v1.30.0 | **Package:** `com.shiftlogichq.stophop`
+> **Updated:** July 3, 2026 | **App version:** v1.30.0 | **Package:** `com.shiftlogichq.pantryrun`
 
 This document contains all declarations needed for Google Play Console and Apple App Store Connect submissions.
 

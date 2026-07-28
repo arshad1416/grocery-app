@@ -22,20 +22,41 @@ it's generic (weak/no trademark protection, unbrandable, un-searchable — you'd
 be competing with every app containing the words "grocery app"), and Apple's
 metadata rules disfavor generic keyword names.
 
-**⚠️ "PantryRun" has NOT been availability-checked.** The app was renamed from
-StopHop to **PantryRun** on 2026-07-28 at the owner's request. The clearance
-analysis that used to sit here applied to *StopHop* ("Stop Hopper", the transit
-ride-share app at play.google.com/…/com.sparelabs.platform.rider.stophopper,
-and the delisted HopStop) and says nothing about PantryRun, so it has been
-removed rather than re-pointed at a name it never examined.
+## 1b. Name-collision check: "PantryRun" (checked 2026-07-28)
 
-**Before first submission, re-run the clearance for PantryRun:** App Store and
-Play search for exact and near names, a USPTO/CIPO word-mark search in the
-relevant classes, and `pantryrun.app` / `pantryrun.com` domain checks. Note
-that §7's earlier sweep eliminated **PantryPal** because its domains were
-taken, so the "pantry" naming space is already partly occupied — treat
-PantryRun as unverified until checked. Keep "Grocery" in the subtitle/title
-suffix for search: `PantryRun: Family Grocery List`.
+The app was renamed StopHop → **PantryRun** on 2026-07-28 at the owner's
+request. The clearance analysis that used to sit above applied to *StopHop*
+("Stop Hopper", the transit ride-share app
+play.google.com/…/com.sparelabs.platform.rider.stophopper, and the delisted
+HopStop); it said nothing about PantryRun and was removed rather than
+re-pointed at a name it never examined. Fresh check below.
+
+**⚠️ A direct same-category collision exists.** "Pantry Run" is a live product
+at **app.pantry.run**, described in search results as a smart grocery shopping
+list app with real-time sync, auto-categorisation by store section, and shared
+lists. That is PantryRun's exact category *and* close to its exact feature set
+— materially worse than the StopHop situation, where the nearest name was a
+transit app in an unrelated category.
+
+| Check | Result |
+|---|---|
+| App Store / Play listing named "PantryRun" or "Pantry Run" | **None found** in searches — the collision is currently a web app, not a store listing |
+| `pantry.run` | **Taken and live** — resolves (AWS), Route 53 nameservers; this is the competing product |
+| `pantryrun.com` | **Taken** — registered 2016-03-28, held by TurnCommerce/NameBright (a domain reseller), expiry 2027-03-28. Parked, so likely purchasable at reseller pricing |
+| `pantryrun.app` | **Appears available** — no DNS records and no WHOIS registration record |
+| Trademark | **Not searched.** A USPTO/CIPO word-mark search in the relevant classes is still outstanding and is the check that actually matters for a same-category name |
+
+**Assessment.** The store name is probably obtainable (no competing listing
+found), and `pantryrun.app` is free, which is enough to ship. But brand
+confusion with an existing grocery-list product of the same name is a real
+risk, `.com` is not free, and no trademark search has been run. §7's earlier
+sweep had already eliminated **PantryPal** on domain grounds, so the "pantry"
+space is demonstrably crowded.
+
+**Before first submission:** run the USPTO/CIPO word-mark search, re-check the
+store listings closer to launch, and decide whether to secure `pantryrun.app`.
+Keep "Grocery" in the subtitle/title suffix for search:
+`PantryRun: Family Grocery List`.
 
 ---
 
@@ -227,9 +248,14 @@ Registration (user action — do not auto-purchase):
 - kincart.app: godaddy.com/domainsearch/find?domainToCheck=kincart.app
 
 **Rename cost (pre-launch = cheap):** display name lives in app.json
-(`name`, listing titles) + marketing docs; the bundle id
-(`com.shiftlogichq.stophop`) is user-invisible and can stay, but decide BEFORE
-first submission (iOS locks it after). Invite-link domain is brand-neutral
+(`name`, listing titles) + marketing docs. **Superseded 2026-07-28:** this
+section previously advised that the bundle id was user-invisible and could
+stay. The owner renamed it anyway, so the id is now
+`com.shiftlogichq.pantryrun` (namespace, applicationId, `android.package`, the
+iOS app group, `assetlinks.json` `package_name`, the AASA `appID` suffix, and
+the `java/com/shiftlogichq/pantryrun/` source dir). Any *further* id change
+must still happen BEFORE first submission — iOS locks it after. Invite-link
+domain is brand-neutral
 (`groceryapp.app`) and keeps working; if switching to cartnest.app for links,
 update `associatedDomains`, AASA, assetlinks + DEEP-LINK-HOSTING.md.
 Listing copy: "CartNest: Family Grocery List" = 29 chars — fits.
