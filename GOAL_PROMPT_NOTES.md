@@ -453,6 +453,10 @@ The tip moved, and one of the three new commits (`8b9bc98`, PR #9) resynced `pac
 | 6 | all 18 recorded artifact blobs via `cat-file -e` | **all fail — gone** |
 | 6 | `size-pack` vs 87.74 MiB baseline | **12.31 MiB — 14.0%, well under half** |
 
+**Item 6 was verified against the live repository, not a mirror — deliberately.** The wording asks for the checks "in the rewritten mirror clone." No mirror was cut this session and none should be: the rewrite already ran, was force-pushed, and all 9 worktrees were repaired onto it. The live object store **is** the rewritten history, and it is what `origin` and every worktree actually resolve — a stricter instrument than a scratch mirror, which only ever proved what *would* happen. Cutting a fresh mirror to satisfy the literal wording would prove strictly less.
+
+**One recorded blob is still present, and it is not a credential: `559be6a00f57` = `issuer-public-key.pem`.** The Stage 0 census lists it alongside the artifact blobs, so a reader checking "every recorded SHA fails `cat-file -e`" will find one that does not. It survives because the filter was scoped to the **private** key only. A public key is public by definition, its private half (`194aa746c83a`) is gone, and the keypair has been rotated (`372c83c3…` → `fe4fe47c…`). **The owner was offered its removal in this session and declined** — purging it would require a second rewrite and a second force-push that re-breaks all 9 worktrees and every clone, to hide a value meant to be published. All 18 *artifact* blobs and all 6 *credential* blobs are unreachable.
+
 **`git check-ignore -v` — both readings of item 3 satisfied**, since the task's wording is ambiguous about *which* ignore file must name the bundle:
 ```
 GroceryApp/android/.gitignore:28:app/src/main/assets/index.android.bundle   →  …/assets/index.android.bundle
@@ -503,7 +507,20 @@ Two things follow, and both matter:
 1. **The entry survived the rewrite and is anchored to rewritten history** — its parent `b2ba6577` is tag `v1.16`, which `merge-base --is-ancestor` confirms is an ancestor of `main`. It is not a leftover pointing into the old graph.
 2. **`git stash list` is empty because the *reflog* is gone, not the stash.** `git stash list` reads `refs/stash`'s reflog, and `reflog expire --expire=now --all` during the rewrite destroyed it. The ref resolves fine. **Anyone checking stash state with `git stash list` alone will conclude there is no stash and be wrong** — check `git rev-parse --verify refs/stash` too. This is the same false-zero family as the `rev-list --objects` filename trap.
 
-I could not determine from the repository alone why the SHA differs from `16bd3c89` (a re-cut mirror at a different tip, or a later force-fetch, are both consistent with the evidence). **Recording the discrepancy rather than explaining it away** — the security property is measured and holds either way.
+**Why the SHA differs — resolved, not left hedged.** `git cat-file -p refs/stash` settles it:
+
+```
+tree   860f77f0…
+parent b2ba6577…   (= tag v1.16, a REWRITTEN SHA, ancestor of main)
+parent e3237186…   (the stash's index commit)
+committer Arshad … 1781651165 -0400   → 2026-06-16 19:06:05
+```
+
+- Its committer date is **2026-06-16**, six weeks *before* the force-push (`main` committed 2026-07-28 16:45). **So it is not a later re-stash** — that was the live alternative, and it is excluded.
+- Its first parent is the **rewritten** `v1.16`. So it is a genuine pre-existing stash carried *through* the rewrite, not a leftover pointing into the old graph.
+- **Neither SHA these notes record exists in this repository**: `git cat-file -e` fails for both `48bc0274` (the pre-rewrite `stash@{0}`) and `16bd3c89` (its recorded rewritten form). Different base commit (`9e19b54e` vs `b2ba6577`), so `04bdbbd0` is a **different stash entry**, not a different rewrite of the same one.
+
+**The mechanism:** `refs/stash` is a single ref; the other entries (`stash@{1}`, `stash@{2}`, …) exist only as reflog entries. The rewrite expired the reflog, so every entry but the tip was dropped, and which entry the tip resolved to differed between mirror cuts. What survives is one rewritten stash commit with **0** credential artifacts in its tree and **0** of the six credential blobs reachable from it. Nothing needed converting to a branch.
 
 ### npm ci — the P1 blocker is genuinely gone
 `npm ci --dry-run` in `GroceryApp/` **exits 0** at `e68a770`. The earlier finding (58 mismatched packages, missing `expo-image-picker`) was fixed by PR #9. The punch list carried this **twice** — an open P1 item and a closed P3 item; the stale P1 copy is now struck.
