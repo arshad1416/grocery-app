@@ -50,6 +50,25 @@ jobs:
             echo "WARNING: node_modules exceeds 200MB — audit for bloat"
           fi
 
+
+  # ─── Secret Scanning ───────────────────────────────────────────────────────
+  # GitHub's free secret scanning on public repos covers PARTNER patterns only.
+  # Generic-secret detection is paid Secret Protection, so a Turso database JWT
+  # sat in this repository's history unflagged. gitleaks closes that gap.
+  secrets:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # full history — a secret added and later
+                                  # deleted is still a leak
+
+      - name: gitleaks (working tree + full history)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml
+
   # ─── Relay Server ──────────────────────────────────────────────────────────
   relay:
     name: Relay Server
