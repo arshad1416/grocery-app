@@ -203,9 +203,21 @@ Findings from doing it, several of which correct earlier instructions in this fi
 
 **Replacement token deployed by the owner (2026-07-28).** File present at `~/.hermes/stophop_turso_token.txt`, 348 bytes, mode `600`, no trailing newline (the loader `.strip()`s regardless). Verified it authenticates: `POST /v2/pipeline` with `SELECT 1`, printing **only** the HTTP status — **HTTP 200**. The token value was never read, displayed, or handled.
 
-**Verification caveats, stated rather than glossed:**
-- The negative control (deliberately bogus token) returned **400, not 401** — Turso rejects a non-JWT-shaped string as malformed rather than unauthorized. The control discriminates, but less cleanly than intended.
-- **`SELECT 1` proves read access only.** A read-only token passes it identically. **Write capability is UNTESTED** — and the scraper writes. The console's *Create Token* may or may not have issued a write-capable token. The definitive test is a real scrape run; not probed here because the only non-destructive probe would still mutate production schema.
+**WRITE ACCESS CONFIRMED (2026-07-28)** — ran `~/.hermes/scripts/weekly_flipp_scrape.py` on the Pi at the owner's instruction. Console counters moved:
+
+| | before | after | delta |
+|---|---|---|---|
+| Rows Written | 1,844,460 | **1,876,339** | **+31,879** |
+| Rows Read | 5,917,932 | 8,104,676 | +2,186,744 |
+| Storage | 347.82 MB | **350.1 MB** | +2.28 MB |
+
+The replacement token is write-capable and the full pipeline works end to end. Rotation is complete and verified.
+
+**Caveat — that run was truncated, by me.** A `timeout 1500` wrapper killed it after ~25 minutes, having completed **2 of 50 metros**: Toronto (7,844 items, +2,690 new, 886s) and Montreal (8,769 items, +4,219 new, 556s), mid-Vancouver when cut. The write proof is unaffected — data landed — but this was not a complete weekly scrape. Thursday's cron run does the full set.
+
+**New operational finding: the weekly scrape takes roughly 10 hours.** Two metros consumed ~1,442s, so 50 at that rate is ~10h wall clock. It starts 05:00 Thursday and will still be running well into the afternoon. Not a problem for a weekly job, but worth knowing before anyone treats a long-running process as hung, and worth checking that nothing else assumes it finishes quickly.
+
+**Earlier verification caveat, retained for the record:** the negative control (deliberately bogus token) returned **400, not 401** — Turso rejects a non-JWT-shaped string as malformed rather than unauthorized. It discriminated correctly but was a weaker control than intended. The `+31,879` write delta above is the conclusive evidence, not the status codes.
 
 **CORRECTION — the grocery scrape is WEEKLY, not daily.** The actual cron entry is `0 5 * * 4` → `~/.hermes/scripts/weekly_flipp_scrape.py`, i.e. **05:00 Thursdays**. Earlier notes in this file repeated a "daily 04:00 Mon–Sat" schedule taken from `ARCHITECTURE-GROCERY-SCRAPER.md` §7.1 — but that file is marked *Status: Design Document*, and its `store_prices_scrape.py` **exists on the Pi but is not scheduled at all**. The Pi's 87 cron lines are otherwise the unrelated `shiftlogic-scraper` vehicle-inventory jobs. So there was never a nightly deadline on this rotation, and shelf-price scraping is not currently running.
 
