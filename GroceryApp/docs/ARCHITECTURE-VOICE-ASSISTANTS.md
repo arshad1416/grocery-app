@@ -1,4 +1,4 @@
-# StopHop Architecture: Direct Google Assistant & Amazon Alexa Integrations
+# PantryRun Architecture: Direct Google Assistant & Amazon Alexa Integrations
 
 > ⚠️ **STATUS (2026-07-06): DISABLED IN v1 — NOT SHIPPED.**
 > Still off in v1 (client UI hidden behind `VOICE_ASSISTANT_LINKING_ENABLED=false`
@@ -33,9 +33,9 @@
 
 ## 1. Problem Statement
 
-The existing smart home architecture (`ARCHITECTURE-SMART-HOME.md`) routes all voice commands through Home Assistant as a hub. While this works for Arshad's setup, most households don't run Home Assistant. This document designs **direct, standalone integrations** where Google Assistant and Amazon Alexa talk to the StopHop relay server without any intermediary.
+The existing smart home architecture (`ARCHITECTURE-SMART-HOME.md`) routes all voice commands through Home Assistant as a hub. While this works for Arshad's setup, most households don't run Home Assistant. This document designs **direct, standalone integrations** where Google Assistant and Amazon Alexa talk to the PantryRun relay server without any intermediary.
 
-**Goal:** Any user with a Google Home or Echo device can say "Add milk to the grocery list" and have it appear in their shared StopHop list — without installing Home Assistant.
+**Goal:** Any user with a Google Home or Echo device can say "Add milk to the grocery list" and have it appear in their shared PantryRun list — without installing Home Assistant.
 
 ---
 
@@ -46,7 +46,7 @@ The existing smart home architecture (`ARCHITECTURE-SMART-HOME.md`) routes all v
 │                        STANDALONE VOICE ARCHITECTURE                    │
 │                                                                         │
 │  ┌──────────────┐    ┌──────────────────┐    ┌───────────────────────┐ │
-│  │ Google Home / │    │  AWS Lambda /    │    │   StopHop Relay      │ │
+│  │ Google Home / │    │  AWS Lambda /    │    │   PantryRun Relay      │ │
 │  │ Nest Speaker  │───→│  Google Cloud    │───→│   Server (self-host) │ │
 │  │              │    │  Function        │    │                       │ │
 │  │ "Add milk"   │    │  (NLU + routing) │    │  /api/voice/add-item  │ │
@@ -71,7 +71,7 @@ The existing smart home architecture (`ARCHITECTURE-SMART-HOME.md`) routes all v
 
 ## 3. Account Linking Strategy
 
-Both Google and Alexa require **OAuth 2.0 account linking** to associate a user's voice assistant account with their StopHop family. Since StopHop has no OAuth server, we implement a lightweight one.
+Both Google and Alexa require **OAuth 2.0 account linking** to associate a user's voice assistant account with their PantryRun family. Since PantryRun has no OAuth server, we implement a lightweight one.
 
 ### 3.1 Lightweight OAuth Server (on the Relay)
 
@@ -81,7 +81,7 @@ The relay server acts as a minimal OAuth 2.0 authorization server supporting the
 ┌──────────────────────────────────────────────────────────────┐
 │                    ACCOUNT LINKING FLOW                       │
 │                                                              │
-│  User says: "Hey Google, talk to StopHop"                    │
+│  User says: "Hey Google, talk to PantryRun"                    │
 │       ↓                                                      │
 │  Google/Alexa opens account linking web page                 │
 │       ↓                                                      │
@@ -89,7 +89,7 @@ The relay server acts as a minimal OAuth 2.0 authorization server supporting the
 │       ↓                                                      │
 │  User enters:                                                │
 │    1. Relay URL (auto-filled if using custom domain)         │
-│    2. Family pairing code (from StopHop app)                 │
+│    2. Family pairing code (from PantryRun app)                 │
 │       ↓                                                      │
 │  Relay validates pairing code → issues auth code             │
 │       ↓                                                      │
@@ -111,7 +111,7 @@ GET  /auth/.well-known/openid-configuration  — OAuth discovery (optional)
 
 ### 3.3 Pairing Code Reuse
 
-StopHop already has pairing codes (`PairingCode` in `src/types/index.ts`). We extend this system:
+PantryRun already has pairing codes (`PairingCode` in `src/types/index.ts`). We extend this system:
 
 1. **App generates a voice pairing code** — a 6-digit code with a 10-minute TTL.
 2. **User enters this code** on the OAuth linking page.
@@ -158,18 +158,18 @@ Default: `voice_full` (simplest UX).
 ### 4.2 Skill Architecture
 
 ```
-User: "Alexa, open StopHop"
+User: "Alexa, open PantryRun"
   ↓
 Alexa Cloud (NLU)
   ↓
 AWS Lambda (ASK handler)
-  ├── LaunchRequest    → "Welcome to StopHop. What would you like to do?"
+  ├── LaunchRequest    → "Welcome to PantryRun. What would you like to do?"
   ├── AddItemIntent    → POST /api/voice/add-item to relay
   ├── ReadListIntent   → POST /api/voice/read-list to relay
   ├── CheckItemIntent  → POST /api/voice/check-item to relay
   └── HelpIntent       → "You can say: add milk, what's on the list..."
   ↓
-StopHop Relay Server (self-hosted)
+PantryRun Relay Server (self-hosted)
   ↓
 WebSocket → App → Yjs CRDT → Family sync
 ```
@@ -178,13 +178,13 @@ WebSocket → App → Yjs CRDT → Family sync
 
 **Option A: Skill-specific invocation (recommended for v1)**
 ```
-"Alexa, open StopHop and add milk"
-"Alexa, ask StopHop what's on the list"
+"Alexa, open PantryRun and add milk"
+"Alexa, ask PantryRun what's on the list"
 ```
 
 **Option B: Alexa Name-Free Interaction (AMAZON.SearchQuery)**
 ```
-"Alexa, add milk to the shopping list"  ← routes to StopHop automatically
+"Alexa, add milk to the shopping list"  ← routes to PantryRun automatically
 ```
 Option B requires skill certification and conflicts with Alexa's built-in shopping list. Start with Option A.
 
@@ -287,7 +287,7 @@ const https = require('https');
 const RELAY_URL = process.env.STOPHOP_RELAY_URL; // e.g., relay.arshadkazi.ca
 
 /**
- * Make an authenticated request to the StopHop relay server.
+ * Make an authenticated request to the PantryRun relay server.
  * Uses the access token from the Alexa session (OAuth account linking).
  */
 async function relayRequest(path, body, accessToken) {
@@ -332,7 +332,7 @@ const LaunchRequestHandler = {
     return handlerInput.requestEnvelope.request.type === 'LaunchRequest';
   },
   handle(handlerInput) {
-    const speechText = `Welcome to StopHop! You can say "add milk", 
+    const speechText = `Welcome to PantryRun! You can say "add milk", 
       "what's on the list", or "check off eggs". What would you like to do?`;
     return handlerInput.responseBuilder
       .speak(speechText)
@@ -373,7 +373,7 @@ const AddItemIntentHandler = {
 
     if (!accessToken) {
       return handlerInput.responseBuilder
-        .speak('Please link your StopHop account in the Alexa app first.')
+        .speak('Please link your PantryRun account in the Alexa app first.')
         .getResponse();
     }
 
@@ -402,7 +402,7 @@ const AddItemIntentHandler = {
     } catch (err) {
       console.error('Relay request failed:', err);
       return handlerInput.responseBuilder
-        .speak("Sorry, I couldn't reach your StopHop server. Is it running?")
+        .speak("Sorry, I couldn't reach your PantryRun server. Is it running?")
         .getResponse();
     }
   },
@@ -422,7 +422,7 @@ const ReadListIntentHandler = {
 
     if (!accessToken) {
       return handlerInput.responseBuilder
-        .speak('Please link your StopHop account in the Alexa app first.')
+        .speak('Please link your PantryRun account in the Alexa app first.')
         .getResponse();
     }
 
@@ -463,7 +463,7 @@ const ReadListIntentHandler = {
     } catch (err) {
       console.error('Relay request failed:', err);
       return handlerInput.responseBuilder
-        .speak("Sorry, I couldn't reach your StopHop server.")
+        .speak("Sorry, I couldn't reach your PantryRun server.")
         .getResponse();
     }
   },
@@ -506,7 +506,7 @@ const CheckItemIntentHandler = {
         .getResponse();
     } catch (err) {
       return handlerInput.responseBuilder
-        .speak("Sorry, I couldn't reach your StopHop server.")
+        .speak("Sorry, I couldn't reach your PantryRun server.")
         .getResponse();
     }
   },
@@ -566,17 +566,17 @@ NODE_ENV=production
 ### 5.2 Actions Builder Architecture
 
 ```
-User: "Hey Google, talk to StopHop"
+User: "Hey Google, talk to PantryRun"
   ↓
 Google Assistant Cloud (NLU)
   ↓
 Google Cloud Function / Webhook
-  ├── actions.intent.MAIN        → "Welcome to StopHop!"
+  ├── actions.intent.MAIN        → "Welcome to PantryRun!"
   ├── actions.intent.ADD_ITEM    → POST /api/voice/add-item
   ├── actions.intent.READ_LIST   → POST /api/voice/read-list
   └── actions.intent.CHECK_ITEM  → POST /api/voice/check-item
   ↓
-StopHop Relay Server (self-hosted)
+PantryRun Relay Server (self-hosted)
   ↓
 WebSocket → App → Yjs CRDT → Family sync
 ```
@@ -704,7 +704,7 @@ const https = require('https');
 const RELAY_URL = process.env.STOPHOP_RELAY_URL;
 
 /**
- * Make an authenticated request to the StopHop relay server.
+ * Make an authenticated request to the PantryRun relay server.
  */
 async function relayRequest(path, body, accessToken) {
   return new Promise((resolve, reject) => {
@@ -743,7 +743,7 @@ const app = smarthome({ debug: true });
 
 // Handle the welcome / MAIN intent
 app.handle('MAIN', (conv) => {
-  conv.ask(`Welcome to StopHop! You can say "add milk", ` +
+  conv.ask(`Welcome to PantryRun! You can say "add milk", ` +
     `"what's on the list", or "check off eggs". What would you like to do?`);
 });
 
@@ -760,7 +760,7 @@ app.handle('ADD_ITEM', async (conv) => {
   }
 
   if (!accessToken) {
-    conv.ask('Please link your StopHop account first. ' +
+    conv.ask('Please link your PantryRun account first. ' +
       'Open the Google Home app to set up account linking.');
     return;
   }
@@ -786,7 +786,7 @@ app.handle('ADD_ITEM', async (conv) => {
     }
   } catch (err) {
     console.error('Relay error:', err);
-    conv.ask("Sorry, I couldn't reach your StopHop server. Is it running?");
+    conv.ask("Sorry, I couldn't reach your PantryRun server. Is it running?");
   }
 });
 
@@ -796,7 +796,7 @@ app.handle('READ_LIST', async (conv) => {
   const accessToken = conv.user.access.token;
 
   if (!accessToken) {
-    conv.ask('Please link your StopHop account first.');
+    conv.ask('Please link your PantryRun account first.');
     return;
   }
 
@@ -828,7 +828,7 @@ app.handle('READ_LIST', async (conv) => {
       conv.ask("Your grocery list is empty. What would you like to add?");
     }
   } catch (err) {
-    conv.ask("Sorry, I couldn't reach your StopHop server.");
+    conv.ask("Sorry, I couldn't reach your PantryRun server.");
   }
 });
 
@@ -855,7 +855,7 @@ app.handle('CHECK_ITEM', async (conv) => {
       conv.ask(`I couldn't find "${item}" on your list.`);
     }
   } catch (err) {
-    conv.ask("Sorry, I couldn't reach your StopHop server.");
+    conv.ask("Sorry, I couldn't reach your PantryRun server.");
   }
 });
 
@@ -904,7 +904,7 @@ Serves an HTML form for account linking. This is what Google/Alexa opens in the 
 <!DOCTYPE html>
 <html>
 <head>
-  <title>StopHop — Link Your Voice Assistant</title>
+  <title>PantryRun — Link Your Voice Assistant</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
     body { font-family: -apple-system, sans-serif; max-width: 400px; 
@@ -919,8 +919,8 @@ Serves an HTML form for account linking. This is what Google/Alexa opens in the 
   </style>
 </head>
 <body>
-  <h1>🛒 StopHop</h1>
-  <p>Enter the 6-digit pairing code from your StopHop app to link your voice assistant.</p>
+  <h1>🛒 PantryRun</h1>
+  <p>Enter the 6-digit pairing code from your PantryRun app to link your voice assistant.</p>
   
   <form id="linkForm">
     <input type="text" id="code" placeholder="000000" maxlength="6" 
@@ -1206,7 +1206,7 @@ Other family devices (encrypted)
 │  3. Relay issues authorization code (single-use, 5min)  │
 │  4. Google/Alexa exchanges code → access token (1 year) │
 │  5. Token stored by Google/Amazon per user              │
-│  6. User can revoke via StopHop app Settings            │
+│  6. User can revoke via PantryRun app Settings            │
 │  7. App can bulk-revoke all voice tokens                │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -1347,7 +1347,7 @@ Submit Alexa skill and Google Action for public listing (takes 1–2 weeks for r
 
 ## 12. Future Enhancements
 
-1. **Proactive notifications:** "Alexa, tell StopHop to remind me about the list when I leave home" (requires Alexa Proactive Events API).
+1. **Proactive notifications:** "Alexa, tell PantryRun to remind me about the list when I leave home" (requires Alexa Proactive Events API).
 2. **Multi-turn dialog:** "Add milk" → "How much?" → "Two gallons" (both platforms support this).
 3. **Voice biometrics:** Recognize which family member is speaking (Alexa Voice Profiles, Google Voice Match) → set `addedBy` automatically.
 4. **Smart suggestions:** "You usually buy eggs on Mondays. Want me to add them?"

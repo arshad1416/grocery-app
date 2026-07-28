@@ -43,7 +43,7 @@ curl -sSfL https://get.turso.tech/install.sh | bash
 # Login
 turso auth login
 
-# Create a database for StopHop products
+# Create a database for PantryRun products
 turso db create stophop-products
 
 # Get the database URL + token
