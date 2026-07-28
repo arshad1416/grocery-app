@@ -201,7 +201,15 @@ Findings from doing it, several of which correct earlier instructions in this fi
 - **An IP allowlist was considered and rejected as the primary control.** The console offers *Restrict Access* (CIDR allowlist), currently empty. The Pi and the Mac share one household egress address, and the Flint's WAN is **DHCP** — a dynamic residential IP. Allowlisting it would have introduced a *silent* failure mode: the address changes, the 4 AM scrape starts failing, and nothing reports it. Viable as a temporary stopgap or defence-in-depth with monitoring; not as the fix. (Raw addresses deliberately not recorded here — this repo forbids raw IPs in git.)
 - **`Delete Protection` is OFF** on `stophop` (347.82 MB). Different threat model from a database token, but a free toggle.
 
-**Outstanding, owner-only:** mint one replacement token and write it to `~/.hermes/stophop_turso_token.txt` on the Pi. Until then the scraper cannot write. Next scheduled run is 04:00 ET (Mon–Sat; full scrape Sun 03:00). Baseline to verify against: **Rows Written = 1,844,460** at time of revocation — a successful scrape moves it.
+**Replacement token deployed by the owner (2026-07-28).** File present at `~/.hermes/stophop_turso_token.txt`, 348 bytes, mode `600`, no trailing newline (the loader `.strip()`s regardless). Verified it authenticates: `POST /v2/pipeline` with `SELECT 1`, printing **only** the HTTP status — **HTTP 200**. The token value was never read, displayed, or handled.
+
+**Verification caveats, stated rather than glossed:**
+- The negative control (deliberately bogus token) returned **400, not 401** — Turso rejects a non-JWT-shaped string as malformed rather than unauthorized. The control discriminates, but less cleanly than intended.
+- **`SELECT 1` proves read access only.** A read-only token passes it identically. **Write capability is UNTESTED** — and the scraper writes. The console's *Create Token* may or may not have issued a write-capable token. The definitive test is a real scrape run; not probed here because the only non-destructive probe would still mutate production schema.
+
+**CORRECTION — the grocery scrape is WEEKLY, not daily.** The actual cron entry is `0 5 * * 4` → `~/.hermes/scripts/weekly_flipp_scrape.py`, i.e. **05:00 Thursdays**. Earlier notes in this file repeated a "daily 04:00 Mon–Sat" schedule taken from `ARCHITECTURE-GROCERY-SCRAPER.md` §7.1 — but that file is marked *Status: Design Document*, and its `store_prices_scrape.py` **exists on the Pi but is not scheduled at all**. The Pi's 87 cron lines are otherwise the unrelated `shiftlogic-scraper` vehicle-inventory jobs. So there was never a nightly deadline on this rotation, and shelf-price scraping is not currently running.
+
+Verification baseline: **Rows Written = 1,844,460** at revocation. A successful scrape moves it. Next scheduled run **Thursday 2026-07-30, 05:00**.
 
 ### OWNER HANDOFF — do these in this order (2026-07-28)
 
