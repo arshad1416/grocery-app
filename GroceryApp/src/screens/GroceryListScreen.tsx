@@ -691,7 +691,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
         return;
       }
       if (!isCatalogAvailable()) {
-        setFsaDealsError('turso_missing');
+        setFsaDealsError('catalog_unavailable');
         setFsaDealsLoading(false);
         return;
       }
@@ -783,7 +783,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       );
     }
 
-    if (fsaDealsError === 'fsa_missing' || fsaDealsError === 'turso_missing' || (!fsa && !fsaDealsError)) {
+    if (fsaDealsError === 'fsa_missing' || fsaDealsError === 'catalog_unavailable' || (!fsa && !fsaDealsError)) {
       return (
         <View style={styles.emptyContainer}>
           <Ionicons name="pricetag-outline" size={48} color={theme.secondaryText} />
@@ -793,7 +793,7 @@ export default function GroceryListScreen({ route, navigation }: Props) {
           <Text style={[styles.emptySubtitle, { color: theme.secondaryText, textAlign: 'center', marginBottom: 20 }]}>
             {!fsa
               ? 'Please configure your FSA (postal code prefix) in settings to match list items with flyer deals.'
-              : 'Please connect a Turso database in settings to match list items with flyer deals.'}
+              : 'Please turn on Product Catalog Lookups in settings to match list items with flyer deals. If it is already on, no relay is configured yet.'}
           </Text>
           <TouchableOpacity
             style={[styles.createBtn, { backgroundColor: theme.primary }]}

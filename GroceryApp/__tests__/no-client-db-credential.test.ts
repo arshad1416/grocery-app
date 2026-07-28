@@ -81,4 +81,24 @@ describe('no client-side database credential', () => {
     // through the relay's /api/catalog/* endpoints.
     expect(filesContaining('/v2/pipeline')).toEqual([]);
   });
+
+  it('tells no user to supply a database, because there is nowhere to supply one', () => {
+    // Removing the URL/token fields from Settings was the credential fix. Two
+    // empty-states went on saying "Please connect a Turso database in
+    // settings" long after those fields were gone, which instructed users to
+    // do something the app no longer permits — and named a third-party vendor
+    // to end users. Copy that survives the UI it refers to is its own defect
+    // class, so it gets a guard rather than a one-time correction.
+    const files = [path.join(APP_ROOT, 'App.tsx'), ...collectSourceFiles(SRC_DIR)]
+      .filter((f) => !f.endsWith('.md'));
+
+    const offenders = files.filter((f) => {
+      const text = fs.readFileSync(f, 'utf8');
+      // Only user-facing string literals matter; comments explaining the
+      // history are fine and deliberately present.
+      return /(['"`])[^'"`\n]*connect a (turso|database)[^'"`\n]*\1/i.test(text);
+    });
+
+    expect(offenders.map((f) => path.relative(APP_ROOT, f))).toEqual([]);
+  });
 });

@@ -508,8 +508,16 @@ I could not determine from the repository alone why the SHA differs from `16bd3c
 ### npm ci — the P1 blocker is genuinely gone
 `npm ci --dry-run` in `GroceryApp/` **exits 0** at `e68a770`. The earlier finding (58 mismatched packages, missing `expo-image-picker`) was fixed by PR #9. The punch list carried this **twice** — an open P1 item and a closed P3 item; the stale P1 copy is now struck.
 
-### NEW FINDING — two empty-states instruct an impossible action
-Both Deals surfaces still render *"Please connect a Turso database in settings…"* on the `turso_missing` branch (`HomeScreen.tsx:663`, `GroceryListScreen.tsx:796`), but Stage 1 **deliberately removed** the URL and token fields from Settings — that removal was the fix. The user is told to do something the app no longer permits, and it names a third-party vendor to end users. **Logged, not fixed here**: it is copy, the security branch is the wrong place to bury a UX edit, and it belongs to the UX goal. On the punch list.
+### NEW FINDING — two empty-states instructed an impossible action (FIXED, owner's call)
+Both Deals surfaces rendered *"Please connect a Turso database in settings…"* on the `turso_missing` branch (`HomeScreen.tsx:663`, `GroceryListScreen.tsx:796`), but Stage 1 **deliberately removed** the URL and token fields from Settings — that removal *was* the credential fix. So the app told the user to do something it no longer permits, and named a third-party vendor to end users.
+
+I proposed leaving it for the UX goal (a copy edit does not belong buried in a credential commit). **The owner chose to fix it here**, on the grounds that it is direct fallout of this goal's own change. Done as such:
+
+- New copy names the control that actually exists and matches the `SettingsScreen` label **verbatim**: *"Please turn on Product Catalog Lookups in settings… If it is already on, no relay is configured yet."* Read `isCatalogAvailable()` before writing it — the gate is false when the toggle is off **or** `getRelayHttpBaseUrl()` is null, so copy naming only the toggle would have been wrong in the second case.
+- Internal key `turso_missing` → `catalog_unavailable`, 4 sites across the two screens. Checked for test coupling first: **none**.
+- **Guarded, and the guard was proven.** A new case in `__tests__/no-client-db-credential.test.ts` matches the instruction only inside string literals, so the explanatory comments stay legal. Verified by replanting the old string: the suite went **1 failed / 6 passed** and named `src/screens/HomeScreen.tsx`, then returned to 7 passed on restore. A guard that has never been seen to fail is not evidence.
+
+**Re-verified after the change:** `tsc` clean · app **499 passed / 1 skipped / 44 suites** (up 1 — the new guard) · relay **70 passed / 6 suites** · rebundled with `--reset-cache` (4,444,825 bytes, cache confirmed empty), `eyJhbGciOi` **0**, `turso.io` **0**, `api/catalog` 1, new copy present 4×.
 
 ### What is NOT closed, and what closing it depends on
 - **GitHub Support garbage-collection request — owner-only, still outstanding.** Until it runs, every pre-rewrite commit stays reachable by SHA through GitHub's UI and API. The force-push did not un-publish anything.
