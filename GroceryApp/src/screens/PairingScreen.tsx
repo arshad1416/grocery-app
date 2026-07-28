@@ -121,13 +121,17 @@ export default function PairingScreen({ navigation, route }: Props) {
         await enrollWithRelay(httpBase, getDeviceId(), JSON.stringify(invite));
         await acceptFamilyInvite(invite, getDeviceKeypair());
 
-        const { getMasterKey } = await import('../crypto');
-        const hasKey = !!(await getMasterKey());
+        const { getMasterKey, getMasterKeyType } = await import('../crypto');
+        // A key this device minted for its own family-of-one on first launch
+        // is not the key to the family it just joined, so an invitee holding
+        // one still needs the family's phrase.
+        const keyType = await getMasterKeyType();
+        const hasKey = !!(await getMasterKey()) && keyType !== 'device';
         if (!hasKey) {
           setStatusMessage('Enrolled! One step left: family recovery phrase.');
           Alert.alert(
             'One More Step',
-            "You've joined the family and this device is enrolled with the relay.\n\nTo unlock the shared lists, enter your family's 12-word recovery phrase (ask the person who invited you).",
+            "You've joined the family and this device is enrolled with the relay.\n\nTo unlock the shared lists, enter your family's 12-word recovery phrase (ask the person who invited you).\n\nNote: any lists you created on this device before joining are encrypted with its previous key and won't carry over.",
             [
               {
                 text: 'Enter Recovery Phrase',

@@ -404,6 +404,48 @@ export async function setMasterKey(key: Uint8Array): Promise<void> {
 }
 
 /**
+ * How the stored master key came to exist.
+ *
+ *   'passphrase' — derived from a family passphrase (setupMasterKey)
+ *   'recovery'   — restored from, or minted alongside, a family recovery phrase
+ *   'device'     — provisioned by this device on first launch, before it knew
+ *                  about any family. It encrypts only this device's own data.
+ *
+ * The join flow needs the distinction: a 'device' key is NOT the family's key,
+ * so an invitee holding one still has to enter the family's recovery phrase.
+ *
+ * @returns The provenance tag, or null if no key is stored.
+ */
+export async function getMasterKeyType(): Promise<string | null> {
+  await ensureReady();
+  try {
+    const stored = await secureStoreProxy.getItemAsync(SECURE_STORE_KEY_ALIAS);
+    if (!stored) return null;
+    const { type } = JSON.parse(stored);
+    return type ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Re-tag the stored master key's provenance without changing the key itself.
+ * Used by first-run provisioning, which mints its key through the recovery
+ * path (so it is backed up) but must not masquerade as a family key.
+ */
+export async function setMasterKeyType(type: string): Promise<void> {
+  await ensureReady();
+  const stored = await secureStoreProxy.getItemAsync(SECURE_STORE_KEY_ALIAS);
+  if (!stored) return;
+  const envelope = JSON.parse(stored);
+  envelope.type = type;
+  await secureStoreProxy.setItemAsync(
+    SECURE_STORE_KEY_ALIAS,
+    JSON.stringify(envelope),
+  );
+}
+
+/**
  * Clear the master key from secure storage (e.g. on family reset).
  */
 export async function clearMasterKey(): Promise<void> {

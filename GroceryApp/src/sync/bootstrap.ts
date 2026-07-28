@@ -7,12 +7,45 @@
  * built and tested; nothing invoked it.
  *
  * Called once from App.tsx after crypto, database, identity, and settings
- * are initialised. Every step is best-effort: a fresh install (no master
- * key, no family, no relay) is a normal state, not an error.
+ * are initialised. Every step after key provisioning is best-effort: no
+ * family peer and no relay is a normal state, not an error.
  */
 
 import { syncManager } from './sync-manager';
 import type { ConnectionState } from './y-websocket';
+
+/**
+ * Establish the identity and key material a first launch needs.
+ *
+ * Nothing can be stored before this runs: `persistListToDB` is a no-op
+ * without an encryption key, and the recovery system is keyed by familyId.
+ * The key is minted through the recovery-phrase path so it is backed up from
+ * birth — provisioning a bare random key would leave the user permanently
+ * unable to generate a recovery phrase (`generateRecoveryPhrase` refuses to
+ * run once a master key exists) and their data unrecoverable.
+ *
+ * @returns The provisioned master key, or null if provisioning failed.
+ */
+async function provisionFirstRun(): Promise<Uint8Array | null> {
+  try {
+    const { getMasterKey, setMasterKeyType } = await import('../crypto');
+    const { ensureFamilyMembership } = await import('../identity/family');
+    const { getDeviceKeypair } = await import('../identity/device');
+    const { generateRecoveryPhrase } = await import('../identity/recovery');
+
+    await ensureFamilyMembership(getDeviceKeypair());
+    await generateRecoveryPhrase();
+    // The recovery path tags its key 'recovery'. This one belongs to a family
+    // of one, so mark it as such — the join flow must not mistake it for the
+    // key of a family this device has actually been let into.
+    await setMasterKeyType('device');
+
+    return await getMasterKey();
+  } catch (err) {
+    console.warn('[bootstrap] First-run provisioning failed:', err);
+    return null;
+  }
+}
 
 /**
  * Hydrate Yjs docs from WatermelonDB and, when enrolled with a relay,
@@ -23,9 +56,14 @@ import type { ConnectionState } from './y-websocket';
 export async function bootstrapSync(): Promise<'no-key' | 'local-only' | 'connected'> {
   const { getMasterKey } = await import('../crypto');
   const { useSyncStore } = await import('../state/useSyncStore');
-  const masterKey = await getMasterKey();
+  let masterKey = await getMasterKey();
   if (!masterKey) {
-    // First launch — nothing to hydrate, nothing to sync yet.
+    // First launch — mint identity and keys before anything is stored.
+    masterKey = await provisionFirstRun();
+  }
+  if (!masterKey) {
+    // Provisioning failed; stay local rather than crash, but persistence is
+    // disabled until a key exists.
     useSyncStore.getState().setSyncState('not_configured');
     return 'no-key';
   }

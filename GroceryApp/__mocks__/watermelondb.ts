@@ -1,9 +1,66 @@
 /**
  * Mock for @nozbe/watermelondb.
  * Provides a minimal Database class for testing.
+ *
+ * This mock deliberately reproduces two constraints that the real library
+ * enforces at runtime, because a permissive mock previously let broken
+ * persistence code pass the whole suite:
+ *
+ *   1. Writes must happen inside a Writer. Real `Collection.create()` and
+ *      `Model.update()` call `Database._ensureInWriter()`, which throws via
+ *      `invariant()` when no `database.write()` block is on the stack.
+ *   2. `syncStatus` is a read-only accessor on the base `Model` (it reads
+ *      `_raw._status`). It has no setter, so assigning to it throws a
+ *      TypeError under strict mode — which is how app code is compiled.
  */
 
 const tables = new Map<string, Map<string, any>>();
+
+/** Depth of nested `database.write()` blocks currently on the stack. */
+let writerDepth = 0;
+
+function ensureInWriter(debugName: string): void {
+  if (writerDepth === 0) {
+    throw new Error(
+      `${debugName} can only be called from inside of a Writer. See docs for more details.`,
+    );
+  }
+}
+
+/**
+ * Prototype for stored records. `syncStatus` is defined as a getter with no
+ * setter, mirroring the real base Model.
+ */
+const recordPrototype = {
+  get syncStatus(): string {
+    return (this as any)._raw?._status ?? 'created';
+  },
+};
+
+function newRecord(table: string): any {
+  const record: any = Object.create(recordPrototype);
+  record._raw = {};
+
+  // Non-enumerable so the record still spreads/serializes like plain data.
+  Object.defineProperty(record, 'update', {
+    value: async (fn: (r: any) => void) => {
+      ensureInWriter('Model.update()');
+      fn(record);
+      return record;
+    },
+    enumerable: false,
+  });
+  Object.defineProperty(record, 'markAsDeleted', {
+    value: async () => {
+      ensureInWriter('Model.markAsDeleted()');
+      record._raw = { ...(record._raw || {}), isDeleted: true };
+    },
+    enumerable: false,
+  });
+  Object.defineProperty(record, 'table', { value: table, enumerable: false });
+
+  return record;
+}
 
 class Query {
   private table: string;
@@ -21,21 +78,9 @@ class Query {
   async fetch(): Promise<any[]> {
     const items = tables.get(this.table);
     if (!items) return [];
-    return Array.from(items.values())
-      .filter((item) => !item._raw?.isDeleted)
-      .map((item) => ({
-        ...item,
-        update: async (fn: (r: any) => void) => {
-          // Create a proxy record so mutations affect the stored data
-          const record: any = {};
-          Object.keys(item).forEach((k) => { record[k] = item[k]; });
-          fn(record);
-          Object.keys(record).forEach((k) => { item[k] = record[k]; });
-        },
-        markAsDeleted: async () => {
-          item._raw = { ...(item._raw || {}), isDeleted: true };
-        },
-      }));
+    // Return the live records themselves — they already carry update() and
+    // markAsDeleted(), and returning copies would lose the syncStatus accessor.
+    return Array.from(items.values()).filter((item) => !item._raw?.isDeleted);
   }
 }
 
@@ -52,11 +97,12 @@ class Collection {
   }
 
   async create(fn: (r: any) => void): Promise<any> {
+    ensureInWriter('Collection.create()');
     if (!tables.has(this.table)) {
       tables.set(this.table, new Map());
     }
     const items = tables.get(this.table)!;
-    const record: any = { _raw: {} };
+    const record = newRecord(this.table);
     fn(record);
     // Auto-generate an id when the creator didn't set one (matches real
     // WatermelonDB behavior of assigning a random id on create)
@@ -79,7 +125,12 @@ export class Database {
   }
 
   async write<T>(fn: () => Promise<T>): Promise<T> {
-    return fn();
+    writerDepth += 1;
+    try {
+      return await fn();
+    } finally {
+      writerDepth -= 1;
+    }
   }
 }
 
@@ -100,6 +151,12 @@ export const createTable = (x: any) => x;
 
 export class Model {
   static table: string;
+  _raw: any = {};
+
+  /** Read-only in the real library — no setter, assignment throws in strict mode. */
+  get syncStatus(): string {
+    return this._raw?._status ?? 'created';
+  }
 }
 
 // Legacy TS decorators used in src/storage/models.ts — no-ops in tests
@@ -115,6 +172,7 @@ export default class SQLiteAdapter {
 
 export function _resetDB(): void {
   tables.clear();
+  writerDepth = 0;
 }
 
 export function _getTable(table: string): Map<string, any> {

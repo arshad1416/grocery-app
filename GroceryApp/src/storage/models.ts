@@ -5,6 +5,11 @@
  * The base Model class provides `id`, `syncStatus` (built-in WatermelonDB sync),
  * `collection`, and `database` automatically.
  *
+ * Note: the base `syncStatus` is a read-only accessor owned by WatermelonDB.
+ * Our own per-record sync state lives in the `sync_status` column and is
+ * mapped to `recordSyncStatus` so the two never collide — assigning to the
+ * built-in throws a TypeError under strict mode.
+ *
  * Encrypted fields (name, notes, displayName, description, etc.) are stored
  * as base64 ciphertext strings in the database and decrypted at the
  * application layer.
@@ -30,6 +35,7 @@ export class GroceryListModel extends Model {
   @field('is_deleted') isDeleted: boolean;
   @field('deleted_at') deletedAt: number | null;
   @field('version') version: number;
+  @field('sync_status') recordSyncStatus: string;
   @field('created_at') createdAt: number;
   @field('updated_at') updatedAt: number;
 }
@@ -58,6 +64,7 @@ export class GroceryItemModel extends Model {
   @field('is_deleted') isDeleted: boolean;
   @field('deleted_at') deletedAt: number | null;
   @field('version') version: number;
+  @field('sync_status') recordSyncStatus: string;
   @field('created_at') createdAt: number;
   @field('updated_at') updatedAt: number;
 
@@ -78,6 +85,7 @@ export class FamilyMemberModel extends Model {
   @field('is_deleted') isDeleted: boolean;
   @field('deleted_at') deletedAt: number | null;
   @field('version') version: number;
+  @field('sync_status') recordSyncStatus: string;
   @field('joined_at') joinedAt: number;
   @field('updated_at') updatedAt: number;
 }
