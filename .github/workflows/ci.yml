@@ -67,7 +67,14 @@ jobs:
       - name: gitleaks (working tree + full history)
         uses: gitleaks/gitleaks-action@v2
         env:
+          # Required since gitleaks-action v2.3 for pull_request events.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITLEAKS_CONFIG: .gitleaks.toml
+          # PIN DELIBERATELY. The action defaults to 8.24.3, which does not
+          # understand this config's [[allowlists]] schema and SILENTLY IGNORES
+          # it — the scan then reports the known false positives as real leaks.
+          # 8.30.1 is the version these allowlists were verified against.
+          GITLEAKS_VERSION: 8.30.1
 
   # ─── Relay Server ──────────────────────────────────────────────────────────
   relay:
