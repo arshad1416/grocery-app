@@ -39,6 +39,47 @@ services:
       # Managed (paid): set QWEN_API_KEY for DashScope qwen-vl-max instead.
       - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434/api/generate}
       - QWEN_API_KEY=${QWEN_API_KEY:-}
+      # ── Blind-RSA issuer keypair (RFC 9474) ──────────────────────────────
+      # Without these the relay 500s on token issuance and the pool fails
+      # closed on contribution — a default deploy used to provision neither.
+      #
+      # Generate once on the host, OUTSIDE this repository:
+      #   cd relay-server && node tokens/blind-rsa-keygen.js
+      # then point KEYS_DIR at the directory holding the two PEMs. They are
+      # mounted read-only below; never bake a key into the image and never
+      # commit one (relay-server/.gitignore already ignores keys/).
+      #
+      # Both PATH variables point into the mount. The pool verifier reads
+      # ISSUER_PUBLIC_KEY (inline PEM text) first and falls back to
+      # ISSUER_PUBLIC_KEY_PATH, so the mounted file satisfies it; leaving
+      # ISSUER_PUBLIC_KEY empty selects the file. Set it inline only if your
+      # orchestrator injects secrets as env values rather than files — an
+      # empty string is treated as unset by both the relay and the pool.
+      #
+      # ⚠️  Rotating this keypair invalidates every outstanding blind token.
+      # The issuer and the pool must cut over TOGETHER: if the pool still holds
+      # the old public key it rejects every freshly issued token, and if the
+      # issuer is rotated first, clients silently lose contribution until the
+      # pool catches up. Restart both in the same operation.
+      - ISSUER_PRIVATE_KEY_PATH=${ISSUER_PRIVATE_KEY_PATH:-/run/keys/issuer-private-key.pem}
+      - ISSUER_PUBLIC_KEY_PATH=${ISSUER_PUBLIC_KEY_PATH:-/run/keys/issuer-public-key.pem}
+      - ISSUER_PUBLIC_KEY=${ISSUER_PUBLIC_KEY:-}
+      # ── Product catalog (POST/GET /api/catalog/*) ────────────────────────
+      # The ONLY place a database credential exists. It is deliberately not
+      # available to the mobile client: a token the app can hold is a token
+      # anyone can pull out of the APK with unzip and strings, which is what
+      # happened before. Leave both unset to serve 503 from /api/catalog/*
+      # and run without catalog features.
+      #
+      # Set them in a .env file beside this compose file (that path is
+      # gitignored) or in your orchestrator's secret store — never inline here,
+      # and never as an EXPO_PUBLIC_* variable.
+      - TURSO_URL=${TURSO_URL:-}
+      - TURSO_TOKEN=${TURSO_TOKEN:-}
+    volumes:
+      # Issuer keypair, read-only. KEYS_DIR defaults to ./relay-server/keys,
+      # which blind-rsa-keygen.js writes to and .gitignore already covers.
+      - ${KEYS_DIR:-./relay-server/keys}:/run/keys:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 30s
