@@ -102,42 +102,44 @@ export async function persistItem(
     : null;
 
   const existing = await collection.query(Q.where('id', item.id)).fetch();
-  if (existing.length > 0) {
-    await existing[0].update((record: any) => {
-      record.name = encryptedName;
-      record.notes = encryptedNotes;
-      record.quantity = item.quantity;
-      record.unit = item.unit;
-      record.category = item.category;
-      record.isChecked = item.isChecked;
-      record.isDeleted = item.isDeleted;
-      record.deletedAt = item.deletedAt;
-      record.version = item.version;
-      record.syncStatus = item.syncStatus;
-      record.updatedAt = item.updatedAt;
-    });
-  } else {
-    await collection.create((record: any) => {
-      record._raw.id = item.id;
-      record.listId = item.listId;
-      record.familyId = item.familyId;
-      record.name = encryptedName;
-      record.quantity = item.quantity;
-      record.unit = item.unit;
-      record.category = item.category;
-      record.isChecked = item.isChecked;
-      record.addedBy = item.addedBy;
-      record.assignedTo = item.assignedTo ?? null;
-      record.notes = encryptedNotes;
-      record.sortOrder = item.sortOrder;
-      record.isDeleted = item.isDeleted;
-      record.deletedAt = item.deletedAt;
-      record.version = item.version;
-      record.syncStatus = item.syncStatus;
-      record.createdAt = item.createdAt;
-      record.updatedAt = item.updatedAt;
-    });
-  }
+  await getDatabase().write(async () => {
+    if (existing.length > 0) {
+      await existing[0].update((record: any) => {
+        record.name = encryptedName;
+        record.notes = encryptedNotes;
+        record.quantity = item.quantity;
+        record.unit = item.unit;
+        record.category = item.category;
+        record.isChecked = item.isChecked;
+        record.isDeleted = item.isDeleted;
+        record.deletedAt = item.deletedAt;
+        record.version = item.version;
+        record.recordSyncStatus = item.syncStatus;
+        record.updatedAt = item.updatedAt;
+      });
+    } else {
+      await collection.create((record: any) => {
+        record._raw.id = item.id;
+        record.listId = item.listId;
+        record.familyId = item.familyId;
+        record.name = encryptedName;
+        record.quantity = item.quantity;
+        record.unit = item.unit;
+        record.category = item.category;
+        record.isChecked = item.isChecked;
+        record.addedBy = item.addedBy;
+        record.assignedTo = item.assignedTo ?? null;
+        record.notes = encryptedNotes;
+        record.sortOrder = item.sortOrder;
+        record.isDeleted = item.isDeleted;
+        record.deletedAt = item.deletedAt;
+        record.version = item.version;
+        record.recordSyncStatus = item.syncStatus;
+        record.createdAt = item.createdAt;
+        record.updatedAt = item.updatedAt;
+      });
+    }
+  });
 }
 
 /**
@@ -161,34 +163,36 @@ export async function persistList(
     : null;
 
   const existing = await collection.query(Q.where('id', list.id)).fetch();
-  if (existing.length > 0) {
-    await existing[0].update((record: any) => {
-      record.name = encryptedName;
-      record.description = encryptedDesc;
-      record.storePreference = encryptedStore;
-      record.isActive = list.isActive;
-      record.isDeleted = list.isDeleted;
-      record.deletedAt = list.deletedAt;
-      record.version = list.version;
-      record.syncStatus = list.syncStatus;
-      record.updatedAt = list.updatedAt;
-    });
-  } else {
-    await collection.create((record: any) => {
-      record._raw.id = list.id;
-      record.familyId = list.familyId;
-      record.name = encryptedName;
-      record.description = encryptedDesc;
-      record.storePreference = encryptedStore;
-      record.isActive = list.isActive;
-      record.isDeleted = list.isDeleted;
-      record.deletedAt = list.deletedAt;
-      record.version = list.version;
-      record.syncStatus = list.syncStatus;
-      record.createdAt = list.createdAt;
-      record.updatedAt = list.updatedAt;
-    });
-  }
+  await getDatabase().write(async () => {
+    if (existing.length > 0) {
+      await existing[0].update((record: any) => {
+        record.name = encryptedName;
+        record.description = encryptedDesc;
+        record.storePreference = encryptedStore;
+        record.isActive = list.isActive;
+        record.isDeleted = list.isDeleted;
+        record.deletedAt = list.deletedAt;
+        record.version = list.version;
+        record.recordSyncStatus = list.syncStatus;
+        record.updatedAt = list.updatedAt;
+      });
+    } else {
+      await collection.create((record: any) => {
+        record._raw.id = list.id;
+        record.familyId = list.familyId;
+        record.name = encryptedName;
+        record.description = encryptedDesc;
+        record.storePreference = encryptedStore;
+        record.isActive = list.isActive;
+        record.isDeleted = list.isDeleted;
+        record.deletedAt = list.deletedAt;
+        record.version = list.version;
+        record.recordSyncStatus = list.syncStatus;
+        record.createdAt = list.createdAt;
+        record.updatedAt = list.updatedAt;
+      });
+    }
+  });
 }
 
 /**
@@ -206,32 +210,34 @@ export async function persistMember(
   );
 
   const existing = await collection.query(Q.where('id', member.id)).fetch();
-  if (existing.length > 0) {
-    await existing[0].update((record: any) => {
-      record.displayName = encryptedDisplayName;
-      record.avatarUrl = member.avatarUrl ?? null;
-      record.isActive = member.isActive;
-      record.isDeleted = member.isDeleted;
-      record.deletedAt = member.deletedAt;
-      record.version = member.version;
-      record.syncStatus = member.syncStatus;
-      record.updatedAt = member.updatedAt;
-    });
-  } else {
-    await collection.create((record: any) => {
-      record._raw.id = member.id;
-      record.familyId = member.familyId;
-      record.displayName = encryptedDisplayName;
-      record.avatarUrl = member.avatarUrl ?? null;
-      record.isActive = member.isActive;
-      record.isDeleted = member.isDeleted;
-      record.deletedAt = member.deletedAt;
-      record.version = member.version;
-      record.syncStatus = member.syncStatus;
-      record.joinedAt = member.joinedAt;
-      record.updatedAt = member.updatedAt;
-    });
-  }
+  await getDatabase().write(async () => {
+    if (existing.length > 0) {
+      await existing[0].update((record: any) => {
+        record.displayName = encryptedDisplayName;
+        record.avatarUrl = member.avatarUrl ?? null;
+        record.isActive = member.isActive;
+        record.isDeleted = member.isDeleted;
+        record.deletedAt = member.deletedAt;
+        record.version = member.version;
+        record.recordSyncStatus = member.syncStatus;
+        record.updatedAt = member.updatedAt;
+      });
+    } else {
+      await collection.create((record: any) => {
+        record._raw.id = member.id;
+        record.familyId = member.familyId;
+        record.displayName = encryptedDisplayName;
+        record.avatarUrl = member.avatarUrl ?? null;
+        record.isActive = member.isActive;
+        record.isDeleted = member.isDeleted;
+        record.deletedAt = member.deletedAt;
+        record.version = member.version;
+        record.recordSyncStatus = member.syncStatus;
+        record.joinedAt = member.joinedAt;
+        record.updatedAt = member.updatedAt;
+      });
+    }
+  });
 }
 
 /**
@@ -288,7 +294,7 @@ export async function loadItemsFromDB(key: Uint8Array): Promise<GroceryItem[]> {
       isDeleted: (record as any).isDeleted,
       deletedAt: (record as any).deletedAt,
       version: (record as any).version,
-      syncStatus: (record as any).syncStatus,
+      syncStatus: (record as any).recordSyncStatus ?? 'synced',
       createdAt: (record as any).createdAt,
       updatedAt: (record as any).updatedAt,
     });
@@ -332,7 +338,7 @@ export async function loadListsFromDB(key: Uint8Array): Promise<GroceryList[]> {
       isDeleted: (record as any).isDeleted,
       deletedAt: (record as any).deletedAt,
       version: (record as any).version,
-      syncStatus: (record as any).syncStatus,
+      syncStatus: (record as any).recordSyncStatus ?? 'synced',
       createdAt: (record as any).createdAt,
       updatedAt: (record as any).updatedAt,
     });
@@ -365,7 +371,7 @@ export async function loadMembersFromDB(key: Uint8Array): Promise<FamilyMember[]
       isDeleted: (record as any).isDeleted,
       deletedAt: (record as any).deletedAt,
       version: (record as any).version,
-      syncStatus: (record as any).syncStatus,
+      syncStatus: (record as any).recordSyncStatus ?? 'synced',
       joinedAt: (record as any).joinedAt,
       updatedAt: (record as any).updatedAt,
     });

@@ -146,7 +146,7 @@ export async function checkPendingSiriItems(activeMemberId: string | null): Prom
           item.isChecked = false;
           item.isDeleted = false;
           item.version = 1;
-          item.syncStatus = 'created';
+          item.recordSyncStatus = 'created';
           item.createdAt = itemData.timestamp;
           item.updatedAt = itemData.timestamp;
         });

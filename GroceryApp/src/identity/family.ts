@@ -243,6 +243,40 @@ export async function hasFamilyMembership(): Promise<boolean> {
 }
 
 /**
+ * Found a solo family for this device — the first-run state, before anyone
+ * else has been invited.
+ *
+ * Every list, every item, and the whole recovery system is scoped to a
+ * familyId, so one has to exist before the app can encrypt or store anything.
+ * A user who never invites anyone simply stays a family of one; inviting
+ * someone later reuses this familyId (see createFamilyInvite's
+ * `existingFamilyId`), and joining someone else's family overwrites it.
+ *
+ * No-op when membership already exists.
+ */
+export async function ensureFamilyMembership(
+  deviceKeypair: DeviceKeypair,
+): Promise<FamilyMembership> {
+  const existing = await getFamilyMembership();
+  if (existing) return existing;
+
+  await initCrypto();
+  const membership: FamilyMembership = {
+    familyId: await generateUUID(),
+    deviceId: uint8ArrayToBase64(deviceKeypair.publicKey),
+    joinedAt: Date.now(),
+  };
+
+  await (await getSecureStore()).setItemAsync(
+    FAMILY_MEMBERSHIP_ALIAS,
+    JSON.stringify(membership),
+  );
+  cachedMembership = membership;
+
+  return { ...membership };
+}
+
+/**
  * Leave the current family (clear membership).
  */
 export async function leaveFamily(): Promise<void> {
