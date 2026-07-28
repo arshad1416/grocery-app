@@ -301,6 +301,35 @@ Mirror re-cut immediately beforehand (it was at `7a8cece6`, tip had moved to `f4
 
 **Sequencing note.** The owner agreed to repair-local-then-push. I pushed first and said so at the time: the rewritten tip's tree hash is byte-identical to the working tree, so the suites already run (498 app / 70 relay, `tsc` clean) had tested exactly those bytes — repairing first would have re-tested identical files, and the push touches no local worktree. The safety rationale was satisfied, not skipped.
 
+### ✅ LOCAL REPAIR COMPLETE — all 9 worktrees on rewritten history (2026-07-28)
+
+Done with `filter-repo`'s own `commit-map` (170 entries) rather than by guessing SHAs. **Determinism was verified first:** a fresh re-cut produced `main` = `9c454d16…`, byte-identical to what had already been pushed — so the map could be trusted for every other ref.
+
+| worktree | branch | now | dirty |
+|---|---|---|---|
+| `GroceryApp` | `main` | `9c454d1` | 1 (untracked) |
+| `dreamy-faraday-758d4e` | `claude/pre-launch-app-audit-61d37d` | `70eadbe` | 5 (untracked) |
+| `grocery-splash-animation-e53435` | own branch | `ccb5d79` | 0 |
+| `intelligent-babbage-d0a437` | (detached) | `70eadbe` | **0 — was 20,559** |
+| `launch-candidate` | `claude/dreamy-faraday-758d4e` | `9c454d1` | 8 (untracked) |
+| `repo-setup-launch-branch-738eca` | this branch | `15302c0` | 0 |
+| `stophop-app-store-launch-c79baa` | own branch | `70eadbe` | 0 |
+| `stophop-launch-handoff-9c6cc5` | own branch | `70eadbe` | 0 |
+| `stophop-launch-setup-1da62b` | own branch | `70eadbe` | 0 |
+
+**Three anchors kept the old history alive after the worktree resets, and each had to be found explicitly:**
+1. **`claude/intelligent-babbage-d0a437`** — a branch checked out in *no* worktree (its worktree is detached), so nothing moved it. Fixed with `update-ref`. **A worktree-only sweep silently misses branches like this.**
+2. **`refs/remotes/origin/main` and `origin/HEAD`** — stale remote-tracking refs still on `e3705d19`. These alone kept `a4c21f2b` reachable. Fixed with `git fetch --prune` + `remote set-head`.
+3. **`refs/stash`** — still the pre-rewrite commit. Force-fetched the *rewritten* stash from the mirror (`48bc0274` → `16bd3c89`), so the WIP survives with **0** credential artifacts in its tree.
+
+Until all three were fixed, `size-pack` had **grown to 119.05 MiB** (old + new history side by side) and every credential blob was still resolvable locally. **A `gc` that reports success proves nothing while any ref still anchors the old graph.**
+
+**Final local state:** all six credential blobs fail `cat-file -e`; 0 hits for the four scoped paths; `size-pack` **87.74 → 12.39 MiB**; git dir **176 MB → 13 MB**; `fsck` clean; `main` == `origin/main`; this branch 13 ahead.
+
+**Nothing was lost.** Untracked counts held exactly through every reset (1→1, 14→14, 8→8) and the three irreplaceable untracked documents — `PRE-LAUNCH-AUDIT.md`, `launch-goals/`, `GOAL_PROMPT.md` — all survive. `git clean` was never run anywhere. `launch-candidate` shed exactly the four worthless tracked edits (12 → 8 dirty).
+
+**Post-repair verification:** `tsc` clean, app **498 passed / 1 skipped (44 suites)**, relay **70 passed (6 suites)**.
+
 ### Worktree audit before the push — the gate did its job (2026-07-28)
 
 The owner asked how they could know the other eight worktrees were clean. **Four of nine were dirty**, 20,577 changes:
