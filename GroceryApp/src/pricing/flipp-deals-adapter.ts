@@ -19,6 +19,7 @@ import type { PriceAdapter } from './adapter';
 import type { PriceResult, ConfidenceLevel } from './types';
 import { fetchDealsForFSA } from '../services/dealMatcher';
 import { getSettings } from '../config/settings';
+import { isCatalogAvailable } from '../services/catalogClient';
 import type { FlippDealRow } from '../services/dealMatcher';
 
 // ─── State ──────────────────────────────────────────────────────────────────
@@ -137,8 +138,11 @@ export class FlippDealsAdapter implements PriceAdapter {
 
   isAvailable(): boolean {
     const settings = getSettings();
-    // Available if Turso is fully configured, or if flyer scan is enabled (will use crowd-sourced fallback)
-    return !!(settings.flyerScanEnabled || (settings.tursoEnabled && settings.tursoUrl && settings.tursoToken));
+    // Available when flyer scanning is on (crowd-sourced fallback), or when
+    // the relay catalog can serve deals. The old form also required a database
+    // URL and API token in settings — client-held credentials that no longer
+    // exist. isCatalogAvailable() covers the same intent without one.
+    return !!(settings.flyerScanEnabled || isCatalogAvailable());
   }
 
   /**

@@ -1,12 +1,16 @@
 /**
- * Turso schema migrations for PantryRun product database.
+ * Turso schema migrations for the PantryRun product catalog.
  *
- * Run these against your Turso database via tursoClient.execute().
+ * Moved here from GroceryApp/src/services/tursoMigrations.ts: the app no
+ * longer connects to Turso at all, so schema management belongs beside the
+ * only code that holds the credential. Apply these from an operator machine
+ * with the Turso CLI, or from a relay with TURSO_URL / TURSO_TOKEN set.
+ *
  * The 'products' table stores the canonical product record for each barcode.
  * The 'product_prices' table stores price observations over time.
  */
 
-export const MIGRATIONS = [
+const MIGRATIONS = [
   {
     version: 1,
     name: 'create_products_and_prices',
@@ -95,17 +99,24 @@ export const MIGRATIONS = [
 /**
  * Schema version tracking — create a one-row config table.
  */
-export const SCHEMA_VERSION_SQL = `
+const SCHEMA_VERSION_SQL = `
   CREATE TABLE IF NOT EXISTS _schema_version (
     version INTEGER PRIMARY KEY,
     applied_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `;
 
-export const GET_SCHEMA_VERSION_SQL = `
+const GET_SCHEMA_VERSION_SQL = `
   SELECT MAX(version) as version FROM _schema_version
 `;
 
-export const SET_SCHEMA_VERSION_SQL = `
+const SET_SCHEMA_VERSION_SQL = `
   INSERT OR REPLACE INTO _schema_version (version) VALUES (?)
 `;
+
+module.exports = {
+  MIGRATIONS,
+  SCHEMA_VERSION_SQL,
+  GET_SCHEMA_VERSION_SQL,
+  SET_SCHEMA_VERSION_SQL,
+};

@@ -18,7 +18,7 @@
 
 import type { PriceAdapter } from './adapter';
 import type { PriceResult, ConfidenceLevel, SaleInfo } from './types';
-import { isTursoReady, getTurso } from '../services/tursoClient';
+import { isCatalogAvailable, fetchStorePrices } from '../services/catalogClient';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -187,9 +187,9 @@ export class StorePricesAdapter implements PriceAdapter {
   name = 'Store Shelf Prices';
   tier = 'scraping' as const;
 
-  /** Check if Turso is initialized and the store_prices table has data. */
+  /** Check if the relay catalog is reachable for shelf-price lookups. */
   isAvailable(): boolean {
-    return isTursoReady();
+    return isCatalogAvailable();
   }
 
   /**
@@ -204,18 +204,11 @@ export class StorePricesAdapter implements PriceAdapter {
     if (!this.isAvailable()) return null;
 
     try {
-      const turso = getTurso();
-      // Fetch recent prices for this store (last 7 days only)
-      const result = await turso.execute(
-        `SELECT * FROM store_prices
-         WHERE store_id = ?
-           AND scraped_at > datetime('now', '-7 days')
-         ORDER BY scraped_at DESC
-         LIMIT 200`,
-        [normalizeStoreId(storeId)],
-      );
+      // The 7-day window and column list live relay-side; the client sends
+      // only the store id and a row limit.
+      const result = await fetchStorePrices(normalizeStoreId(storeId), 200);
 
-      if (!result.rows || result.rows.length === 0) return null;
+      if (!result || !result.rows || result.rows.length === 0) return null;
 
       const rows = result.rows.map((r: any[]) => this.mapRow(result.columns, r));
       const match = findBestMatch(itemName, rows);
@@ -240,17 +233,9 @@ export class StorePricesAdapter implements PriceAdapter {
     if (!this.isAvailable()) return results;
 
     try {
-      const turso = getTurso();
-      const dbResult = await turso.execute(
-        `SELECT * FROM store_prices
-         WHERE store_id = ?
-           AND scraped_at > datetime('now', '-7 days')
-         ORDER BY scraped_at DESC
-         LIMIT 500`,
-        [normalizeStoreId(storeId)],
-      );
+      const dbResult = await fetchStorePrices(normalizeStoreId(storeId), 500);
 
-      if (!dbResult.rows || dbResult.rows.length === 0) return results;
+      if (!dbResult || !dbResult.rows || dbResult.rows.length === 0) return results;
 
       const rows = dbResult.rows.map((r: any[]) =>
         this.mapRow(dbResult.columns, r),
