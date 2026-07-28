@@ -2,6 +2,25 @@
 
 Running log of findings, decisions, and deferrals. One entry per lesson/decision; update in place rather than duplicating.
 
+## Rename: StopHop → PantryRun (2026-07-28, owner request) — commit `1e1f7b14`
+
+**Renamed:** `app.json` `name`, android `strings.xml` `app_name` (launcher label), `settings.gradle` `rootProject.name`, all in-app UI text (splash, Home header, loading/error, Settings, Privacy, permission rationale), notification channel `stophop-family` → `pantryrun-family`, release-signing properties `STOPHOP_UPLOAD_*` → `PANTRYRUN_UPLOAD_*` plus the keystore/alias names, and every doc including the audit package. 172 replacements / 34 files.
+
+**Deliberately NOT renamed** — each of these names something real, so a blind replace would produce false documentation:
+- **The application id `com.shiftlogichq.stophop`** — `namespace`, `applicationId`, `android.package`, the iOS app group `group.com.shiftlogichq.stophop`, `assetlinks.json` `package_name`, the AASA `appID` suffix, and the `java/com/shiftlogichq/stophop/` source directory. It is user-invisible, and `audit-package/07` already advised it can stay. **Open question put to the owner** — changing it alters store identity, App-Links/Universal-Links verification, and signing, and iOS locks it at first submission. If the owner says yes, it also invalidates the current proven APK and needs a re-proof.
+- **Turso database names** `stophop-arshad1416`, `stophop-products`, and `STOPHOP_TURSO_*` / `stophop_turso_token.txt` — live external resources. Renaming the docs without renaming the databases makes the docs wrong.
+- **Voice-assistant deployment ids** — `stophop-add-item`, `rest_command.stophop_add_item`, `stophop_api_key`, `alexa-stophop-skill`, `stophopGoogleWebhook`, `lambda/stophop-alexa/`, `functions/stophop-google/`. These require matching Home Assistant / Alexa / GCP changes.
+- The third-party **"Stop Hopper"** citation (`com.sparelabs.platform.rider.stophopper`) in the collision check, and the `stophop-launch-setup` worktree path in these notes.
+- `GroceryApp/current.xml` and `GroceryApp/error.xml` — stray **tracked** `uiautomator` device dumps (48 and 15 package refs). Not branding; worth deleting in a cleanup pass.
+
+**Two things a blind rename would have broken, fixed editorially:**
+1. `audit-package/07-STORE-LISTINGS.md` §1 held a name-clearance analysis *about StopHop* ("Stop Hopper", HopStop). Substituting the name would have fabricated a clearance claim for PantryRun. That paragraph now says plainly that **PantryRun is UNVERIFIED** and lists what to run before submission (store search, USPTO/CIPO word mark, `pantryrun.app`/`.com`). Note the same doc previously eliminated **PantryPal** because its domains were taken, so the "pantry" space is already partly occupied.
+2. **Store title is now at the cap:** `PantryRun: Family Grocery List` = **exactly 30/30 chars** (was 28/30). Corrected in `07-STORE-LISTINGS.md` and `06-MARKETING-KIT.md`. Any future title tweak must lose characters elsewhere.
+
+**Verified on device, not assumed:** `aapt2 dump badging` → `application-label:'PantryRun'`; app header renders "PantryRun"; and a create → `am force-stop` → relaunch cycle restored list `RenameCheck` with item `Basil5512`, confirming the channel-id and `app.json` edits did not regress persistence. `jest` 41 suites / 478 passed, exit 0; `tsc` exit 0.
+
+**Note:** the root `CLAUDE.md` was also updated but is **untracked** in this worktree, so it is not part of the commit.
+
 ## Goal 1 — persistence made durable and PROVEN ON DEVICE (2026-07-28)
 
 **Branch/worktree facts.** Repo root `/Users/arshadkazi/Documents/ShiftLogic_HQ/GroceryApp/stophop-launch-setup-1da62b`; `GroceryApp/` + `relay-server/` both directly under it. Launch candidate is `claude/dreamy-faraday-758d4e`, checked out in a **different worktree** (`.../GroceryApp/launch-candidate`) — all work was done there, because a branch can only be live in one worktree. `origin` still has only `main`. Five other `claude/*` branches are 0 commits ahead of `main`; only `dreamy-faraday` (18 ahead) and `grocery-splash-animation` (2 ahead) carry work, so the candidate was unambiguous.
