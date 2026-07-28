@@ -8,7 +8,22 @@ Owner installed Xcode, so the handoff below is cleared. Verified: `xcode-select 
 
 **Done:** `ios.bundleIdentifier` added (**punch-list C6 — RESOLVED**, and its description corrected in `LAUNCH-PUNCH-LIST.md`); native iOS project generated with `npx expo prebuild --platform ios --no-install`; pods installed; **Release build SUCCEEDED and the app launches and initialises on the simulator** — home screen renders, WatermelonDB opens `Documents/groceryapp.db`, Keychain works. All four identifiers agree on `com.shiftlogichq.pantryrun`.
 
-**NOT done — the force-quit/relaunch persistence proof.** I could not drive the iOS UI: the simulator MCP server cached "Xcode not selected" at session start and still reports it (the machine is fine — **no `sudo` needed**, it just needs a session restart), and `osascript` lacks Accessibility permission. Unblock either one and the proof takes minutes.
+**iOS persistence PROVEN (2026-07-28).** Done by driving the Simulator window with the generic computer-use tools (granted at "full" tier) after the simulator MCP server stayed unavailable — see the correction below. Transcript:
+```
+$ xcrun simctl spawn <udid> launchctl list | grep pantryrun     → pid=31571
+$ xcrun simctl terminate <udid> com.shiftlogichq.pantryrun      → (terminated)
+$ xcrun simctl spawn <udid> launchctl list | grep pantryrun     → (empty — gone)
+$ xcrun simctl launch <udid> com.shiftlogichq.pantryrun         → pid=6153
+```
+Screenshot `PROOF-IOS.png`: list **`ioschek`** with one PRODUCE row reading **`Fennel8804` — 1 pcs**, the exact text typed before the kill. Corroboration: `grocery_lists`=1, `grocery_items`=1, `name` = `{"ciphertext":"GDwqNfuTnt50F…` (encrypted, as on Android). **Persistence is now demonstrated on both platforms.**
+
+**CORRECTION to what I said earlier about the simulator MCP server.** I claimed the machine was fine and "no `sudo` needed". That was wrong. `xcode-select -p` does return `/Applications/Xcode.app/Contents/Developer`, and `xcrun`/`xcodebuild` work — but **`/var/db/xcode_select_link` does not exist**, i.e. there is no persisted selection; `xcode-select -p` is falling back to the default. That is almost certainly what the MCP server checks, so its advice is genuinely actionable and does need the owner's password:
+```
+sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+```
+Not required for building or for the proof above — only to make the native simulator panel usable.
+
+**iOS UI-automation notes for next time:** the computer-use `type` action holds keys long enough to trigger iOS's accent-picker popup (typing "iOSCheck" produced a row of `À Á Â Ã Æ …`). Send one `key` action per character instead. Also dismiss the "Speed up your typing by sliding your finger" keyboard tutorial before typing, and note the Simulator window may sit on a secondary display (`switch_display`).
 
 **Five real problems found and fixed getting there — all pre-existing, none visible on Android:**
 1. **`expo prebuild` DELETES `ios/`** ("The ios project is malformed, project files will be cleared") — it wiped `ios/apple-app-site-association`. It was backed up first and restored byte-identically. **Back that file up before any future prebuild.** `--platform ios` did correctly leave `android/` untouched (tree hash `7487bb6c…` before and after).
