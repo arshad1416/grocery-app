@@ -166,7 +166,7 @@ Tree diff: rewritten tip is **byte-identical in file set** to the original tip (
 
 **`559be6a00f57` deliberately survives** — that is `issuer-public-key.pem`. A public key is not a credential, its keypair is now rotated, and the task scoped the filter to the private key only. Removable if the owner prefers a clean `keys/` history.
 
-**⚠️ THE SCRATCH MIRROR IS STALE.** It was cloned at `64c41266`; `1315557d` (this docs commit) landed afterwards, and anything committed later is not in it either. **Do not push that mirror.** Any rewrite must re-clone from the then-current tip and re-run every check above before a single byte is pushed — pushing the existing mirror would silently drop commits.
+**Superseded — the mirror was re-cut. See "Stage 4 EXECUTED" below.**
 
 ### CORRECTION — `refs/stash` was NOT dropped
 The brief states `git-filter-repo` drops stashes. **It did not.** filter-repo 2.47.0 *rewrote* `refs/stash`: `48bc0274` → `16bd3c89`. The entry survives with its 18 files, and `git ls-tree -r refs/stash | grep -cE 'index\.android\.bundle|\.hbc'` → **0**, so its credential-bearing content is gone while the WIP is preserved. No stash needed converting to a branch. Anyone repeating this must **verify** rather than assume the stash vanished.
@@ -222,6 +222,40 @@ The replacement token is write-capable and the full pipeline works end to end. R
 **CORRECTION — the grocery scrape is WEEKLY, not daily.** The actual cron entry is `0 5 * * 4` → `~/.hermes/scripts/weekly_flipp_scrape.py`, i.e. **05:00 Thursdays**. Earlier notes in this file repeated a "daily 04:00 Mon–Sat" schedule taken from `ARCHITECTURE-GROCERY-SCRAPER.md` §7.1 — but that file is marked *Status: Design Document*, and its `store_prices_scrape.py` **exists on the Pi but is not scheduled at all**. The Pi's 87 cron lines are otherwise the unrelated `shiftlogic-scraper` vehicle-inventory jobs. So there was never a nightly deadline on this rotation, and shelf-price scraping is not currently running.
 
 Verification baseline: **Rows Written = 1,844,460** at revocation. A successful scrape moves it. Next scheduled run **Thursday 2026-07-30, 05:00**.
+
+### ✅ STAGE 4 EXECUTED IN SCRATCH — verified, NOT pushed (2026-07-28)
+
+**Owner scoped the rewrite into this repository:** *"yes, run stage 4 here"*. That authorises the rewrite. **It does not authorise a force-push**, which remains a separate gate requiring the owner's own words. **No `git push` of any kind has been run.**
+
+Mirror re-cut from the current tip `aa670200` (the earlier mirror was 7 commits stale and was discarded), into scratch outside all 9 worktrees. `git-filter-repo` 2.47.0 from pipx. Working tree confirmed clean before starting — `git status --porcelain` returned 0 lines, so there was no uncommitted work to strand.
+
+```
+git filter-repo --force --invert-paths \
+  --path GroceryApp/android/app/src/main/assets/index.android.bundle \
+  --path GroceryApp/dist-android/ \
+  --path GroceryApp/node_modules_bak/ \
+  --path relay-server/keys/issuer-private-key.pem
+git reflog expire --expire=now --all && git gc --prune=now --aggressive
+```
+
+| check | baseline | result |
+|---|---|---|
+| `rev-list --objects --all \| grep -cE '<four paths>'` | — | **0** |
+| all 18 target blobs via `cat-file -e` | present | **all unreachable** |
+| branches | 9 | **9** |
+| tags | 22 | **22** |
+| commits across all refs | 165 | **165 — none dropped** |
+| `size-pack` | 87.74 MiB | **12.07 MiB (13.8%)** |
+| tip tree hash | `2fbe2584…` | **`2fbe2584…` — identical** |
+| `git fsck` on the result | — | **clean** |
+
+**The tip tree hash being identical is the strongest single result here**: the current code is bit-for-bit unchanged by the rewrite. Only history was altered. A fresh clone of the rewritten mirror checks out 454 files, retains `debug.keystore`, has the root `.gitignore` and `relay-server/catalog/`, and has neither the bundle nor `dist-android/`.
+
+At tag `v1.28` (a commit that *did* track the artifacts): 20,950 → 352 files. Removals were exactly `node_modules_bak/` 20,559 + `dist-android/` 38 + `index.android.bundle` 1. **Zero out-of-scope removals, zero additions anywhere.** Commit messages and author dates preserved.
+
+**`refs/stash` survived again** (`48bc0274` → `16bd3c89`), consistent with the earlier run and contrary to the brief's expectation that filter-repo drops stashes. `git ls-tree -r refs/stash | grep -cE 'index\.android\.bundle|\.hbc|node_modules_bak'` → **0**. The WIP is intact; its credential-bearing content is gone. No stash needed converting to a branch.
+
+**`GroceryApp/.env` (Sentry DSN, blob `3adf83af`) was NOT included** — the owner scoped Stage 4 in but has not answered whether to add it as a fifth path, and widening the filter unilaterally is out of bounds. Since nothing has been pushed, adding it costs only a re-cut and re-run.
 
 ### OWNER HANDOFF — do these in this order (2026-07-28)
 
