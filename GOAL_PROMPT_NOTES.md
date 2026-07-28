@@ -22,21 +22,25 @@ Running log of findings, decisions, and deferrals. One entry per lesson/decision
 
 **Still broken, knowingly waived:** `sodium.crypto_scalarmult_base` in `decryptKeyFromDevice()` (`src/identity/family.ts`) is `undefined` on device. It has **no runtime caller** (only the AC-20 tests) because the sealed-key handoff has no transport on either side and is deferred to v1.1. Recorded as an explicit waiver in `__tests__/native-api-fidelity.test.ts`, which also asserts the waiver stays referenced so it cannot silently outlive the code. **Fix before wiring the sealed-key path:** take the device public key from `getDeviceKeypair().publicKey` instead of deriving it.
 
-**Verification at the committed tree** (from `GroceryApp/`): `npx jest` → 41 suites / 478 passed / 1 skipped / 479 total; `npx tsc --noEmit` → no output, **exit 0**. Earlier in the session a run reported 2 failures at load average ~73 while Gradle compiled NDK sources; four subsequent runs were clean, so it was CPU starvation, not a real flake.
+**Verification at the committed tree** (from `GroceryApp/`): `npx jest` → 41 suites / 478 passed / 1 skipped / 479 total, **exit status 0**; `npx tsc --noEmit` → no output, **exit 0**. Two transient things seen once each and not reproducible: (a) a run reported 2 failures at load average ~73 while Gradle compiled NDK sources — four subsequent runs were clean, so CPU starvation, not a real flake; (b) one run printed "A worker process has failed to exit gracefully" — it did not recur, exit was 0, and the two new suites are pure synchronous fs/Babel work with no timers. If (b) returns, chase it with `--detectOpenHandles`; it is more likely pre-existing than new.
 
-**Android persistence transcript (the thing that had never once been done).**
+**Punch-list C6 correction — verified with primary evidence, not asserted.** `cat GroceryApp/ios/apple-app-site-association` → `"appID": "TEAMID.com.shiftlogichq.stophop"` (its own `_comment` also states the suffix must match `com.shiftlogichq.stophop`); `GroceryApp/app.json:33` → `"group.com.shiftlogichq.stophop"`; and `grep -n bundleIdentifier GroceryApp/app.json` returns nothing, so the missing key itself is real. Both existing identifiers therefore point at `com.shiftlogichq.stophop`, and C6's claim that "the only identifier in the repo is a different, wrong value" is **stale**.
+
+**Android persistence transcript (the thing that had never once been done).** Run against an APK built from the **committed tree at `2b158033`** — the first attempt proved a binary built before the last three source edits, which does not count.
 ```
-$ adb shell pidof com.shiftlogichq.stophop
-12833
-$ adb shell am force-stop com.shiftlogichq.stophop
-$ adb shell pidof com.shiftlogichq.stophop
+$ adb -s emulator-5554 shell pidof com.shiftlogichq.stophop
+13995
+$ adb -s emulator-5554 shell am force-stop com.shiftlogichq.stophop
+$ adb -s emulator-5554 shell pidof com.shiftlogichq.stophop
 (empty — process gone, exit 1)
-$ adb shell monkey -p com.shiftlogichq.stophop -c android.intent.category.LAUNCHER 1
+$ adb -s emulator-5554 shell monkey -p com.shiftlogichq.stophop -c android.intent.category.LAUNCHER 1
 Events injected: 1
-$ adb shell pidof com.shiftlogichq.stophop
-13210
+$ adb -s emulator-5554 shell pidof com.shiftlogichq.stophop
+14362
 ```
-Screenshot: `PROOF-2-item-survived.png` (session scratchpad). Opened and read: the ZebraList screen, header "ZebraList" with "Local only", a PRODUCE section with count 1, and one row reading **`Kumquat9137`** at `1 pcs` — the exact text typed before the kill. Corroboration: `grocery_items` holds one row, `name` = `{"ciphertext":"SjgNZ2SewBV…` (encrypted per `schema.ts`, so the dump proves a row exists, not which item — the screenshot is the evidence). DB found at `/data/user/0/com.shiftlogichq.stophop/groceryapp.db`. Before the fixes the same flow left **0 rows in every table** and a `WAL` with 0 frames.
+Screenshot: `PROOF-COMMITTED-TREE.png` (session scratchpad). Opened and read: the list screen, header **`PantryRun`** with "Local only", a PRODUCE section with count 1, and one row reading **`Saffron4208`** at `1 pcs` — the exact text typed before the kill. A deliberately different item string from the earlier pre-commit run (`ZebraList` / `Kumquat9137`) so the two screenshots cannot be confused. Corroboration: `grocery_lists` = 1 row, `grocery_items` = 1 row with `name` = `{"ciphertext":"aMFt23EXn…` (encrypted per `schema.ts`, so the dump proves a row exists, not which item — the screenshot is the evidence). DB at `/data/user/0/com.shiftlogichq.stophop/groceryapp.db`. Zero `failed to persist` / `Decorating class property` / `undefined is not a function` lines in logcat for the whole run. Before the fixes the same flow left **0 rows in every table** and a WAL with 0 frames.
+
+**Process lesson worth keeping:** the first proof was run against the tree *before* the DIAG removal and the ABYTES fix. The deltas were almost certainly inert for local persistence, but "almost certainly inert" is exactly the reasoning this whole goal exists to reject. Build the artifact from the committed tree, then prove it.
 
 **Emulator/tooling gotchas that cost real time — read before repeating this.**
 - **Two `adb` binaries.** `/usr/local/bin/adb` is Homebrew 35.0.2; the SDK has 37.0.0. The Android 17 AVD only authorizes against v37 — with v35 the device sits at `unauthorized` and the emulator eventually aborts (exit 134). Always use `$HOME/Library/Android/sdk/platform-tools/adb`.
@@ -50,7 +54,7 @@ Screenshot: `PROOF-2-item-survived.png` (session scratchpad). Opened and read: t
 
 **iOS — blocked, owner handoff.** Literal output: `xcode-select -p` → `/Library/Developer/CommandLineTools`; `xcrun simctl list devices` → `xcrun: error: unable to find utility "simctl", not a developer tool or in PATH`; `pod --version` → `command not found: pod`. `GroceryApp/ios/` contains only `apple-app-site-association` — there is no `.xcodeproj` or `Podfile` anywhere outside `node_modules`, so even a working Xcode would have nothing to open. Unblocking needs the owner: (1) install Xcode and `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`; (2) download an iOS simulator runtime; (3) install CocoaPods; (4) add `ios.bundleIdentifier` to `GroceryApp/app.json`. Any original plan assuming an agent could drive Xcode/simulators here does not hold.
 
-**Punch-list C6 correction (confirmed in this copy).** C6 claims "the only identifier in the repo is a different, wrong value". That is **stale**: `GroceryApp/ios/apple-app-site-association` reads `"appID": "TEAMID.com.shiftlogichq.stophop"` and `GroceryApp/app.json` already declares the app group `group.com.shiftlogichq.stophop`. Both point at `com.shiftlogichq.stophop`; what is genuinely missing is the real Team ID (owner-only) and the `ios.bundleIdentifier` key itself. `LAUNCH-PUNCH-LIST.md` and `PRE-LAUNCH-AUDIT.md` are **not present in this working copy**, so the correction is recorded here.
+**Where the C6 correction lives.** `LAUNCH-PUNCH-LIST.md` and `PRE-LAUNCH-AUDIT.md` are **not present in this working copy**, so the verified correction above is recorded here instead. What is genuinely still missing for iOS: the real Apple Team ID (owner-only) and the `ios.bundleIdentifier` key.
 
 **Merge (part d).** Pre-merge `main` = `e3705d198e43b4e418da82e06f38091965cd2454` (recorded so `git reset --hard` can undo it; note that reset would re-materialize the ~20.5k `node_modules_bak/` files currently pending deletion in the `main` worktree — untidy, harmless). `main` is checked out in `/Users/arshadkazi/Documents/GroceryApp`, so the merge was run there with `git -C … merge --ff-only`, not via `git push . …` (which `receive.denyCurrentBranch` refuses while reporting exit 0 through a pipe). That worktree's `git status --porcelain` was ~20,560 lines, all but one being unstaged deletions under `GroceryApp/node_modules_bak/` — expected, since this branch is what removes those tracked files. Its working tree was left untouched.
 
