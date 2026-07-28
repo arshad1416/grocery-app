@@ -275,6 +275,36 @@ At tag `v1.28` (a commit that *did* track the artifacts): 20,950 → 352 files. 
 
 **MIRROR STALENESS IS STRUCTURAL — re-cut immediately before any push.** Every commit made after a mirror is cut leaves it behind, and pushing a stale mirror silently drops those commits. This happened three times in this session as documentation commits landed. The clone plus filter takes about five seconds; **treat re-cutting as part of the push procedure, never as an optional step.**
 
+### Verified against the GitHub tracking/execution-order doc (2026-07-28)
+
+The owner supplied a companion planning doc and asked whether it settled the force-push question. **It does not — and it says so itself:** *"Never let an agent force-push a shared branch outside G3. G3 is the one goal where rewriting published history is the point, and it needs your explicit confirmation before it runs."* A document requiring explicit confirmation cannot supply it. Push still held.
+
+Its specifics, confirmed or corrected in this working copy:
+
+| claim | this copy |
+|---|---|
+| remote is public | **confirmed** — `gh repo view` → `"visibility":"PUBLIC"`, not a fork |
+| `gh` installed and authenticated | **confirmed** — account `arshad1416`, ssh protocol |
+| CI at `.github/workflows/ci.yml` | **confirmed** |
+| CI only fires on `main` | **confirmed** — `push: branches:[main]`, `pull_request: branches:[main]`. A goal branch gets **no CI at all** until it targets `main`. |
+| `git-filter-repo` broken (dead 3.7 shebang) | **confirmed**, and fixed — pipx 2.47.0 at `~/.local/bin` |
+| `npm ci` fails on a lockfile out of sync | **confirmed and worse than described** — see below |
+| "turn on secret scanning and push protection" | **already ON — correction to the doc** |
+
+**Correction — secret scanning was already enabled.** `gh api repos/arshad1416/grocery-app --jq .security_and_analysis`:
+```
+secret_scanning: enabled
+secret_scanning_push_protection: enabled
+secret_scanning_non_provider_patterns: disabled   ← this is the gap
+secret_scanning_validity_checks: disabled
+dependabot_security_updates: disabled
+```
+**`non_provider_patterns` being disabled is very likely why the Turso token was never caught.** GitHub's provider patterns cover recognised vendors; a Turso database JWT is not one, so with generic-pattern scanning off it sails straight through — scanning was on the whole time and simply could not see it. Enabling `non_provider_patterns` is the single highest-value setting change here, and it is free on a public repo. **Owner action** (Settings → Code security), and worth doing *before* any push.
+
+**`npm ci` is worse than either of us said — 58 mismatched packages.** The doc blames a missing `expo-image-picker`; I earlier blamed `lightningcss-*`/`nanoid`. Both are right and both understate it. `expo-image-picker@~56.0.20` is in `package.json` and **absent from the lockfile**; on top of that the whole Expo set is skewed (`expo` 56.0.8 vs 56.0.17, `expo-modules-core` 56.0.14 vs 56.0.22, `expo-constants`, `expo-linking`, `expo-image-manipulator`, …). That is the fingerprint of the iOS session bumping Expo versions without regenerating the lockfile. **Not fixed here** — the doc scopes it to G4, and a security branch is the wrong place to bury a dependency regeneration. Flagged on the punch list.
+
+**Conflict worth the owner's attention — the doc says run the rewrite "when exactly one branch exists". This repo has nine.** Every branch created before the rewrite is orphaned by it. Eight of those nine are other agents' working branches in other worktrees, which I have been scoped out of and cannot inspect. That is the same hazard as the uncommitted-work problem, from a different direction, and it is an argument for doing the push at a quiet moment rather than mid-flight.
+
 ### OWNER HANDOFF — do these in this order (2026-07-28)
 
 Everything below needs a login, an irreversible publish, or a decision only the owner can make. Nothing here has been done on the owner's behalf.
