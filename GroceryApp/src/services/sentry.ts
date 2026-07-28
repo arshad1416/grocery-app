@@ -13,10 +13,13 @@
  * loaded but before screen components mount.
  */
 
-import * as Sentry from 'sentry-expo';
+import * as Sentry from '@sentry/react-native';
 import { getSettings } from '../config/settings';
 
-const SENTRY_DSN = process.env.SENTRY_DSN ?? '';
+// MUST keep the EXPO_PUBLIC_ prefix. The Expo bundler only inlines env vars
+// carrying that prefix; a bare `process.env.SENTRY_DSN` is never substituted,
+// so it reads as undefined in a release bundle and init silently no-ops.
+const SENTRY_DSN = process.env.EXPO_PUBLIC_SENTRY_DSN ?? '';
 
 /**
  * Conditionally initialize Sentry based on user opt-in preference.
@@ -33,13 +36,13 @@ export async function initSentry(): Promise<void> {
     }
 
     if (!SENTRY_DSN) {
-      console.warn('[sentry] No SENTRY_DSN configured — skipping init');
+      console.warn('[sentry] No EXPO_PUBLIC_SENTRY_DSN configured — skipping init');
       return;
     }
 
     Sentry.init({
       dsn: SENTRY_DSN,
-      enableInExpoDevelopment: false,
+      enabled: !__DEV__, // replaces sentry-expo's `enableInExpoDevelopment: false`
       debug: __DEV__,
       sendDefaultPii: false,
       // Strip potentially sensitive breadcrumb data

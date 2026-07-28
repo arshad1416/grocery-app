@@ -9,12 +9,13 @@
     "userInterfaceStyle": "light",
     "scheme": "groceryapp",
     "plugins": [
-      "sentry-expo",
+      "@sentry/react-native",
       [
         "react-native-libsodium",
         {}
       ],
       "./plugins/withLibcxxPickFirst.js",
+      "./plugins/withCleartextTraffic.js",
       [
         "expo-notifications",
         {
@@ -25,6 +26,7 @@
     ],
     "ios": {
       "bundleIdentifier": "com.shiftlogichq.pantryrun",
+      "buildNumber": "30",
       "supportsTablet": true,
       "associatedDomains": [
         "applinks:groceryapp.app"
@@ -40,7 +42,18 @@
         "NSPhotoLibraryUsageDescription": "Select a store flyer photo from your library so PantryRun can read its prices",
         "NSMicrophoneUsageDescription": "Add items to your grocery list using voice commands",
         "NSSpeechRecognitionUsageDescription": "Convert voice commands to grocery list items",
-        "ITSAppUsesNonExemptEncryption": true
+        "ITSAppUsesNonExemptEncryption": true,
+        "NSLocalNetworkUsageDescription": "PantryRun connects to your family's self-hosted relay server on your local network to sync grocery lists between devices.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false,
+          "NSAllowsLocalNetworking": true,
+          "NSExceptionDomains": {
+            "localhost": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSIncludesSubdomains": true
+            }
+          }
+        }
       },
       "privacyManifests": {
         "NSPrivacyTracking": false,
@@ -83,8 +96,8 @@
       },
       "predictiveBackGestureEnabled": false,
       "permissions": ["POST_NOTIFICATIONS"],
-      "_usesCleartextTrafficNote": "Required for self-hosted relay WebSocket connections on local network (ws:// scheme without TLS)",
-      "usesCleartextTraffic": true,
+      "versionCode": 30,
+      "_cleartextNote": "android:usesCleartextTraffic is applied by ./plugins/withCleartextTraffic.js. It is NOT an app.json key — Expo SDK 56 has no android.usesCleartextTraffic in its schema and no mod reads one, so a bare key here would be silently inert. Required for self-hosted relay WebSocket connections on a local network (ws:// without TLS).",
       "intentFilters": [
         {
           "action": "VIEW",

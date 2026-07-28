@@ -2,6 +2,148 @@
 
 Running log of findings, decisions, and deferrals. One entry per lesson/decision; update in place rather than duplicating.
 
+## Goal 4 — Buildability: iOS identity, relay reachability, signing, Sentry, EAS (2026-07-28)
+
+Worktree `repo-setup-launch-branch-738eca`, branch `claude/repo-setup-launch-audit-5448fc`. **This branch is identical to local `main`** — `git log --oneline main..HEAD` and `HEAD..main` are both empty. The "launch work lives on a feature branch while main stays behind" rule is now retired; the merge already happened. Working tree was **clean** at start (0 lines from `git status --short`) — the sibling persistence work described in the goal prompt is not present in this copy.
+
+### Baseline gate, measured before the first edit
+`npx tsc --noEmit` → exit 0. Jest → **44 suites, 499 passed, 1 skipped, 500 total**. The audited reference was 470; **499 is the number this goal must not regress below.**
+
+### Environment (ground truth 7) — what this machine can actually build
+| Tool | Finding |
+|---|---|
+| OS | `Darwin` — iOS work possible |
+| Xcode | **Full Xcode 26.6** at `/Applications/Xcode.app/Contents/Developer` (not CommandLineTools) |
+| CocoaPods | **1.17.0** present (needs `LANG=en_US.UTF-8` or it warns) |
+| EAS CLI | **ABSENT** — the only genuine owner install |
+| JDK | `/usr/bin/java` is the macOS **stub** ("Unable to locate a Java Runtime"). Real JDK found: **Android Studio JBR, OpenJDK 21.0.10**, `/Applications/Android Studio.app/Contents/jbr/Contents/Home` |
+| Android SDK | **Present**, `~/Library/Android/sdk` — build-tools 34/35/36/36.1/37, platforms android-35/36/36.1, `apksigner` in every build-tools dir |
+| `JAVA_HOME` / `ANDROID_HOME` | Both **unset** — wiring, not an install |
+
+**Lesson: the stub's "Unable to locate a Java Runtime" is not a blocker.** Reporting "no JDK installed" here would have cost the owner a pointless install while a working JDK sat inside Android Studio. Both toolchains were merely unwired.
+
+### THE CENTRAL CORRECTION — `android.usesCleartextTraffic` in `app.json` is INERT
+The goal prompt (ground truth 2) states: *"`app.json` already sets `usesCleartextTraffic: true` and is correct; the tracked native manifest simply never received it."* **This is backwards, and the direction matters because it dictates the fix.**
+
+Measured three ways:
+1. `grep usesCleartextTraffic node_modules/@expo/config-types/build/ExpoConfig.d.ts` → **no match**. It is not in the SDK 56 app.json schema.
+2. No config-plugin mod reads it. The only hit in `@expo/config-plugins` is a **TypeScript type for a manifest attribute** (`Manifest.d.ts:80`), used by plugins that set it themselves — not a reader of any app.json key.
+3. Decisive: `expo prebuild --clean` in a scratchpad copy, against an `app.json` that carried the key, generated a manifest with **no `usesCleartextTraffic` attribute at all**.
+
+So neither source produced the attribute. **A prebuild would NOT have fixed cleartext** — option (b) as written in the goal prompt would have silently failed. The inert key is also precisely what made an earlier audit conclude "app.json is already correct"; an unrecognized key in `app.json` is accepted silently and reads as configuration.
+
+**Fix:** new config plugin `GroceryApp/plugins/withCleartextTraffic.js` (`withAndroidManifest` → sets `android:usesCleartextTraffic="true"` on `<application>`), registered in `app.json` `plugins`. The inert `android.usesCleartextTraffic` key and its note were **removed** and replaced with `_cleartextNote` explaining why it must not be re-added.
+
+### Prebuild-fork decision: **(a) hand-patch, hardened with a plugin so it cannot recur**
+Options were (a) hand-patch the native manifest, (b) add keys to `app.json` + prebuild + re-apply signing, (c) untrack `android/`.
+
+**Chose (a), plus the app.json/plugin convergence that (b) was meant to buy — without (b)'s destruction.** Reasoning:
+- (b) is destructive and needs owner confirmation. `expo prebuild --clean` regenerates `build.gradle`, destroying the hand-written `PANTRYRUN_UPLOAD_*` signing block. Confirmed empirically: the scratchpad clean prebuild emitted **`versionCode 1`**, exactly the version-coherence destruction the prompt warned about.
+- (b) also **would not have fixed cleartext** (see above), so it buys less than it appears to.
+- (c) overlaps the credentials goal and is destructive. Not taken.
+- The standing objection to (a) is "it leaves `android/` divergent from `app.json`, which is what caused this defect." **That objection is answered with evidence, not assertion:** after adding `android.versionCode: 30` and the cleartext plugin, a scratchpad prebuild generates an `<application>` tag carrying `android:usesCleartextTraffic="true"`, `versionCode 30`, and intent-filter blocks that are **byte-identical to the hand-patched tracked manifest**. The two sources of truth now agree, and that agreement is demonstrated by generation rather than claimed.
+
+`app.json` now carries `android.versionCode: 30` and `ios.buildNumber: "30"` explicitly, so a future regeneration is correct rather than merely non-destructive.
+
+### iOS: the tracked Xcode project is a second consumer that had drifted
+**Divergence from the goal prompt:** it says `GroceryApp/ios/` contains only `apple-app-site-association` and there is no Xcode project. **False in this copy.** Commit `43756d4` committed a full project — `PantryRun.xcodeproj`, `.xcworkspace`, `Podfile`, `Podfile.lock`. So done-when item 7's closing check ("confirm `ios/` still contains only the AASA file") is obsolete as written.
+
+This matters: the tracked `ios/PantryRun/Info.plist` is what an Xcode build consumes, and it had **`CFBundleVersion 1`**, no `NSLocalNetworkUsageDescription`, and an ATS block with no `NSExceptionDomains`. Fixing only `app.json` would have left the actual build path broken — the same drift class as the Android manifest, on the other platform.
+
+**Decision:** patch the tracked `Info.plist` with a **minimal, targeted** 3-key edit rather than overwriting it with generated output. The generated plist lacks `RCTNewArchEnabled`, which the tracked one has; a wholesale copy would have silently dropped it. Verified with `plutil -lint` and a `plistlib` read.
+
+### ATS decision: scoped exception, not `wss://`, not blanket arbitrary loads
+`NSAllowsArbitraryLoads: false` + `NSAllowsLocalNetworking: true` + an `NSExceptionDomains` entry for `localhost` (the default relay URL in `src/config/settings.ts` is `ws://localhost`), plus `NSLocalNetworkUsageDescription` (required on iOS 14+ or the local-network prompt never appears and the connection fails silently).
+
+Deliberately **not** switching to `wss://`: a self-hosted relay on a LAN address cannot practically obtain a TLS certificate, so that would delete the primary use case rather than harden it. Deliberately **not** using blanket `NSAllowsArbitraryLoads: true`: Apple requires justification at review and it opens far more than the relay needs.
+
+### Sentry: three-way conflict resolved, and the DSN proven to reach the bundle
+`sentry-expo@7.2.0` is deprecated (merged into `@sentry/react-native` as of SDK 50). It was `app.json` `plugins[0]` **and** the import in `src/services/sentry.ts` **and** a dependency — all three moved together, because dropping the package alone would break `expo config` and `expo prebuild` on an unresolvable plugin.
+
+- Plugin name verified **from the installed package, not memory**: `@sentry/react-native` ships `app.plugin.js` → `./expo` → `plugin/build/withSentry`. Resolution confirmed at prebuild, which logged `[@sentry/react-native/expo]`.
+- `npm ls @sentry/react-native` went from `8.14.0` + nested `5.17.0` (via `sentry-expo`) to a **single `8.14.0`**.
+- API change: `enableInExpoDevelopment: false` does not exist in v8 → replaced with `enabled: !__DEV__`.
+- **`SENTRY_DSN` → `EXPO_PUBLIC_SENTRY_DSN`** in `sentry.ts`, `.env.example`, `eas.json`. Without the prefix the Expo bundler never inlines the value.
+
+**Proof by controlled experiment, not inspection.** Exported with a sentinel DSN and grepped the emitted Hermes bytecode:
+- `EXPO_PUBLIC_SENTRY_DSN=https://sentinel0000@…` → `sentinel0000` **present** in `_expo/static/js/android/index-*.hbc`.
+- Negative control, `SENTRY_DSN=https://sentinel1111@…` (unprefixed) → `sentinel1111` **absent**.
+
+The control is the point: it proves the prefix is what does the inlining, so the rename was necessary rather than incidental.
+
+### Lockfile decision: `package-lock.json` authoritative, `yarn.lock` deleted
+`npm ci` already reproduced from the committed manifests (fixed earlier at `8b9bc98`); re-verified in a clean directory. `yarn.lock` was still tracked (299 KB) and divergent — nothing in the repo uses yarn (CI, EAS and `relay-server/Dockerfile` all use npm). It was `git rm`'d. Added `"packageManager": "npm@10.9.8"` to pin the manager explicitly, which is what "no package manager is pinned" actually asked for.
+
+### Source-document corrections confirmed or found this pass
+- **Confirmed already done** (did not redo): `versionCode 30` / `versionName "1.30.0"` matching `app.json`; `PANTRYRUN_UPLOAD_*` signing wiring behind `project.hasProperty`; `ios.associatedDomains`; AASA + `assetlinks.json` deploy templates; `ios.bundleIdentifier` already present in `app.json` (**ground truth 1 is stale on this point**).
+- **Punch list C6 is stale** in claiming `app.json` holds a *wrong* iOS identifier — it holds the correct one. The wrong value `com.groceryapp.app` lived in `GroceryApp/docs/deep-linking-setup.md` (5 occurrences) — **fixed this pass**, and the two "replace with your actual id if different" lines were rewritten to say the identifier is settled, since that phrasing is what invited the wrong value to be copied into a console.
+- **CI trigger claim confirmed:** `.github/workflows/ci.yml` triggers only on push to `main` and PRs targeting `main`, and runs `npm ci`. The lockfile failure was therefore never "every push" — it would have arrived at merge time. Moot now that `npm ci` reproduces.
+- **Path correction — record this, the goal prompt has it wrong.** The invite-redirect file is at **`GroceryApp/relay-server/public/invite-redirect.html`**, not `relay-server/public/invite-redirect.html`. A top-level `relay-server/` exists but contains no such file; there is exactly one copy repo-wide.
+- **Recorded, deliberately NOT fixed here (sibling goal — web content, not build config):** that file sets `androidStoreUrl` to `…?id=com.groceryapp.app` (line 113) — the **wrong package**, so every Android user tapping an invite link without the app installed lands on a nonexistent Play listing. The correct value is `com.shiftlogichq.pantryrun`. Line 112's `iosStoreUrl` also carries the placeholder `idXXXXXXXXXX`, which needs the real App Store ID.
+- **Local-machine hygiene, not a repo defect:** `GroceryApp/android/app/src/main/assets/index.android.bundle` is untracked and gitignored (the purge landed — `git ls-files` returns 0 for it and for `dist-android/`), but the file is **still physically on disk** in the Android release source set on this machine, and still contains 1 JWT and 2 `turso.io` hits. It cannot reach the repo and Gradle regenerates it via `export:embed`, but the owner should delete both local paths. The constraint's blocking dependency is therefore **satisfied**, not pending.
+- **`*.keystore` is still not git-ignored.** `GroceryApp/.gitignore` has `*.jks` but not `*.keystore`, and `android/app/debug.keystore` is tracked (intentionally — stock RN debug keystore, credentials public by design). A real upload keystore written into the working copy would be stageable. Left as-is rather than silently changing ignore semantics for a tracked file; called out in the owner handoff instead.
+
+### Evidence summary (every claim below was produced by a command, not by reading a file)
+| Item | Evidence |
+|---|---|
+| `npm ci` reproduces | Clean dir, committed manifests only → `added 1043 packages`, exit 0, **0** "from lock file" errors. Before-state from `8b9bc98^` reproduced `Missing: expo-image-picker@56.0.22 from lock file` |
+| Config resolves w/ new plugin | `expo config --type prebuild` exit **0**, `bundleIdentifier: 'com.shiftlogichq.pantryrun'`, `buildNumber: '30'`, `versionCode: 30` |
+| Cleartext in the shipped manifest | **Merged** release manifest (`build/intermediates/merged_manifest/release/…`) → `android:usesCleartextTraffic="true"` |
+| autoVerify split | Merged manifest: exactly one `autoVerify=true` filter, schemes `['https']`; `groceryapp` in its own filter. Hand-patched source is **byte-identical** to `expo prebuild` output |
+| Release signing works | `bundleRelease -PPANTRYRUN_UPLOAD_STORE_FILE=…` → `Owner: CN=THROWAWAY SIGNING TEST DO NOT USE` |
+| …and the fallback is real | **Control:** same task, no `-P` flags → `Owner: CN=Android Debug` |
+| Sentry DSN inlined | `EXPO_PUBLIC_SENTRY_DSN=…sentinel0000…` → found in `_expo/static/js/android/index-a4d37f49….hbc`. **Control:** unprefixed `SENTRY_DSN=…sentinel1111…` → **absent** |
+| Single Sentry SDK | `npm ls @sentry/react-native` → one `8.14.0` (was `8.14.0` + nested `5.17.0`) |
+| iOS native config | Scratchpad prebuild → `PRODUCT_BUNDLE_IDENTIFIER = "com.shiftlogichq.pantryrun"`, `CFBundleVersion = 30`, `NSLocalNetworkUsageDescription` set, ATS scoped |
+| No credential in the artifact | `.aab` scan: `eyJhbGciOiJ`/`turso.io`/`libsql` = **0**, while sensitivity control `pantryrun` = 34, `sentry` = 7899 |
+| Gate | `tsc --noEmit` exit 0; Jest **44 suites / 499 passed / 1 skipped** — identical to the pre-edit baseline |
+| Tree clean | Post-build `git status --short` shows only intentional edits; no stray artifact, no keystore |
+
+### OWNER HANDOFF — everything left, batched for one sitting
+**None of these can be done from the repo. All require credentials or accounts an agent must never hold.**
+
+**1. Install the two missing tools** (only genuine installs; the JDK and Android SDK are already present and were merely unwired, which is not owner work):
+```bash
+npm install -g eas-cli && eas login
+```
+Xcode 26.6 and CocoaPods 1.17.0 are already installed on this Mac — no iOS toolchain install needed.
+
+**2. Generate and back up the Android upload keystore.** Run this **outside the repository** (`*.keystore` is not git-ignored, so a keystore inside the working copy is stageable):
+```bash
+keytool -genkeypair -v -keystore ~/keys/pantryrun-upload.keystore -alias pantryrun-upload -keyalg RSA -keysize 2048 -validity 10000
+```
+Store it in a password manager or encrypted backup. **Losing it locks you out of Play updates unless you enrol in Play App Signing** (recommended). Then put the credentials in `~/.gradle/gradle.properties` (never in the repo):
+```
+PANTRYRUN_UPLOAD_STORE_FILE=/Users/<you>/keys/pantryrun-upload.keystore
+PANTRYRUN_UPLOAD_STORE_PASSWORD=<password>
+PANTRYRUN_UPLOAD_KEY_ALIAS=pantryrun-upload
+PANTRYRUN_UPLOAD_KEY_PASSWORD=<password>
+```
+**The `throwaway-signing-test.keystore` used to prove the wiring was a disposable 1-day-validity cert generated outside the repo and deleted immediately. It is NOT the upload key and must never be used for one.**
+
+**3. Apple Team ID** — read from [developer.apple.com/account](https://developer.apple.com/account) (Membership details, 10 characters). Paste it in two places:
+- `GroceryApp/ios/apple-app-site-association` → replace `TEAMID` in `"appID": "TEAMID.com.shiftlogichq.pantryrun"`
+- `GroceryApp/eas.json` → `submit.production.ios.appleTeamId`
+
+**4. App Store Connect app ID** — after creating the app record, paste into `GroceryApp/eas.json` → `submit.production.ios.ascAppId`, and into `GroceryApp/relay-server/public/invite-redirect.html:112` replacing `idXXXXXXXXXX`.
+
+**5. Signing-certificate SHA-256 for `GroceryApp/android/assetlinks.json`.** If you enrol in Play App Signing (recommended), use the fingerprint **Play generates** — Play Console → Setup → App integrity → App signing key certificate — **not** the upload key's. Getting this wrong makes verified App Links fail *after* Play re-signs.
+
+**6. Host both association files** at `https://groceryapp.app/.well-known/` as `application/json`, over HTTPS, **no redirects**; serve the iOS file **without** a `.json` extension and strip its `_comment` key. Procedure and post-deploy verification are in `GroceryApp/docs/DEEP-LINK-HOSTING.md`.
+
+**7. Sentry DSN.** Create the project, then set `EXPO_PUBLIC_SENTRY_DSN` — in `GroceryApp/.env` locally and in the `env` blocks of `GroceryApp/eas.json` (or as an EAS secret). It is currently `""` in all three profiles. Empty is **deliberate and not a bug**: `initSentry()` takes its documented skip branch, so `development`/`preview` stay quiet until you opt in. Only `production` needs a real value for launch.
+
+**7b. On first `eas login`, verify where `appVersionSource` belongs.** It is set to `"local"` under `cli` in `eas.json`, which is what this project needs — version codes stay in git where the diff is reviewable, and it matches the explicit `android.versionCode: 30`. **This could not be validated here** because no `eas` binary is installed, and newer EAS schema versions moved this key to the top level. A misplaced key is **silently ignored**, which would hand version-code ownership to EAS's servers — the exact outcome to avoid. Run `eas config` (or `eas build:configure`) once after login and confirm the resolved value reads `local`; move the key to the top level if the CLI reports otherwise.
+
+**8. Local cleanup on this machine** (untracked and gitignored, so not a repo risk, but both still hold a live Turso token on disk):
+```bash
+rm -rf GroceryApp/dist-android GroceryApp/android/app/src/main/assets/index.android.bundle
+```
+
+**9. Two decisions that get materially more expensive after first submission:**
+- **The bundle identifier `com.shiftlogichq.pantryrun` becomes permanently immutable the moment the App Store Connect record is created.** This is the last cheap moment to object.
+- Display name (PantryRun vs CartNest / SnugCart / KinCart) and whether the invite domain stays `groceryapp.app`. Neither blocks any work above; both affect `expo.name` and listing copy only.
+
 ## Credential exposure & history purge — Stage 0 inventory (2026-07-28)
 
 Measured in worktree `repo-setup-launch-branch-738eca`, branch `claude/repo-setup-launch-branch-738eca`. Every figure below was reproduced with local commands; where it differs from the reference environment quoted in the goal prompt, **the measured value is authoritative** and the divergence is called out.
