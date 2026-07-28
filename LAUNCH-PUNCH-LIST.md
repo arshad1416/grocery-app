@@ -67,7 +67,7 @@ Companion to [PRE-LAUNCH-AUDIT.md](PRE-LAUNCH-AUDIT.md), which explains the top 
 - [ ] One auth-ack timeout permanently disables sync for the session. `src/sync/y-websocket.ts:179`
 
 ### Build
-- [ ] `npm ci` fails — `package-lock.json` stale (missing `expo-image-picker`); CI install fails every push. `package-lock.json:1` **[blocker]**
+- [x] ~~`npm ci` fails — `package-lock.json` stale (missing `expo-image-picker`); CI install fails every push.~~ **FIXED 2026-07-28 ([PR #9](https://github.com/arshad1416/grocery-app/pull/9)); re-verified at `e68a770` — `npm ci --dry-run` exits 0.** Duplicate of the P3 entry below; kept here only so the P1 list is not misleading. `package-lock.json:1`
 - [ ] Sentry triple-version-mismatched, DSN never inlined — crash reporting dead in production. `src/services/sentry.ts:19` **[blocker]**
 
 ---
@@ -78,6 +78,7 @@ Companion to [PRE-LAUNCH-AUDIT.md](PRE-LAUNCH-AUDIT.md), which explains the top 
 - [ ] Barcode scanning ships ungated and undisclosed; `barcodeScanningEnabled` never read, policy calls it "Planned". `src/services/productLookup.ts:118` **[blocker]**
 - [ ] "Hashed item names" is a false claim — 48-bit non-cryptographic FNV-1a. `src/pricing/privacy.ts:21` **[blocker]**
 - [x] ~~"Turso Enabled" settings toggle stops no Turso traffic.~~ **FIXED 2026-07-28 (`a9792cdd`)** — relabelled "Product Catalog Lookups"; `isCatalogAvailable()` returns false when it is off, so no catalog request is issued at all. `src/screens/SettingsScreen.tsx`
+- [ ] **Two empty-states tell the user to do something that is now impossible** *(found 2026-07-28, fallout of `a9792cdd`)* — both Deals surfaces still render *"Please connect a Turso database in settings…"* on the `turso_missing` branch, but the Settings screen deliberately no longer has a URL or token field (removing it was the whole point of the credential fix). The instruction cannot be followed, and it names a third-party vendor to end users. The condition now means *catalog lookups are off, or the relay has no catalog provisioned* — the copy should say that, e.g. "Product catalog lookups are turned off. Enable them in Settings." **Copy-only; deliberately not changed on the security branch** — a UX edit does not belong buried in a credential commit. `src/screens/HomeScreen.tsx:663`, `src/screens/GroceryListScreen.tsx:796`
 - [ ] Pool consent enabled without seeing disclosure — cancelling the modal marks it shown. `src/screens/SettingsScreen.tsx:785`
 - [ ] Pool contributions default to the same origin as the token issuer, defeating blind-token unlinkability. `src/pricing/contribute.ts:28`
 - [ ] `NSPrivacyCollectedDataTypes` empty while App Privacy labels declare three types. `app.json:73`
@@ -138,15 +139,17 @@ Companion to [PRE-LAUNCH-AUDIT.md](PRE-LAUNCH-AUDIT.md), which explains the top 
 
 ## Credential rotation list (permanent in git history)
 
-1. **Turso token A** — `iat 1781501145`, read-write, no expiry — **OWNER: revoke. Handed off 2026-07-28; confirmation outstanding.**
-2. **Turso token B** — `iat 1781551606`, read-write, no expiry, same DB — **OWNER: revoke.** Both die at once with `turso db tokens invalidate <database>`.
+1. **Turso token A** — `iat 1781501145`, read-write, no expiry — **✅ REVOKED 2026-07-28 by the owner** (console → `stophop` → *Invalidate Database Tokens* → typed `INVALIDATE`; console returned "All database tokens invalidated").
+2. **Turso token B** — `iat 1781551606`, read-write, no expiry, same DB — **✅ REVOKED 2026-07-28, same action.** Invalidation is all-or-nothing: it rotates the database keypair, so every token minted before the click died together. **Correction to the earlier instruction here:** `turso db tokens invalidate <database>` was undeliverable — there is no Turso *Cloud* CLI on either machine (`~/.local/bin/turso` is `tursodb` 0.6.0, the interactive SQL shell, which has no `db tokens` subcommand). Use the console. The database is named `stophop`; the longer `stophop-arshad1416` string is the hostname. A replacement token was minted by the owner and deployed to the Pi scraper only — **never to the app, never to an `EXPO_PUBLIC_*` variable, and never read by an agent.**
 3. **Blind-RSA issuer private key** — blob `194aa746c83a`, added `71d54a57`, deleted `143b5a70` — **ROTATED 2026-07-28**, fingerprint `372c83c3…` → `fe4fe47c…`. Owner must deploy the new pair to the relay **and the pool together**: rotating invalidates every outstanding blind token, and a split cutover fails closed.
 4. **Android upload keystore** — generate fresh; treat the tracked `debug.keystore` as public. Owner-only; `debug.keystore` deliberately stays tracked.
 5. ~~**Sentry DSN**~~ — **RETRACTED 2026-07-28, this was a false positive of mine.** Blob `3adf83af` holds `https://examplePublicKey@o0.ingest.sentry.io/0`, Sentry's documented placeholder. My detection regex matched the `sentry.io` hostname, not a key; a real-key pattern matches 0 times. **Nothing to rotate.** `GroceryApp/.env` and `.env.example` are the same blob, and the placeholder belongs in the tracked template.
 
 **Rotation alone is insufficient for the Turso tokens, and always was.** They were a client-side fallback, so any replacement shipped the same way is extractable from the APK — demonstrated by bundling with a synthetic token and finding it verbatim in the minified output. That is now fixed: the credential lives only in the relay's environment (`a9792cdd`), so a fresh token finally means something.
 
-**The rewrite is hygiene; revocation is the fix.** A history rewrite has been prepared and fully verified in a scratch mirror (all four scoped paths gone, 87.74 MiB → 12.05 MiB, 9 branches / 22 tags intact) but **nothing has been pushed** and the owner has not yet scoped it in. Even when it runs it does not un-publish anything: old commits stay reachable by SHA through GitHub's UI and API until GitHub Support garbage-collects them, forks keep their own copies forever, and two other repositories carry the identical exposure regardless.
+**The rewrite is hygiene; revocation is the fix.** The history rewrite **ran and was force-pushed on 2026-07-28** with the owner's explicit approval, and all 9 worktrees were repaired onto the rewritten history. Re-verified at `e68a770` (2026-07-28): all four scoped paths return **0** across every object, all 18 recorded artifact blobs fail `git cat-file -e`, branches/tags intact at **9 / 22**, `size-pack` **87.74 MiB → 12.31 MiB**, git dir **176 MB → 13 MB**.
+
+**It still does not un-publish anything.** Old commits stay reachable by SHA through GitHub's UI and API until GitHub Support garbage-collects them (**owner-only request, still outstanding**), any fork keeps its own full copy forever, and the two other repositories carry the identical exposure regardless. The revocation above is what actually closed this.
 
 ---
 
@@ -156,4 +159,6 @@ Apple Team ID + AASA credential · Play upload keystore · privacy-policy hostin
 
 ## Branch action
 
-`main` is **not** the launch candidate. Merge `claude/dreamy-faraday-758d4e` before building anything for submission.
+**SUPERSEDED 2026-07-28.** ~~`main` is **not** the launch candidate. Merge `claude/dreamy-faraday-758d4e` before building anything for submission.~~
+
+The merge happened. Measured at `e68a770`: `claude/dreamy-faraday-758d4e` (`d4d442d`) **is an ancestor of `main`**, and PRs [#8](https://github.com/arshad1416/grocery-app/pull/8), [#9](https://github.com/arshad1416/grocery-app/pull/9) and [#10](https://github.com/arshad1416/grocery-app/pull/10) landed on top of it. `main`, `origin/main` and `claude/repo-setup-launch-branch-605b9a` all point at `e68a770` — `git rev-list --left-right --count main...claude/repo-setup-launch-branch-605b9a` = `0 0`. **`main` now carries the launch work.** Anyone still acting on the old note is auditing the wrong tree.
