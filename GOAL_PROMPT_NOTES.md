@@ -2,6 +2,32 @@
 
 Running log of findings, decisions, and deferrals. One entry per lesson/decision; update in place rather than duplicating.
 
+## iOS: unblocked, project generated, builds and RUNS (2026-07-28)
+
+Owner installed Xcode, so the handoff below is cleared. Verified: `xcode-select -p` → `/Applications/Xcode.app/Contents/Developer`, Xcode **26.6**, CocoaPods **1.17.0**, iOS **26.5** runtime.
+
+**Done:** `ios.bundleIdentifier` added (**punch-list C6 — RESOLVED**, and its description corrected in `LAUNCH-PUNCH-LIST.md`); native iOS project generated with `npx expo prebuild --platform ios --no-install`; pods installed; **Release build SUCCEEDED and the app launches and initialises on the simulator** — home screen renders, WatermelonDB opens `Documents/groceryapp.db`, Keychain works. All four identifiers agree on `com.shiftlogichq.pantryrun`.
+
+**NOT done — the force-quit/relaunch persistence proof.** I could not drive the iOS UI: the simulator MCP server cached "Xcode not selected" at session start and still reports it (the machine is fine — **no `sudo` needed**, it just needs a session restart), and `osascript` lacks Accessibility permission. Unblock either one and the proof takes minutes.
+
+**Five real problems found and fixed getting there — all pre-existing, none visible on Android:**
+1. **`expo prebuild` DELETES `ios/`** ("The ios project is malformed, project files will be cleared") — it wiped `ios/apple-app-site-association`. It was backed up first and restored byte-identically. **Back that file up before any future prebuild.** `--platform ios` did correctly leave `android/` untouched (tree hash `7487bb6c…` before and after).
+2. **Prebuild silently rewrote `package.json` scripts** to `expo run:android` / `expo run:ios`. The **android one was reverted** to `react-native run-android`, because `expo run:android` can regenerate `android/`, which is forbidden.
+3. **Expo dependency skew crashed the app at launch** — `dyld: Symbol not found … ExpoModulesCore.Record.from(dictionary:appContext:)`, referenced by `ExpoCamera`. Bumping only `expo-modules-core` made it *worse* (build then failed). Fix was aligning the Expo-owned set together: `expo` 56.0.8→**56.0.17**, `expo-modules-core` 56.0.14→**56.0.22**, `expo-constants`/`expo-notifications`→**56.0.22**. Sentry and the RN-community packages were deliberately left alone — `expo install --fix` wants to downgrade `@sentry/react-native` 8.14→7.11, a major downgrade affecting production error reporting. **Remaining skew is recorded, not fixed:** `expo-image-picker`, `react-native-get-random-values` (2.0.0 vs ~1.11.0), `safe-area-context`, `screens`, `svg`, `sentry-expo`.
+4. **`CODE_SIGNING_ALLOWED=NO` breaks Keychain.** An unsigned build has no entitlements, so `expo-secure-store` failed with `ERR_KEY_CHAIN` (`getValueWithKeyAsync`, `SecureStoreModule.swift:168`) and init died. Must build signed (`CODE_SIGN_IDENTITY="-"`). Hand-signing afterwards with a synthetic `application-identifier` does NOT work — SpringBoard denies the launch.
+5. **Building inside `~/Documents` breaks codesign.** That path is file-provider (iCloud) managed and stamps `com.apple.FinderInfo` / `com.apple.fileprovider.fpfs#P` on new files, so `codesign` fails with *"resource fork, Finder information, or similar detritus not allowed"* — first on `Sentry.bundle`, then on `PantryRun.app`. `xattr -cr` only fixes existing files; new build products get re-stamped. **Fix: put DerivedData outside the synced folder** (`-derivedDataPath` under `/private/tmp/...`). This likely affects the Android/Gradle side and any future CI on this machine too.
+
+**Working iOS build command:**
+```bash
+xcodebuild -workspace ios/PantryRun.xcworkspace -scheme PantryRun -configuration Release \
+  -sdk iphonesimulator -destination 'platform=iOS Simulator,id=<UDID>' \
+  -derivedDataPath /tmp/pantryrun-dd ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+  CODE_SIGN_IDENTITY="-" CODE_SIGNING_REQUIRED=YES CODE_SIGNING_ALLOWED=YES
+```
+`ios/Podfile`'s `post_install` was also patched to skip code-signing CocoaPods **resource bundles** (`com.apple.product-type.bundle`), which cannot be ad-hoc signed. Note `ios/` is now committed, so that patch survives — but **a future `expo prebuild` will overwrite it**.
+
+**⚠️ Branding assets still say STOPHOP.** `assets/icon.png` (identical bytes to `adaptive-icon.png` and `favicon.png`) has "STOPHOP / SMART FAMILY GROCERY LIST" baked into the artwork, and the whole concept is a StopHop pun — a stop-sign outline plus a hopping rabbit. Visible on the iOS home screen under the PantryRun label. A text rename cannot fix this; it needs new artwork before any store submission. Also `assets/android-icon-foreground.png` and the monochrome/background variants.
+
 ## Rename: StopHop → PantryRun (2026-07-28, owner request) — commit `1e1f7b14`
 
 **Renamed:** `app.json` `name`, android `strings.xml` `app_name` (launcher label), `settings.gradle` `rootProject.name`, all in-app UI text (splash, Home header, loading/error, Settings, Privacy, permission rationale), notification channel `stophop-family` → `pantryrun-family`, release-signing properties `STOPHOP_UPLOAD_*` → `PANTRYRUN_UPLOAD_*` plus the keystore/alias names, and every doc including the audit package. 172 replacements / 34 files.
