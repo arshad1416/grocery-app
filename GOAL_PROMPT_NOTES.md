@@ -255,7 +255,25 @@ At tag `v1.28` (a commit that *did* track the artifacts): 20,950 → 352 files. 
 
 **`refs/stash` survived again** (`48bc0274` → `16bd3c89`), consistent with the earlier run and contrary to the brief's expectation that filter-repo drops stashes. `git ls-tree -r refs/stash | grep -cE 'index\.android\.bundle|\.hbc|node_modules_bak'` → **0**. The WIP is intact; its credential-bearing content is gone. No stash needed converting to a branch.
 
-**On `GroceryApp/.env` as a fifth path:** the owner asked for it to be included, and a 5-path rewrite was run and verified. **But the premise was my incorrect finding** (see the retraction above) — the file held only Sentry's placeholder. Including it is harmless but achieves nothing for security, and **the blob survives either way**, because `.env.example` is the identical blob and is deliberately kept. Scope reverted to the four paths the task specifies unless the owner still wants the fifth as hygiene.
+**SCOPE SETTLED — four paths.** A 5-path variant including `GroceryApp/.env` was built and verified first, at the owner's request, but that request rested on my incorrect Sentry finding (retracted above). Told the owner; they chose **four paths**, matching the task specification. The fifth achieved nothing anyway: `.env` and `.env.example` are the *same blob*, and `.env.example` is deliberately kept, so filtering `.env` removed a path entry and no content.
+
+**FINAL MIRROR — verified against tip `dd1256f7`:**
+
+| check | baseline | result |
+|---|---|---|
+| four scoped paths across all objects | — | **0** |
+| all 18 Stage-0 artifact blobs (`cat-file -e`) | present | **all unreachable** |
+| branches / tags | 9 / 22 | **9 / 22** |
+| commits across all refs | — | **167, none dropped** |
+| `size-pack` | 87.74 MiB | **12.07 MiB (13.8%)** |
+| tip tree hash | `342edadb…` | **`342edadb…` identical** |
+| `git fsck` | — | **clean** |
+| scope fidelity at `v1.28` | 20,950 files | **352** — removals exactly 20,559 + 38 + 1; **zero out-of-scope, zero additions** |
+| fresh checkout | — | 454 files; `debug.keystore` kept, root `.gitignore` present, `relay-server/catalog/` present, bundle and `dist-android/` absent |
+
+`refs/stash` survived a third time (rewritten), with **0** credential artifacts left in its tree. The brief's expectation that filter-repo drops stashes is wrong in this version — verified, not assumed.
+
+**MIRROR STALENESS IS STRUCTURAL — re-cut immediately before any push.** Every commit made after a mirror is cut leaves it behind, and pushing a stale mirror silently drops those commits. This happened three times in this session as documentation commits landed. The clone plus filter takes about five seconds; **treat re-cutting as part of the push procedure, never as an optional step.**
 
 ### OWNER HANDOFF — do these in this order (2026-07-28)
 
