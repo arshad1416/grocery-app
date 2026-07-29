@@ -1,10 +1,26 @@
 # G4 — Produce signed, installable builds for both stores
 
+> ⚠️ **CORRECTIONS NOTICE — read before trusting this file** *(added 2026-07-29; every item below was re-verified by command against `main` @ `809cf37`)*
+>
+> This prompt is otherwise preserved verbatim as written on 2026-07-28. Its ground-truth claims were snapshots of one working copy, and the ones listed here are now **wrong or stale**. The running corrections log is [`GOAL_PROMPT_NOTES.md`](../GOAL_PROMPT_NOTES.md) at the repository root. **Measured repo state overrides this document wherever they disagree.**
+>
+> **Status: ✅ Completed 2026-07-28** — merged at `2378cee` (PR #12); the full evidence table is in the notes' "Goal 4 — Buildability" section. **Do not re-execute.**
+>
+> **Known-wrong or stale claims in this prompt:**
+> - **The cleartext premise is backwards.** `android.usesCleartextTraffic` in `app.json` was *inert* — not in the Expo SDK 56 schema, read by no plugin — so "app.json is already correct, only the native manifest drifted" was wrong, and a prebuild would **not** have fixed it. The landed fix is `plugins/withCleartextTraffic.js` plus the patched manifest.
+> - Ground truth 1 was already stale at execution time: `app.json` carried `ios.bundleIdentifier`, and `GroceryApp/ios/` was a full tracked Xcode project — not one file.
+> - The upload-blocking constraint is satisfied: `dist-android/` and the assets bundle are untracked and purged from history.
+> - `npm ci` was already reproducible (fixed at `8b9bc98`); the remaining lockfile work was deleting `yarn.lock` and pinning `packageManager`.
+> - The invite-redirect defect is real but its path is wrong here: the only copy is `GroceryApp/relay-server/public/invite-redirect.html`, and the wrong-package URL is still unfixed there.
+> - The Jest baseline is 44 suites / 499 passing, not 470.
+
 ## 1 · Session prompt
 
 > Paste everything between `<setup>` and `</handoff>` below — the whole block, including the XML tags.
 
 <setup>
+> **[Erratum added 2026-07-29 — not part of the original prompt.]** This goal was COMPLETED on 2026-07-28. If you have been asked to execute this prompt, stop and confirm with the owner first — see the corrections notice at the top of `launch-goals/G4-produce-signed-installable-builds-for-both-sto.md` and `GOAL_PROMPT_NOTES.md` at the repository root.
+
 The owner has assigned you one specific repository and branch, and three separate checkouts of this project exist. Work only inside the working copy you were given: do not search the filesystem for another checkout, and do not read or write anything outside the repository root you establish below.
 
 Before you plan anything, establish the ground you are standing on, and state each answer in the conversation.

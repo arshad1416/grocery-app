@@ -2,6 +2,21 @@
 
 Running log of findings, decisions, and deferrals. One entry per lesson/decision; update in place rather than duplicating.
 
+## Corrections notices added to all seven goal prompts (2026-07-29)
+
+The `launch-goals/G1…G7` prompts were committed **verbatim**, including claims later disproven — and they read with the same confident specificity whether right or wrong. Each now carries two additions, both clearly dated and marked as not part of the original text:
+
+1. **A corrections notice at the top of the file** — status (done / not started) plus the known-wrong or stale claims, every one re-verified by command against `main` @ `809cf37` before being written.
+2. **A one-line erratum just inside the `<setup>` tag** — because the files instruct the operator to paste `<setup>`…`</handoff>`, a top-of-file notice would never reach the executing agent. The erratum survives the paste and points back to the notice and to this file.
+
+Verification method: seven parallel audit agents, one per goal file, instructed to report only claims they could refute with a command against the current tree (evidence quoted per item; no unverified claims accepted). Original prompt text was not edited — insertions only, `git diff` shows 0 deletions.
+
+**Cross-goal findings the audit surfaced (the reason this entry matters):**
+- **G6 and G7 both assume Goal 5's Trip Optimizer gating already landed. G5 never ran** — no `TRIP_OPTIMIZER_ENABLED` (or any optimizer flag) exists in `src/`, and `<StopOptimizer>` renders unguarded in `GroceryListScreen.tsx`. Anyone running G6/G7 before G5 must not write disclosures or marketing that assume the gate exists.
+- Every goal's setup step 2 (hunt for a launch branch ahead of a stale `main`) is obsolete: `main` == `origin/main` carries all launch work.
+- G2's relay test baseline drifted from 5 suites / 36 tests to **6 / 70** — its "target 43 tests" arithmetic would now describe a regression.
+- G5 cites branch tip `8dde4af0`, which no longer resolves — the history rewrite invalidated it. Statuses: G1 ✅, G3 ✅, G4 ✅; G2/G5/G6/G7 not started (each still needed — their core defects re-verified live on 2026-07-29).
+
 ## Goal 4 — Buildability: iOS identity, relay reachability, signing, Sentry, EAS (2026-07-28)
 
 Worktree `repo-setup-launch-branch-738eca`, branch `claude/repo-setup-launch-audit-5448fc`. **This branch is identical to local `main`** — `git log --oneline main..HEAD` and `HEAD..main` are both empty. The "launch work lives on a feature branch while main stays behind" rule is now retired; the merge already happened. Working tree was **clean** at start (0 lines from `git status --short`) — the sibling persistence work described in the goal prompt is not present in this copy.

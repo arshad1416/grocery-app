@@ -1,10 +1,26 @@
 # G6 — Make the store listings and privacy disclosures true, then hand off for submission
 
+> ⚠️ **CORRECTIONS NOTICE — read before trusting this file** *(added 2026-07-29; every item below was re-verified by command against `main` @ `809cf37`)*
+>
+> This prompt is otherwise preserved verbatim as written on 2026-07-28. Its ground-truth claims were snapshots of one working copy, and the ones listed here are now **wrong or stale**. The running corrections log is [`GOAL_PROMPT_NOTES.md`](../GOAL_PROMPT_NOTES.md) at the repository root. **Measured repo state overrides this document wherever they disagree.**
+>
+> **Status: ⬜ Not started as of 2026-07-29 — and still needed.** `GroceryApp/privacy/index.html` is untouched (both "Last updated: July 8, 2026" lines and the relay-deletion promise survive), and no in-app deletion path exists.
+>
+> **Known-wrong or stale claims in this prompt:**
+> - **A dependency this prompt assumes is missing: Goal 5 never ran.** Nothing gates Trip Optimizer — no flag exists in `src/` and `<StopOptimizer>` renders unguarded. Sequence G5 first, or absorb that work explicitly; do **not** write disclosures that assume the gate exists.
+> - The catalog no longer touches Turso from the client: the chain is cache → relay `/api/catalog` → Open Food Facts → USDA, and no `tursoUrl`/`tursoToken`/`EXPO_PUBLIC_TURSO_*` identifier survives in app source. Step 1's client-side Turso work is obsolete.
+> - Removing the Siri entitlement is no longer "a JSON and Markdown edit and nothing more": a full native project is tracked, so `ios/PantryRun/PantryRun.entitlements` and the tracked `Info.plist` must be edited too.
+> - `NSLocalNetworkUsageDescription` already exists (added by Goal 4 to `app.json` **and** the tracked `Info.plist`) — review the wording, don't add the key.
+> - Sentry now reads `EXPO_PUBLIC_SENTRY_DSN` and `eas.json` carries env blocks (DSN empty pending the owner) — the Crash Data declaration depends only on the DSN value at build time.
+> - The FSA/deals path changed: it is gated by `isCatalogAvailable()` plus a `pricingOptedIn` consent dialog on the flyer path — re-verify the consent story against current code before writing the privacy copy.
+
 ## 1 · Session prompt
 
 > Paste everything between `<setup>` and `</handoff>` below — the whole block, including the XML tags.
 
 <setup>
+> **[Erratum added 2026-07-29 — not part of the original prompt.]** Several ground-truth claims below are stale (branch topology, tracked files, credential state, test baselines). Before acting on any such claim, read the corrections notice at the top of `launch-goals/G6-make-the-store-listings-and-privacy-disclosure.md` and `GOAL_PROMPT_NOTES.md` at the repository root — measured repo state overrides this prompt.
+
 The owner has assigned you one specific repository and branch, and three separate checkouts of this project exist. Work only inside the working copy you were given: do not search the filesystem for another checkout, and do not read or write anything outside the repository root you establish below.
 
 Before any other work, establish the following and report what you found. Nothing

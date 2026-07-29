@@ -1,10 +1,26 @@
 # G2 — Harden the relay and the family-join trust model
 
+> ⚠️ **CORRECTIONS NOTICE — read before trusting this file** *(added 2026-07-29; every item below was re-verified by command against `main` @ `809cf37`)*
+>
+> This prompt is otherwise preserved verbatim as written on 2026-07-28. Its ground-truth claims were snapshots of one working copy, and the ones listed here are now **wrong or stale**. The running corrections log is [`GOAL_PROMPT_NOTES.md`](../GOAL_PROMPT_NOTES.md) at the repository root. **Measured repo state overrides this document wherever they disagree.**
+>
+> **Status: ⬜ Not started as of 2026-07-29 — and still needed.** The core defects were re-verified live: `relay-server/Dockerfile` still copies only `server.js` (required modules missing at runtime), `/stats` still leaks truncated deviceIds under CORS `*`, and the one-day used-token TTL stands. The corrections below fix this prompt's *premises*, not its mission.
+>
+> **Known-wrong or stale claims in this prompt:**
+> - Branch topology is settled: launch work is merged, so an empty `default..candidate` diff is the **expected** state — not a reason to stop and ask the owner.
+> - Credentials are **not** "permanently in this repository's history" — the purge ran (`c1cc04c`, re-verified `6ec69da`); the cited commits `71d54a57`/`143b5a70` no longer resolve; the tokens were invalidated console-side.
+> - The client-side `tursoToken` fallback is gone; catalog access sits behind the relay; `TURSO_TOKEN` is a server-side compose var, unset by default.
+> - The relay test baseline is now **6 suites / 70 tests** (this prompt says 5/36). "At least seven more" therefore means ≥ 77 — hitting 43 would be a large regression.
+> - `docker-compose.yml` now **has** a `volumes:` block (issuer keys mounted read-only) and provisions the issuer keypair — that deferral item is already done. There is still **no state volume**, so that half of the defect stands.
+> - All companion documents are tracked at the repo root, and the working tree carries no uncommitted sibling work.
+
 ## 1 · Session prompt
 
 > Paste everything between `<setup>` and `</handoff>` below — the whole block, including the XML tags.
 
 <setup>
+> **[Erratum added 2026-07-29 — not part of the original prompt.]** Several ground-truth claims below are stale (branch topology, tracked files, credential state, test baselines). Before acting on any such claim, read the corrections notice at the top of `launch-goals/G2-harden-the-relay-and-the-family-join-trust-mod.md` and `GOAL_PROMPT_NOTES.md` at the repository root — measured repo state overrides this prompt.
+
 The owner has assigned you one specific repository and branch, and three separate checkouts of this project exist. Work only inside the working copy you were given: do not search the filesystem for another checkout, and do not read or write anything outside the repository root you establish below.
 
 Before you do anything else, establish the following facts for your own environment and state them at the top of your first response. Every path in this prompt is written relative to the repository root, so the rest of the prompt is unusable until you have fixed what that root is.

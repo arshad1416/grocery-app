@@ -1,10 +1,25 @@
 # G7 — Ship the paid tier after launch (1.x)
 
+> ⚠️ **CORRECTIONS NOTICE — read before trusting this file** *(added 2026-07-29; every item below was re-verified by command against `main` @ `809cf37`)*
+>
+> This prompt is otherwise preserved verbatim as written on 2026-07-28. Its ground-truth claims were snapshots of one working copy, and the ones listed here are now **wrong or stale**. The running corrections log is [`GOAL_PROMPT_NOTES.md`](../GOAL_PROMPT_NOTES.md) at the repository root. **Measured repo state overrides this document wherever they disagree.**
+>
+> **Status: ⬜ Not started as of 2026-07-29.** No `entitlements.ts`, no IAP dependency in `package.json`, no trip-planner tests.
+>
+> **Known-wrong or stale claims in this prompt:**
+> - **Two prerequisites this prompt assumes never happened.** No goal gated Trip Optimizer off (`TRIP_OPTIMIZER_ENABLED` exists nowhere in `src/`), and no goal reworked the marketing assets away from it (`audit-package/06-MARKETING-KIT.md` still leads with the "$11.40 this week" Trip Optimizer claim). done_when #10 has nothing to "restore" — establish what v1 actually shipped first.
+> - Grandfathering advice exists only in `GroceryApp/docs/MONETIZATION.md`; `audit-package/05-PREMIUM-FEATURES-PRICING.md` has no such passage. One document to correct, not two.
+> - Branch topology is settled: `main` == `origin/main` carries all launch work.
+> - The "credentials permanently in history" constraint is stale in the safe direction: purged and rotated. The never-authenticate rule still stands.
+> - The companion documents are tracked at the repo root on `main`.
+
 ## 1 · Session prompt
 
 > Paste everything between `<setup>` and `</handoff>` below — the whole block, including the XML tags.
 
 <setup>
+> **[Erratum added 2026-07-29 — not part of the original prompt.]** Several ground-truth claims below are stale (branch topology, tracked files, credential state, test baselines). Before acting on any such claim, read the corrections notice at the top of `launch-goals/G7-ship-the-paid-tier-after-launch-1-x.md` and `GOAL_PROMPT_NOTES.md` at the repository root — measured repo state overrides this prompt.
+
 The owner has assigned you one specific repository and branch, and three separate checkouts of this project exist. Work only inside the working copy you were given: do not search the filesystem for another checkout, and do not read or write anything outside the repository root you establish below.
 
 Before anything else, establish the ground your session stands on. Nothing further in this brief is safe to act on until these six points are settled.
