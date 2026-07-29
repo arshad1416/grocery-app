@@ -1,10 +1,26 @@
 # G1 — Prove persistence on device and land the launch candidate
 
+> ⚠️ **CORRECTIONS NOTICE — read before trusting this file** *(added 2026-07-29; every item below was re-verified by command against `main` @ `809cf37`)*
+>
+> This prompt is otherwise preserved verbatim as written on 2026-07-28. Its ground-truth claims were snapshots of one working copy, and the ones listed here are now **wrong or stale**. The running corrections log is [`GOAL_PROMPT_NOTES.md`](../GOAL_PROMPT_NOTES.md) at the repository root. **Measured repo state overrides this document wherever they disagree.**
+>
+> **Status: ✅ Completed 2026-07-28.** Persistence landed (`5dd7cf3`) and was proven on device (adb transcript in the notes); merged to `main`. **Do not re-execute this goal.**
+>
+> **Known-wrong or stale claims in this prompt:**
+> - The uncommitted persistence work this goal exists to land is **already committed and merged**; the working tree is clean.
+> - The launch branch is no longer "18 commits ahead of a stale main" — everything is merged and pushed (`main` == `origin/main`, PRs #8–#13).
+> - The defer-the-push rationale is spent: the credential history rewrite already ran (`c1cc04c`) and `main` has been pushed many times since.
+> - `index.android.bundle` and `dist-android/` are neither tracked nor anywhere in history (purged; the recorded blob hashes no longer resolve).
+> - `GroceryApp/ios/` is a full tracked Xcode project (`43756d4`), not a single AASA file, and `ios.bundleIdentifier` is present (punch-list C6 resolved).
+> - The client-side `settings.tursoToken || '<literal>'` fallback no longer exists in app source; the only remaining mentions are historical comments in the relay.
+
 ## 1 · Session prompt
 
 > Paste everything between `<setup>` and `</handoff>` below — the whole block, including the XML tags.
 
 <setup>
+> **[Erratum added 2026-07-29 — not part of the original prompt.]** This goal was COMPLETED on 2026-07-28. If you have been asked to execute this prompt, stop and confirm with the owner first — see the corrections notice at the top of `launch-goals/G1-prove-persistence-on-device-and-land-the-launc.md` and `GOAL_PROMPT_NOTES.md` at the repository root.
+
 The owner has assigned you one specific repository and branch, and three separate checkouts of this project exist. Work only inside the working copy you were given: do not search the filesystem for another checkout, and do not read or write anything outside the repository root you establish below.
 
 Before anything else, establish three facts about the working copy you have been given, and state them back in your first message.

@@ -1,10 +1,24 @@
 # G3 — Rotate exposed credentials and purge the repo history
 
+> ⚠️ **CORRECTIONS NOTICE — read before trusting this file** *(added 2026-07-29; every item below was re-verified by command against `main` @ `809cf37`)*
+>
+> This prompt is otherwise preserved verbatim as written on 2026-07-28. Its ground-truth claims were snapshots of one working copy, and the ones listed here are now **wrong or stale**. The running corrections log is [`GOAL_PROMPT_NOTES.md`](../GOAL_PROMPT_NOTES.md) at the repository root. **Measured repo state overrides this document wherever they disagree.**
+>
+> **Status: ✅ Completed 2026-07-28.** Rotation and the history rewrite landed (`c1cc04c`) and were independently re-verified (`e68a770`, `6ec69da`). **Do not re-execute — in particular, do not run another filter-repo/force-push against a repository whose leak is already purged.**
+>
+> **Known-wrong or stale claims in this prompt:**
+> - Every credential-bearing object this goal targets is gone: the recorded blob hashes no longer resolve, `git rev-list --objects --all` finds none of the paths, and the pack shrank from the recorded 87.74 MiB to ~12.3 MiB.
+> - The client credential surface is deleted: `tursoClient.ts` no longer exists (catalog goes through the relay); `types/index.ts` keeps only `tursoEnabled`.
+> - `docker-compose.yml` now provisions the **rotated** issuer keypair (`ISSUER_*` env entries backed by a read-only keys mount).
+> - A root `.gitignore` exists and the Android bundle path is explicitly ignored — the "expect NOT IGNORED" checks in this prompt now return the opposite result.
+
 ## 1 · Session prompt
 
 > Paste everything between `<setup>` and `</handoff>` below — the whole block, including the XML tags.
 
 <setup>
+> **[Erratum added 2026-07-29 — not part of the original prompt.]** This goal was COMPLETED on 2026-07-28. If you have been asked to execute this prompt, stop and confirm with the owner first — see the corrections notice at the top of `launch-goals/G3-rotate-exposed-credentials-and-purge-the-repo-.md` and `GOAL_PROMPT_NOTES.md` at the repository root.
+
 The owner has assigned you one specific repository and branch, and three separate checkouts of this project exist. Work only inside the working copy you were given: do not search the filesystem for another checkout, and do not read or write anything outside the repository root you establish below.
 
 Establish the following at the start of your agent session, before you act on anything else in this task, and state your answers back in your first message to the owner.

@@ -1,10 +1,27 @@
 # G5 — Set the v1 product posture: free tier and first-run key backup
 
+> ⚠️ **CORRECTIONS NOTICE — read before trusting this file** *(added 2026-07-29; every item below was re-verified by command against `main` @ `809cf37`)*
+>
+> This prompt is otherwise preserved verbatim as written on 2026-07-28. Its ground-truth claims were snapshots of one working copy, and the ones listed here are now **wrong or stale**. The running corrections log is [`GOAL_PROMPT_NOTES.md`](../GOAL_PROMPT_NOTES.md) at the repository root. **Measured repo state overrides this document wherever they disagree.**
+>
+> **Status: ⬜ Not started as of 2026-07-29 — and still needed.** Nothing gates Trip Optimizer (`<StopOptimizer>` renders unguarded in `GroceryListScreen.tsx`; no feature flag exists in `src/`), and sync-failure surfacing still ends at `console.warn`.
+>
+> **Known-wrong or stale claims in this prompt:**
+> - The branch facts are dead: tip `8dde4af0` no longer resolves (history rewrite), `claude/dreamy-faraday-758d4e` is an ancestor of `main`, and `main` == `origin/main` carries all launch work. Work on `main`.
+> - The 9-file persistence fix is committed and merged (`5dd7cf3`); the tree is clean — there is no uncommitted sibling work to protect.
+> - All companion documents are tracked at the repo root (since `809cf37`); the Trip Optimizer references in `audit-package/07-STORE-LISTINGS.md` have moved from the quoted line numbers.
+> - Sentry's env plumbing is fixed (`EXPO_PUBLIC_SENTRY_DSN`, proven inlined into the bundle) — but the DSN value is still empty pending the owner, so "user-visible, not telemetry-dependent" remains the right design bar.
+> - The credential claims are stale in the safe direction: history purged, client fallback deleted. The rule "never authenticate with anything found in this repo" still stands.
+> - The Jest baseline is 44 suites / 499 passed (this prompt says 39/470).
+> - "Three separate checkouts" is now five worktrees sharing one object store.
+
 ## 1 · Session prompt
 
 > Paste everything between `<setup>` and `</handoff>` below — the whole block, including the XML tags.
 
 <setup>
+> **[Erratum added 2026-07-29 — not part of the original prompt.]** Several ground-truth claims below are stale (branch topology, tracked files, credential state, test baselines). Before acting on any such claim, read the corrections notice at the top of `launch-goals/G5-set-the-v1-product-posture-free-tier-and-first.md` and `GOAL_PROMPT_NOTES.md` at the repository root — measured repo state overrides this prompt.
+
 The owner has assigned you one specific repository and branch, and three separate checkouts of this project exist. Work only inside the working copy you were given: do not search the filesystem for another checkout, and do not read or write anything outside the repository root you establish below.
 
 Before anything else, establish these four facts for your agent session and state them back in the conversation. Everything after this depends on them.
