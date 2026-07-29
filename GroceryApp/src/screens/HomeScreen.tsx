@@ -159,6 +159,29 @@ export default function HomeScreen({ navigation }: Props) {
     };
   }, [doLoadLists]);
 
+  // First-run recovery backup prompt. bootstrapSync() mints a recovery phrase
+  // on first launch, but nothing ever told the user it exists — and with
+  // end-to-end encryption and no accounts, that phrase is the only way back
+  // into their data after a lost or wiped phone. Show it until the user
+  // explicitly confirms they saved it: only RecoveryScreen's "I've Stored It
+  // Safely" button sets recoveryPhraseBackedUp, so going back or backgrounding
+  // leaves the flag unset and the prompt returns on the next launch.
+  const backupPromptShownRef = useRef(false);
+  useEffect(() => {
+    (async () => {
+      if (backupPromptShownRef.current) return;
+      try {
+        if (getSettings().recoveryPhraseBackedUp) return;
+        const { hasRecoveryPhrase } = await import('../identity/recovery');
+        if (!(await hasRecoveryPhrase())) return;
+        backupPromptShownRef.current = true;
+        navigation.navigate('Recovery', { mode: 'show' });
+      } catch {
+        // Non-fatal: Settings → View Recovery Phrase stays available.
+      }
+    })();
+  }, [navigation]);
+
   const handleListPress = useCallback(
     (list: GroceryList) => {
       navigation.navigate('GroceryList', { listId: list.id });

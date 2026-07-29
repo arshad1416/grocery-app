@@ -60,6 +60,19 @@ import CategoryPill from '../components/CategoryPill';
 import StoreCard from '../components/StoreCard';
 import BottomTabBar, { type TabName } from '../components/BottomTabBar';
 
+/**
+ * Trip Optimizer is the paid tier's hero feature for 1.x and is hidden in v1:
+ * v1 ships fully free with no In-App Purchase, and Apple 3.1.1 rejects apps
+ * that expose digital features which cannot be bought through IAP. Shipping it
+ * free and paywalling it in 1.1 would mean taking a feature away from users,
+ * which costs ratings and refunds — so it never ships free. Re-enable by
+ * flipping this flag together with a real IAP entitlement check (see
+ * docs/MONETIZATION.md). The implementation, its pricing modules and tests
+ * (src/components/StopOptimizer.tsx, src/pricing/stop-optimizer.ts,
+ * src/pricing/trip-plan.ts, __tests__/stop-optimizer.test.ts) stay intact.
+ */
+const TRIP_OPTIMIZER_ENABLED = false;
+
 // Enable LayoutAnimation on Android
 if (
   Platform.OS === 'android' &&
@@ -1015,23 +1028,25 @@ export default function GroceryListScreen({ route, navigation }: Props) {
             </ScrollView>
           </View>
 
-          {/* Stop optimizer */}
-          <StopOptimizer
-            items={filteredUncheckedItems}
-            perStorePrices={perStorePrices}
-            storeNameMap={storeNameMap}
-            selectedRouteNumStops={selectedRouteNumStops}
-            onSelectRouteNumStops={(numStops) => {
-              setSelectedRouteNumStops(numStops);
-              setSelectedStoreId(null);
-            }}
-            fullItems={filteredUncheckedItems.map((item) => ({
-              id: item.id,
-              name: item.name,
-              quantity: item.quantity,
-              unit: item.unit,
-            }))}
-          />
+          {/* Stop optimizer (hidden in v1 — see TRIP_OPTIMIZER_ENABLED) */}
+          {TRIP_OPTIMIZER_ENABLED && (
+            <StopOptimizer
+              items={filteredUncheckedItems}
+              perStorePrices={perStorePrices}
+              storeNameMap={storeNameMap}
+              selectedRouteNumStops={selectedRouteNumStops}
+              onSelectRouteNumStops={(numStops) => {
+                setSelectedRouteNumStops(numStops);
+                setSelectedStoreId(null);
+              }}
+              fullItems={filteredUncheckedItems.map((item) => ({
+                id: item.id,
+                name: item.name,
+                quantity: item.quantity,
+                unit: item.unit,
+              }))}
+            />
+          )}
 
           {/* Find Prices button */}
           {!priceLoading && (

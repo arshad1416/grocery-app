@@ -27,6 +27,7 @@ import {
   getStoredRecoveryPhrase,
 } from '../identity/recovery';
 import { setupMasterKey, getMasterKey } from '../crypto/index';
+import { updateSettings } from '../config/settings';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/deepLinks';
 
@@ -56,6 +57,17 @@ export default function RecoveryScreen({ navigation, route }: Props) {
           const existing = await getStoredRecoveryPhrase();
           if (existing) {
             setPhrase(existing);
+          } else if (await getMasterKey()) {
+            // A master key exists but no phrase is stored for this family.
+            // generateRecoveryPhrase() would throw its hasMasterKey() guard
+            // here with an unexplained error; say what the user can actually
+            // do instead. (Since recoverFromPhrase() now stores the phrase on
+            // success, this mainly covers devices that joined before that fix.)
+            throw new Error(
+              'No recovery phrase is stored on this device. Enter your ' +
+              "family's 12-word recovery phrase in Recover from Backup to " +
+              'store it here.',
+            );
           } else {
             // Generate a new one
             const newPhrase = await generateRecoveryPhrase();
@@ -142,9 +154,15 @@ export default function RecoveryScreen({ navigation, route }: Props) {
     }
   }, [phraseInput, navigation]);
 
-  // Handle confirmed safe storage
+  // Handle confirmed safe storage. This is the ONLY place that sets
+  // recoveryPhraseBackedUp — going back, backgrounding, or otherwise leaving
+  // this screen must NOT set it, so the first-run backup prompt keeps
+  // re-surfacing until the user explicitly confirms.
   const handleConfirmed = useCallback(() => {
     setConfirmed(true);
+    updateSettings({ recoveryPhraseBackedUp: true }).catch(() => {
+      // Best-effort: worst case the prompt shows again next launch.
+    });
     Alert.alert(
       'Recovery Phrase Stored',
       'Great! Your recovery phrase has been saved. Keep it in a safe place — you will need it if you ever lose access to all your devices.',
@@ -245,8 +263,11 @@ function ShowMode({ phrase, onConfirmed, onCopy, confirmed }: ShowModeProps) {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Your Recovery Phrase</Text>
         <Text style={styles.warningText}>
-          Write this down and store it safely. You will need it if you lose access
-          to all your devices. Anyone with this phrase can access your family data!
+          Write these 12 words down and store them somewhere safe. Your lists
+          are end-to-end encrypted and there is no account, email, or password
+          reset: if you lose all your devices and this phrase, your data cannot
+          be recovered — by you or by us. Anyone with this phrase can read your
+          family's data.
         </Text>
 
         <View style={styles.phraseBox}>
@@ -268,6 +289,12 @@ function ShowMode({ phrase, onConfirmed, onCopy, confirmed }: ShowModeProps) {
           Treat this like your house key — never share it unnecessarily, never
           store it in plain text on your device, and never enter it into any
           website or app claiming to be from us.
+        </Text>
+
+        <Text style={styles.helpText}>
+          Note: if this device later joins a different family, that family's
+          recovery phrase replaces this one. Always keep the phrase for the
+          family you're currently in.
         </Text>
 
         {!confirmed ? (

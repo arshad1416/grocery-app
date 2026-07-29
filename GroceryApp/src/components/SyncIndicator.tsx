@@ -12,6 +12,7 @@ import { themeColors } from './groceryTheme';
 export default function SyncIndicator() {
   const syncState: SyncState = useSyncStore((s) => s.syncState);
   const lastSyncedAt: number | null = useSyncStore((s) => s.lastSyncedAt);
+  const errorMessage: string | null = useSyncStore((s) => s.error);
   const activeTheme = useActiveTheme();
   const theme = activeTheme === 'dark' ? themeColors.dark : themeColors.light;
 
@@ -26,11 +27,15 @@ export default function SyncIndicator() {
             ? '#999'
             : '#10B981';
 
+  // In the error state, prefer the store's specific message: "Sync error" is
+  // wrong for a failed local write (the change may have synced fine — it's
+  // the on-device save that failed), and a wrong label sends the user
+  // debugging their network instead of their storage.
   const label =
     syncState === 'syncing'
       ? 'Syncing...'
       : syncState === 'error'
-        ? 'Sync error'
+        ? errorMessage ?? 'Sync error'
         : syncState === 'offline'
           ? 'Offline'
           : syncState === 'not_configured'
