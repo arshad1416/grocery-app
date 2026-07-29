@@ -50,6 +50,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   contributeEnabled: false,
   contributeStoreGranularity: 'region',
   contributeConsentShown: false,
+  recoveryPhraseBackedUp: false,
   poolUrl: '',
   theme: 'system',
 };
@@ -159,6 +160,7 @@ export const KNOWN_SETTINGS_KEYS: readonly string[] = [
   'poolUrl',
   'priceServiceEnabled',
   'pricingOptedIn',
+  'recoveryPhraseBackedUp',
   'relayPort',
   'relayUrl',
   'scrapingEnabled',

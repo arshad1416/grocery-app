@@ -93,9 +93,12 @@ export class SyncManager {
         this.wsClient.sendUpdate(listId, updates);
       }
 
-      // Persist to WatermelonDB
+      // Persist to WatermelonDB. The rejection must stay handled — an
+      // unhandled rejection inside a Yjs update observer is worse than a
+      // swallowed warning — but it must also be surfaced to the user, not
+      // just logged (see reportPersistFailure).
       this.persistListToDB(listId).catch((err) => {
-        console.warn('SyncManager: failed to persist after Yjs change', err);
+        this.reportPersistFailure('failed to persist after Yjs change', err);
       });
     };
 
@@ -186,10 +189,43 @@ export class SyncManager {
     const items = extractItems(listId);
     this.callbacks.onRemoteItemsUpdate?.(listId, items);
 
-    // Persist updated state to WatermelonDB
+    // Persist updated state to WatermelonDB (same failure-surfacing contract
+    // as the local-change observer in registerList).
     this.persistListToDB(listId).catch((err) => {
-      console.warn('SyncManager: failed to persist remote update', err);
+      this.reportPersistFailure('failed to persist remote update', err);
     });
+  }
+
+  /**
+   * Surface a failed WatermelonDB write to the user instead of swallowing it.
+   *
+   * A failed local write means the in-memory Yjs state and the on-device copy
+   * have diverged — exactly the failure class that silently loses data on the
+   * next app restart. Sentry is dead in production (no DSN) and
+   * error-handler.ts is imported by nothing, so the one working user-visible
+   * path is the sync store: SyncIndicator renders a red dot plus the store's
+   * `error` message whenever syncState === 'error'. The message says "save",
+   * not "sync", because the failure is the local write — the change may still
+   * have reached other devices.
+   *
+   * The console diagnostic is kept for debugging; the dynamic import avoids a
+   * static cycle (useSyncStore imports syncManager from this module).
+   */
+  private reportPersistFailure(context: string, err: unknown): void {
+    console.warn(`SyncManager: ${context}`, err);
+    import('../state/useSyncStore')
+      .then(({ useSyncStore }) => {
+        useSyncStore.setState({
+          syncState: 'error',
+          // Rendered verbatim in SyncIndicator's one-line header row, so it
+          // must stay short. "save … on this device", not "sync": the local
+          // write failed, the network may be fine.
+          error: "Couldn't save changes on this device",
+        });
+      })
+      .catch(() => {
+        // The store itself failed to load; the console.warn above is all we have.
+      });
   }
 
   // ─── WatermelonDB Persistence ──────────────────────────────────────────

@@ -538,6 +538,31 @@ export async function recoverFromPhrase(phrase: string): Promise<Uint8Array> {
   // Store the recovered master key in SecureStore (overwrites old key if any)
   await setMasterKey(masterKey);
 
+  // Also store the seed, the normalized phrase, and the stored-flag under the
+  // current family — generateRecoveryPhrase() does this but this path never
+  // did, so on every device that joined a family (rather than founding one)
+  // hasRecoveryPhrase() stayed false and Settings → View Recovery Phrase fell
+  // through to generateRecoveryPhrase(), which throws once a master key
+  // exists. Best-effort: recovery of the key must not fail because the
+  // display copy could not be written.
+  try {
+    const familyId = await getFamilyId();
+    if (familyId) {
+      await setRecoverySeed(familyId, entropy);
+      const store = await getSecureStore();
+      await store.setItemAsync(
+        `${RECOVERY_PHRASE_ALIAS_PREFIX}${familyId}`,
+        words.join(' '),
+      );
+      await store.setItemAsync(
+        `${RECOVERY_STORED_FLAG_PREFIX}${familyId}`,
+        'true',
+      );
+    }
+  } catch {
+    // Non-fatal: the key is recovered; only later phrase display is affected.
+  }
+
   return masterKey;
 }
 
