@@ -1,11 +1,19 @@
 # PantryRun — Marketing Kit
 
 Copy claims only shipped v1 features (no Alexa/Google Assistant, no managed
-plan — both hidden in v1). Siri, price comparison, and the trip optimizer are
-shipped and claimable. **Flyer scanning carries a caveat:** the camera-capture
-path is currently broken (`01-USABILITY-AUDIT.md` #3) — only adding an
-existing photo works — so the copy below says "Add a photo" rather than
-"Snap a photo". Restore the stronger wording once that bug is fixed.
+plan — both hidden in v1). **Corrected 2026-07-28 against the v1 binary:**
+the previous ground rule here said Siri and the trip optimizer were "shipped
+and claimable" — **neither is**. Trip Optimizer is gated off
+(`TRIP_OPTIMIZER_ENABLED = false`, paid tier, 1.x) and Siri has no runtime
+caller and no iOS extension target. Price comparison is shipped but
+**opt-in, off by default** — always mark it optional. The full guardrail
+list lives in `07-STORE-LISTINGS.md` §2; that doc is the source of truth for
+store copy and this kit was synced to it on 2026-07-28. **Flyer scanning
+caveat, updated:** the camera-capture bug (`01-USABILITY-AUDIT.md` #3) has a
+fix on main (commit `f8f4493` — real CameraView capture with an image-picker
+fallback), but it has not been device-verified, so the copy below still says
+"Add a photo" rather than "Snap a photo". Upgrade the wording only after the
+capture path is verified on a device.
 
 ---
 
@@ -13,16 +21,16 @@ existing photo works — so the copy below says "Add a photo" rather than
 
 ### Apple App Store
 - **Name (≤30):** `PantryRun: Family Grocery List` *(30 chars — exactly at the 30 limit)*
-- **Subtitle (≤30):** `Private shared lists & prices` *(29 chars)*
+- **Subtitle (≤30):** `Private family grocery lists` *(28 chars)*
 - **Promotional text (≤170):**
-  `Your family's grocery list, end-to-end encrypted. Compare local prices, scan store flyers, and find which stores save you the most — without giving up your data.`
+  `Your family's grocery list, end-to-end encrypted. Works offline, syncs across your household, and — when you opt in — compares local flyer prices. Your data stays yours.` *(169 chars)*
 - **Keywords (≤100 chars):**
-  `grocery,shopping list,family,shared list,price compare,flyer,deals,private,encrypted,meal,pantry`
+  `grocery,shopping list,family,shared list,price compare,flyer,deals,private,encrypted,offline,pantry` *(99 chars)*
 
 ### Google Play
 - **Title (≤30):** `PantryRun: Family Grocery List`
 - **Short description (≤80):**
-  `Private, encrypted family grocery lists with local price comparison.` *(68 chars)*
+  `Private, encrypted family grocery lists. Offline-first, opt-in local prices.` *(76 chars)*
 
 ### Full description (both stores)
 
@@ -34,27 +42,25 @@ existing photo works — so the copy below says "Add a photo" rather than
 >
 > **🛒 Shared family lists**
 > Add "milk" on your phone; it appears on your partner's in the store aisle.
-> Claim items so two people don't buy the same thing. Works fully offline —
-> changes sync when you're back online.
+> Works fully offline — changes sync when you're back online.
 >
 > **🔒 Actually private**
 > • End-to-end encrypted sync (XChaCha20-Poly1305)
 > • No account, no email, no phone number — ever
 > • No ads, no analytics, no tracking
-> • Run the sync server in your own home if you want to — it's open
+> • Prefer full control? The sync server's source is on GitHub — run it in
+>   your own home.
 >
-> **💰 Pay less for the same cart**
-> • See local prices next to your list items (opt-in)
+> **💰 Pay less for the same cart** (optional — everything here is off until
+> you turn it on)
+> • See local prices next to your list items
 > • Add a photo of a store flyer — AI reads the deals into your price list
-> • Trip Optimizer: "Costco + No Frills saves you $11.40 this week"
-> • Weekly flyer deals matched to what's already on your list
->
-> **🎙️ Hands-free**
-> Add items with Siri or by voice while your hands are full.
+> • Weekly flyer deals matched to what's already on your list, for your area
 >
 > **🔑 Your keys, your data**
 > A 12-word recovery phrase — like a crypto wallet, but for your grocery
-> list. Lose a phone, not your data.
+> list. It gets you back in on a new phone, and your family's shared list
+> syncs right back.
 >
 > PantryRun is built for households that think a grocery list shouldn't be
 > anyone else's business. Privacy policy: https://groceryapp.app/privacy
@@ -76,7 +82,7 @@ or "photograph" a flyer until the camera-capture bug is fixed.
 > pregnant before your family does. Most list apps sell that.
 >
 > We built PantryRun: end-to-end encrypted family grocery lists. No account.
-> No ads. Self-host it if you don't trust us — you don't have to.
+> No ads. The sync server is yours to run — one docker-compose command.
 >
 > 🛒🔒 App Store / Google Play → [link]
 
@@ -85,7 +91,9 @@ or "photograph" a flyer until the camera-capture bug is fixed.
 >
 > Built this because every shared-list app wanted an account and phoned home.
 > Architecture: Yjs CRDTs for offline-first sync, XChaCha20-Poly1305
-> client-side encryption (relay only ever sees ciphertext), libsodium,
+> client-side encryption (the relay sees only ciphertext on the list-sync
+> path; the optional flyer-photo extraction channel is NOT zero-knowledge —
+> disclosed in the threat model), libsodium,
 > QR-based device pairing with Ed25519-signed one-time invite tokens (blind
 > RSA per RFC 9474 is used separately for anonymous price-pool
 > contributions), 12-word recovery phrase. The relay is a single Node
@@ -96,13 +104,17 @@ or "photograph" a flyer until the camera-capture bug is fixed.
 > on both. [links]
 
 **Post 3 — Instagram/Facebook (household decision-maker)**
-> We visited 2 stores instead of 4 and still saved $23 this week 🛒
+*(Rewritten 2026-07-28: the previous version pitched multi-stop trip savings
+— that's the Trip Optimizer, gated off in v1. Re-pitch it when 1.x ships the
+paid tier.)*
+> One list, whole family, zero group texts 🛒
 >
-> PantryRun compares prices across your local stores and tells you which trip
-> is actually worth it. Your list syncs with your partner instantly — and
-> it's fully encrypted, so your shopping habits stay in your family.
+> Add it on your phone, it's on your partner's in the aisle. PantryRun keeps
+> your family's grocery list in sync — end-to-end encrypted, no account, no
+> ads. Turn on prices and it matches this week's flyer deals to what's
+> already on your list.
 >
-> Free on iPhone & Android. #grocerylist #mealplanning #privacy
+> Free on iPhone & Android. #grocerylist #familylife #privacy
 
 ---
 
@@ -114,7 +126,7 @@ or "photograph" a flyer until the camera-capture bug is fixed.
 | 2 | **Hacker News (Show HN)** | E2EE + CRDTs + self-hosting + honest threat-model doc is exactly HN-shaped; one good thread outperforms months of ads | "Show HN: PantryRun – E2EE family grocery list you can self-host". Link the threat model, disclose the flyer-channel caveat up front — HN rewards honesty |
 | 3 | **Product Hunt** | Broader early-adopter reach; privacy products chart well | Launch AFTER the Reddit/HN feedback round fixes the top usability items; ship with real screenshots |
 | 4 | **Privacy-recommendation lists** (PrivacyGuides forum, AlternativeTo, awesome-privacy / awesome-selfhosted GitHub lists) | Durable, compounding discovery — people search "private AnyList alternative" | Submit to AlternativeTo as alternative to AnyList/Bring!/OurGroceries; PR to awesome-selfhosted |
-| 5 | **Frugal/couponing communities** (r/Frugal, r/EatCheapAndHealthy, PF Canada subs) | The price-optimizer story lands here; bigger but less differentiated audience | Post a real "saved $X across 2 stores" walkthrough with screenshots — value-first, not launch-y |
+| 5 | **Frugal/couponing communities** (r/Frugal, r/EatCheapAndHealthy, PF Canada subs) | The flyer-deals story lands here; bigger but less differentiated audience | Post a real "scanned this week's flyer, matched $X of deals to my list" walkthrough with screenshots — value-first, not launch-y. (The multi-stop "saved $X across 2 stores" story is the gated Trip Optimizer — save it for the 1.x paid-tier launch) |
 | 6 | **YouTube self-hosting channels** (e.g., the Docker/homelab reviewers) | High-trust, evergreen installs; they need a working `docker-compose` demo | Offer early access + a 5-minute setup script; wait until managed tier exists for their non-technical viewers |
 | 7 | Paid ads (ASA/Google App Campaigns) | **Not yet** — CAC will exceed $0 revenue in a free v1; revisit when the premium tier launches | — |
 

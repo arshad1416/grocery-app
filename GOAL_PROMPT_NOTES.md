@@ -2,6 +2,26 @@
 
 Running log of findings, decisions, and deferrals. One entry per lesson/decision; update in place rather than duplicating.
 
+## Store listings aligned to the v1 binary (2026-07-28, owner-requested follow-up to Goal 5)
+
+Worktree `launch-candidate`, branch `claude/store-listings-v1-scope` off `main` @ `22eebec`. Every feature claim in the listing package was verified against the shipping source (3-agent sweep + adversarial re-verify) before rewriting. **`07-STORE-LISTINGS.md` §2 is now the single source of truth for store copy; `06-MARKETING-KIT.md` §1 was synced to it.**
+
+**Removed as unbacked (each an Apple 2.3.1 / Play metadata risk):**
+- **Trip Optimizer** — description bullet, screenshot 4, video 18–24s beat (gated off, paid tier 1.x). Screenshot 4 → store-cards per-store totals (real v1 UI); video beat → same.
+- **Item claiming** ("claim items so two people don't buy the same thing") — the CRDT plumbing exists and is green-tested, but **no UI path renders or triggers it**: `handleClaim`/`handleUnclaim` in GroceryListScreen are defined and passed nowhere, ItemRow computes `isClaimed` and never renders it. Found only by the source sweep; no prior doc flagged it.
+- **Siri / HANDS-FREE section** — `src/voice/siri.ts` has no runtime caller (`src/voice/index.ts` imported by nothing) and no iOS Intents extension target exists; "voice input" is keyboard dictation into an Alert.prompt (iOS) / paste-text modal (Android). Also removed from the Play variant.
+- **Keyword `meal`** — no meal feature anywhere in v1 (2.3.7 irrelevant-keyword risk); replaced with `offline`.
+
+**Qualified or corrected:**
+- All price/deal/flyer claims marked optional-off-by-default (`pricingOptedIn: false` gates every price path; AC-14). Subtitle "Private shared lists & prices" → "Private family grocery lists"; promo text and Play short description re-written (169/170 and 76/80).
+- **"open source" → "source is on GitHub"**: the only LICENSE file is `GroceryApp/LICENSE`, an Expo-template MIT stub whose copyright line credits "650 Industries, Inc. (aka Expo)" — a scaffolding artifact, not the owner's grant, attributing the code to the wrong party. (First sweep reported "no LICENSE anywhere"; the adversarial pass corrected this.) Owner should replace it with a real license before claiming open-source.
+- Screenshot 3's subject named `PriceBadge` + `StoreTotalBar` — **both dead components, rendered nowhere**; real price UI is ItemRow's `price` prop + category subtotals + StoreCard row. Shot list corrected, capture prereqs added (pricing opt-in + seeded data; shot 8 is now trivial via the first-run recovery prompt).
+- "Point at a flyer" captions (screenshot 5, video 24–28s) contradicted the doc's own "Add a photo" guardrail — fixed.
+- Video end card "Your data stays home" → "End-to-end encrypted" (the same video demos opt-in features that send FSA queries and flyer photos off-device).
+- 06-MARKETING-KIT: ground rule corrected (it claimed Siri + trip optimizer "shipped and claimable"), Post 3 rewritten off the multi-stop pitch, channel #5 re-aimed at flyer-deals story. 03-GOOGLE-READINESS screenshot row no longer asks for a trip-optimizer capture.
+
+**Flagged for the owner as ⚠️ SUBMISSION PRECONDITIONS (top of 07 §2, found/hardened by the adversarial verify pass):** (1) sync AND all price/deal/flyer features route through the relay and v1 preconfigures none (`relayUrl` default `ws://localhost`) — deploy a hosted relay before submission or reframe the copy self-host-first; (2) `groceryapp.app` is NXDOMAIN — privacy-policy URL is dead and universal-link/AASA hosting depends on the same domain (custom-scheme invites work without it); no terms-of-service doc exists, copy says "Privacy policy" only; (3) Sentry ships opt-out (`sentryEnabled` default true) and is inert only while `EXPO_PUBLIC_SENTRY_DSN` is unset — if the DSN is set for release, the "no analytics, no tracking" bullet and the data-safety forms must change together. Also: never advertise "BIP39-compatible" (checksum deliberately deviates). Adversarial pass also fixed three dishonest marketing-kit lines ("relay only ever sees ciphertext" — false for the flyer channel; "you don't have to [self-host]" — no hosted relay exists; stale "camera capture is broken" — fix f8f4493 landed, pending device verification) and reworded "Lose a phone, not your data" (data restore needs a reachable relay, not just the phrase).
+
 ## Goal 5 — Product surface + recovery survivability (2026-07-28)
 
 Worktree `launch-branch-setup-399fe6`, branch `claude/launch-branch-setup-399fe6` (== `main` at start, 0 ahead / 0 behind — the "launch branch ahead of stale main" picture in the G5 prompt is retired; all nine persistence-fix files are present and committed). Baseline before edits: tsc exit 0; jest **44 suites, 499 passed / 1 skipped**. After: **47 suites, 514 passed / 1 skipped**, tsc still clean.

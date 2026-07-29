@@ -32,7 +32,7 @@ Legend: ✅ PASS · ⚠️ CONDITIONAL (named owner action) · ❌ FAIL today ·
 | Requirement | Verdict | Action |
 |---|---|---|
 | Title (≤30), short description (≤80), full description | ⚠️ | Ready to paste from `06-MARKETING-KIT.md`. |
-| Screenshots (≥2 phone; 7"/10" tablet if claiming tablet) | ❌ | **Not created.** Minimum: 4-6 phone screenshots of list, shared sync, price badges, trip optimizer, flyer scan. |
+| Screenshots (≥2 phone; 7"/10" tablet if claiming tablet) | ❌ | **Not created.** Minimum: 4-6 phone screenshots of list, shared sync, prices (enable the pricing opt-in first), store totals, flyer scan, recovery phrase — full shot list in `07-STORE-LISTINGS.md` §4. (Trip optimizer removed 2026-07-28: gated off in v1, cannot be honestly captured.) |
 | Feature graphic (1024×500) | ❌ | **Not created** — required for listing. |
 | App icon 512px | ✅ | Derivable from `assets/icon.png`. |
 | Content rating questionnaire | ⚠️ | Straightforward "Everyone" answers; owner completes in Console. |
