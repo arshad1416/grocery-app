@@ -1,6 +1,11 @@
 /**
  * StoreCard — Horizontal scroll card for store selection.
  * Shows store name + total price. Selected card has green glow/highlight.
+ *
+ * The total only ever covers the items this store has a price for, so the card
+ * always states that coverage ("1 of 8 priced"). Without it, a $1.15 total on
+ * an 8-item list reads as a whole-basket price and the store-to-store
+ * comparison is meaningless. Pass `total={null}` when no prices are known.
  */
 
 import React from 'react';
@@ -12,7 +17,11 @@ import { getStoreColor, getStoreInitial, getStoreLogo } from '../pricing/store-b
 interface StoreCardProps {
   storeName: string;
   storeId: string;
-  total: number;
+  /** Sum of the priced items only. `null` when no price is known here yet. */
+  total: number | null;
+  /** How many of `itemCount` lines are actually priced at this store. */
+  pricedCount: number;
+  /** Lines on the list the total is being compared against. */
   itemCount: number;
   isSelected: boolean;
   onPress: () => void;
@@ -23,6 +32,7 @@ export default function StoreCard({
   storeName,
   storeId,
   total,
+  pricedCount,
   itemCount,
   isSelected,
   onPress,
@@ -32,6 +42,14 @@ export default function StoreCard({
   const theme = isDark ? themeColors.dark : themeColors.light;
   const storeColor = getStoreColor(storeId);
   const logoSource = getStoreLogo(storeId.toLowerCase());
+
+  const hasPrices = total !== null && pricedCount > 0;
+  const isFullyPriced = hasPrices && pricedCount === itemCount;
+  const coverageLabel = !hasPrices
+    ? 'No prices yet'
+    : isFullyPriced
+      ? `${itemCount} item${itemCount !== 1 ? 's' : ''}`
+      : `${pricedCount} of ${itemCount} priced`;
 
   return (
     <TouchableOpacity
@@ -52,6 +70,13 @@ export default function StoreCard({
       ]}
       onPress={onPress}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityState={{ selected: isSelected }}
+      accessibilityLabel={
+        hasPrices
+          ? `${storeName}, $${total.toFixed(2)} for ${pricedCount} of ${itemCount} item${itemCount !== 1 ? 's' : ''} priced here`
+          : `${storeName}, no prices yet`
+      }
     >
       <View style={styles.topRow}>
         {logoSource ? (
@@ -82,10 +107,13 @@ export default function StoreCard({
         {storeName}
       </Text>
       <Text style={[styles.total, { color: isSelected ? theme.primary : theme.secondaryText }]}>
-        ${total.toFixed(2)}
+        {hasPrices ? `$${total.toFixed(2)}` : '—'}
       </Text>
-      <Text style={[styles.itemCount, { color: theme.secondaryText }]}>
-        {itemCount} item{itemCount !== 1 ? 's' : ''}
+      <Text
+        style={[styles.itemCount, { color: theme.secondaryText }]}
+        numberOfLines={1}
+      >
+        {coverageLabel}
       </Text>
     </TouchableOpacity>
   );

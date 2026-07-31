@@ -11,7 +11,12 @@ import { StoreLogo } from '../pricing/store-branding';
 export interface StoreTotal {
   storeId: string;
   storeName: string;
+  /** Sum over the priced items only — unpriced items contribute nothing. */
   total: number;
+  /** How many list lines actually have a price at this store (backs `total`). */
+  pricedCount: number;
+  /** How many list lines the total is being compared against. */
+  itemCount: number;
 }
 
 interface StoreTotalBarProps {
