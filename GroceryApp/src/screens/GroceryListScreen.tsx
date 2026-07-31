@@ -334,11 +334,20 @@ export default function GroceryListScreen({ route, navigation }: Props) {
     return sections;
   }, [items, listId, searchQuery, gotItExpanded, activeCategory]);
 
+  // The single basket the store cards describe. Both the total and the count
+  // shown on a card must come from this one array — deriving the denominator
+  // separately is how a card ends up claiming a 1-item total covers 8 items.
+  const uncheckedItems = useMemo(
+    () =>
+      Object.values(items).filter(
+        (item) => !item.isDeleted && item.listId === listId && !item.isChecked,
+      ),
+    [items, listId],
+  );
+
   // Store totals
   const storeTotals = useMemo(() => {
-    const allItems = Object.values(items).filter(
-      (item) => !item.isDeleted && item.listId === listId && !item.isChecked,
-    );
+    const allItems = uncheckedItems;
     const storeIds = getStoreIdsWithPrices();
     const totals: StoreTotal[] = [];
 
@@ -347,26 +356,30 @@ export default function GroceryListScreen({ route, navigation }: Props) {
       if (!storePrices) continue;
 
       let total = 0;
-      let hasPrice = false;
+      // Count list lines, not units: `total` is quantity-weighted, but the card
+      // compares it against a line count, so a qty-3 item still counts once.
+      let pricedCount = 0;
       for (const item of allItems) {
         const priceResult = storePrices[item.id];
         if (priceResult) {
           total += priceResult.price * item.quantity;
-          hasPrice = true;
+          pricedCount += 1;
         }
       }
-      if (hasPrice) {
+      if (pricedCount > 0) {
         totals.push({
           storeId,
           storeName: storeNameMap[storeId] ?? storeId,
           total,
+          pricedCount,
+          itemCount: allItems.length,
         });
       }
     }
 
     totals.sort((a, b) => a.total - b.total);
     return totals;
-  }, [items, listId, perStorePrices, getStoreIdsWithPrices]);
+  }, [uncheckedItems, perStorePrices, getStoreIdsWithPrices]);
 
   // Store-plan sections
   const storePlanSections = useMemo(() => {
@@ -974,7 +987,8 @@ export default function GroceryListScreen({ route, navigation }: Props) {
                     storeName={st.storeName}
                     storeId={st.storeId}
                     total={st.total}
-                    itemCount={Object.values(items).filter(i => !i.isDeleted && i.listId === listId && !i.isChecked).length}
+                    pricedCount={st.pricedCount}
+                    itemCount={st.itemCount}
                     isSelected={selectedStoreId === st.storeId}
                     onPress={() => {
                       if (selectedStoreId === st.storeId) {
@@ -990,8 +1004,9 @@ export default function GroceryListScreen({ route, navigation }: Props) {
                     key={s.storeId}
                     storeName={s.storeName}
                     storeId={s.storeId}
-                    total={0}
-                    itemCount={Object.values(items).filter(i => !i.isDeleted && i.listId === listId && !i.isChecked).length}
+                    total={null}
+                    pricedCount={0}
+                    itemCount={uncheckedItems.length}
                     isSelected={selectedStoreId === s.storeId}
                     onPress={() => {
                       if (selectedStoreId === s.storeId) {
